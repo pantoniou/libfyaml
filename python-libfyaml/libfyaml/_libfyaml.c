@@ -789,11 +789,8 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
     if (parent->path == NULL) {
         /* Parent is root - create new tuple with just this element */
         self->path = PyTuple_New(1);
-        if (self->path == NULL) {
-            Py_XDECREF(self->doc_state);
-            FyGeneric_free(self);
-            return NULL;
-        }
+        if (self->path == NULL)
+            goto err_out;
         Py_INCREF(path_elem);
         PyTuple_SetItem(self->path, 0, path_elem);
     } else {
@@ -802,11 +799,8 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
         /* Parent has path - copy and append */
         parent_len = PyTuple_Size(parent->path);
         self->path = PyTuple_New(parent_len + 1);
-        if (self->path == NULL) {
-            Py_XDECREF(self->doc_state);
-            FyGeneric_free(self);
-            return NULL;
-        }
+        if (self->path == NULL)
+            goto err_out;
 
         /* Copy parent's path elements */
         for (i = 0; i < parent_len; i++) {
@@ -821,6 +815,11 @@ FyGeneric_from_parent(fy_generic fyg, FyGenericObject *parent, PyObject *path_el
     }
 
     return (PyObject *)self;
+
+err_out:
+    Py_XDECREF(self->doc_state);
+    FyGeneric_free(self);
+    return NULL;
 }
 
 /* Helper: Create root FyGeneric wrapper (owns builder) */
@@ -1062,8 +1061,7 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                     goto map_err;
 
                 PyObject *val_obj = FyGeneric_from_parent(maph->pairs[i].value, self, path_key);
-                Py_XDECREF(path_key);
-                path_key = NULL;
+                Py_CLEAR(path_key);
                 if (val_obj == NULL)
                     goto map_err;
 
@@ -1918,17 +1916,13 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     /* Build the path as a Python tuple for the child */
     if (path_len > 0) {
         child->path = PyTuple_New(path_len);
-        if (child->path == NULL) {
-            Py_XDECREF(child);
-            return NULL;
-        }
+        if (child->path == NULL)
+            goto err_out;
 
         for (i = 0; i < path_len; i++) {
             PyObject *elem = PySequence_GetItem(path_obj, i);
-            if (elem == NULL) {
-                Py_XDECREF(child);
-                return NULL;
-            }
+            if (elem == NULL)
+                goto err_out;
             PyTuple_SetItem(child->path, i, elem);
         }
     } else {
@@ -1936,6 +1930,10 @@ FyGeneric_get_at_path(FyGenericObject *self, PyObject *path_obj)
     }
 
     return (PyObject *)child;
+
+err_out:
+    Py_XDECREF(child);
+    return NULL;
 }
 
 /* Internal: Convert path list to Unix-style path string */
@@ -1943,12 +1941,14 @@ static PyObject *
 path_list_to_unix_path_internal(PyObject *path_list)
 {
     Py_ssize_t path_len;
-    PyObject *parts;
     Py_ssize_t i;
-    PyObject *sep;
-    PyObject *result;
-    PyObject *slash;
-    PyObject *final;
+    PyObject *parts = NULL;
+    PyObject *elem = NULL;
+    PyObject *str_elem = NULL;
+    PyObject *sep = NULL;
+    PyObject *result = NULL;
+    PyObject *slash = NULL;
+    PyObject *final = NULL;
 
     if (!PyList_Check(path_list) && !PyTuple_Check(path_list)) {
         PyErr_SetString(PyExc_TypeError, "Path must be a list or tuple");
@@ -1960,74 +1960,62 @@ path_list_to_unix_path_internal(PyObject *path_list)
         return NULL;
 
     /* Empty list returns "/" */
-    if (path_len == 0) {
+    if (path_len == 0)
         return PyUnicode_FromString("/");
-    }
 
     /* Build the Unix path string */
     parts = PyList_New(0);
     if (parts == NULL)
-        return NULL;
+        goto err_out;
 
     for (i = 0; i < path_len; i++) {
-        PyObject *elem = PySequence_GetItem(path_list, i);
-        if (elem == NULL) {
-            Py_XDECREF(parts);
-            return NULL;
-        }
+        elem = PySequence_GetItem(path_list, i);
+        if (elem == NULL)
+            goto err_out;
 
-        PyObject *str_elem;
-        if (PyLong_Check(elem)) {
-            /* Convert integer index to string */
+        if (PyUnicode_Check(elem))
+            str_elem = Py_NewRef(elem);
+        else
             str_elem = PyObject_Str(elem);
-            Py_XDECREF(elem);
-        } else if (PyUnicode_Check(elem)) {
-            str_elem = elem;  /* Already a string, transfer ownership */
-        } else {
-            /* Unknown type - convert to string */
-            str_elem = PyObject_Str(elem);
-            Py_XDECREF(elem);
-        }
+        Py_CLEAR(elem);
+        if (str_elem == NULL)
+            goto err_out;
 
-        if (str_elem == NULL) {
-            Py_XDECREF(parts);
-            return NULL;
-        }
-
-        if (PyList_Append(parts, str_elem) < 0) {
-            Py_XDECREF(str_elem);
-            Py_XDECREF(parts);
-            return NULL;
-        }
-        Py_XDECREF(str_elem);
+        if (PyList_Append(parts, str_elem) < 0)
+            goto err_out;
+        Py_CLEAR(str_elem);
     }
 
     /* Join with "/" */
     sep = PyUnicode_FromString("/");
-    if (sep == NULL) {
-        Py_XDECREF(parts);
-        return NULL;
-    }
+    if (sep == NULL)
+        goto err_out;
 
     result = PyUnicode_Join(sep, parts);
-    Py_XDECREF(sep);
-    Py_XDECREF(parts);
-
+    Py_CLEAR(sep);
+    Py_CLEAR(parts);
     if (result == NULL)
-        return NULL;
+        goto err_out;
 
     /* Prepend "/" */
     slash = PyUnicode_FromString("/");
-    if (slash == NULL) {
-        Py_XDECREF(result);
-        return NULL;
-    }
+    if (slash == NULL)
+        goto err_out;
 
     final = PyUnicode_Concat(slash, result);
-    Py_XDECREF(slash);
-    Py_XDECREF(result);
+    Py_CLEAR(slash);
+    Py_CLEAR(result);
 
     return final;
+
+err_out:
+    Py_XDECREF(elem);
+    Py_XDECREF(str_elem);
+    Py_XDECREF(parts);
+    Py_XDECREF(sep);
+    Py_XDECREF(result);
+    Py_XDECREF(slash);
+    return NULL;
 }
 
 /* Internal: Convert Unix-style path string to path list */
@@ -3620,55 +3608,50 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         fy_generic diag = fy_generic_get_diag(vdir);
         if (fy_generic_is_valid(diag) && !fy_generic_is_null(diag)) {
             /* Return the diag sequence directly - it contains the error info */
-            PyObject *result = FyGeneric_from_generic(diag, gb, mutable);
-            if (result == NULL) {
-                fy_generic_builder_destroy(gb);
-                return NULL;
-            }
+            result = FyGeneric_from_generic(diag, gb, mutable);
+            if (result == NULL)
+                goto err_out;
             return result;
         }
     }
 
     if (!fy_generic_is_valid(vdir)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
-        return NULL;
+        goto err_out;
     }
 
     /* Get document count - for loads() we expect exactly one */
     doc_count = fy_generic_dir_get_document_count(vdir);
     if (doc_count < 1) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "No documents found in input");
-        return NULL;
+        goto err_out;
     }
     if (doc_count > 1) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Multiple documents found; use loads_all() instead");
-        return NULL;
+        goto err_out;
     }
 
     /* Get VDS for the single document */
     vds = fy_generic_dir_get_document_vds(vdir, 0);
     if (!fy_generic_is_valid(vds)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
-        return NULL;
+        goto err_out;
     }
 
     /* Create root wrapper with VDS - transfers gb ownership to Python object */
     result = FyGeneric_from_vds(vds, gb, mutable);
-    if (result == NULL) {
-        fy_generic_builder_destroy(gb);
-        return NULL;
-    }
+    if (result == NULL)
+        goto err_out;
 
     /* Auto-trim if requested (default behavior) */
-    if (trim && gb) {
+    if (trim)
         fy_gb_trim(gb);
-    }
 
     return result;
+
+err_out:
+    fy_generic_builder_destroy(gb);
+    return NULL;
 }
 
 /* Helper: Convert Python object to fy_generic (recursive) */
@@ -3878,11 +3861,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 
     /* Convert Python object to fy_generic */
     g = python_to_generic(gb, obj);
-    if (!fy_generic_is_valid(g)) {
-        fy_generic_builder_destroy(gb);
-        /* Exception already set by python_to_generic */
-        return NULL;
-    }
+    if (!fy_generic_is_valid(g))
+        goto err_out;  /* Exception already set by python_to_generic */
 
     /* Determine emit flags based on options */
     emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
@@ -3924,9 +3904,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
             } else if (strcmp(style, "oneline") == 0) {
                 emit_flags |= FYOPEF_STYLE_ONELINE;
             } else {
-                fy_generic_builder_destroy(gb);
                 PyErr_Format(PyExc_ValueError, "Unknown style: '%s'. Expected: default, original, block, flow, pretty, compact, or oneline", style);
-                return NULL;
+                goto err_out;
             }
         } else if (compact) {
             emit_flags |= FYOPEF_STYLE_FLOW;
@@ -3938,17 +3917,15 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     /* Emit to string using new API - returns a string generic! */
     emitted = fy_gb_emit(gb, g, emit_flags, NULL);
     if (!fy_generic_is_valid(emitted)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON");
-        return NULL;
+        goto err_out;
     }
 
     /* Extract the sized string from the generic */
     szstr = fy_cast(emitted, fy_szstr_empty);
     if (szstr.data == NULL) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
-        return NULL;
+        goto err_out;
     }
 
     /* Create Python string (makes a copy) */
@@ -3958,6 +3935,10 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     fy_generic_builder_destroy(gb);
 
     return result;  /* NULL propagates error to Python */
+
+err_out:
+    fy_generic_builder_destroy(gb);
+    return NULL;
 }
 
 /* from_python(obj, tag=None, style=None, mutable=False, dedup=True) - Convert Python object to FyGeneric */
@@ -3990,10 +3971,8 @@ libfyaml_from_python(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 
     /* Convert Python object to generic */
     g = python_to_generic(gb, obj);
-    if (!fy_generic_is_valid(g)) {
-        fy_generic_builder_destroy(gb);
-        return NULL;
-    }
+    if (!fy_generic_is_valid(g))
+        goto err_out;
 
     /* Parse style string to scalar style enum */
     scalar_style = FYSS_ANY;
@@ -4020,9 +3999,8 @@ libfyaml_from_python(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         if (tag != NULL && tag_len > 0) {
             tag_generic = fy_gb_string_size_create(gb, tag, (size_t)tag_len);
             if (!fy_generic_is_valid(tag_generic)) {
-                fy_generic_builder_destroy(gb);
                 PyErr_SetString(PyExc_RuntimeError, "Failed to create tag string");
-                return NULL;
+                goto err_out;
             }
             flags |= FYGIF_TAG;
         }
@@ -4047,20 +4025,21 @@ libfyaml_from_python(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         };
         g = fy_gb_indirect_create(gb, &gi);
         if (!fy_generic_is_valid(g)) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_RuntimeError, "Failed to create tagged generic");
-            return NULL;
+            goto err_out;
         }
     }
 
     /* Create root wrapper - transfers gb ownership to Python object */
     result = FyGeneric_from_generic(g, gb, mutable);
-    if (result == NULL) {
-        fy_generic_builder_destroy(gb);
-        return NULL;
-    }
+    if (result == NULL)
+        goto err_out;
 
     return result;
+
+err_out:
+    fy_generic_builder_destroy(gb);
+    return NULL;
 }
 
 /* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, keep_style=False) - Load YAML/JSON from file object or path */
@@ -4085,7 +4064,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_parse_file() with mmap support */
         const char *path;
-        struct fy_generic_builder *gb;
+        struct fy_generic_builder *gb = NULL;
         unsigned int mode_flags;
         unsigned int parse_flags;
         fy_generic vdir;
@@ -4107,7 +4086,7 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Parse mode string to flags */
         mode_flags = parse_mode_flags(mode);
         if (mode_flags == 0)
-            return NULL;  /* Exception already set */
+            goto file_err;  /* Exception already set */
 
         /* Determine parse flags */
         parse_flags = mode_flags;
@@ -4123,95 +4102,97 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Parse from file - returns a directory (sequence of VDS) */
         vdir = fy_gb_parse_file(gb, parse_flags, path);
         if (!fy_generic_is_valid(vdir)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON from file: %s", path);
-            return NULL;
+            goto file_err;
         }
 
         /* Get document count - for load() we expect exactly one */
         doc_count = fy_generic_dir_get_document_count(vdir);
         if (doc_count < 1) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_ValueError, "No documents found in file");
-            return NULL;
+            goto file_err;
         }
         if (doc_count > 1) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_ValueError, "Multiple documents found; use load_all() instead");
-            return NULL;
+            goto file_err;
         }
 
         /* Get VDS for the single document */
         vds = fy_generic_dir_get_document_vds(vdir, 0);
         if (!fy_generic_is_valid(vds)) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
-            return NULL;
+            goto file_err;
         }
 
         /* Create root wrapper with VDS - transfers gb ownership to Python object */
         result = FyGeneric_from_vds(vds, gb, mutable);
-        if (result == NULL) {
-            fy_generic_builder_destroy(gb);
-            return NULL;
-        }
+        if (result == NULL)
+            goto file_err;
 
         /* Auto-trim if requested (default behavior) */
-        if (trim && gb) {
+        if (trim)
             fy_gb_trim(gb);
-        }
 
         return result;
+
+    file_err:
+        fy_generic_builder_destroy(gb);
+        return NULL;
     } else {
         /* Assume it's a file object - read from it and use loads() */
-        PyObject *content = PyObject_CallMethod(file_obj, "read", NULL);
+        PyObject *content = NULL;
+        PyObject *loads_kwargs = NULL;
+        PyObject *tmp = NULL;
+        PyObject *loads_args = NULL;
+        PyObject *result = NULL;
+
+        content = PyObject_CallMethod(file_obj, "read", NULL);
         if (content == NULL)
-            return NULL;
+            goto fobj_err;
 
-        /* Build kwargs dict for loads */
-        PyObject *loads_kwargs = PyDict_New();
-        if (loads_kwargs == NULL) {
-            Py_XDECREF(content);
-            return NULL;
-        }
+        loads_kwargs = PyDict_New();
+        if (loads_kwargs == NULL)
+            goto fobj_err;
 
-        PyObject *mode_str = PyUnicode_FromString(mode);
-        if (mode_str == NULL) {
-            Py_XDECREF(loads_kwargs);
-            Py_XDECREF(content);
-            return NULL;
-        }
-        PyDict_SetItemString(loads_kwargs, "mode", mode_str);
-        Py_XDECREF(mode_str);
+        tmp = PyUnicode_FromString(mode);
+        if (tmp == NULL)
+            goto fobj_err;
+        PyDict_SetItemString(loads_kwargs, "mode", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *dedup_obj = PyBool_FromLong(dedup);
-        PyDict_SetItemString(loads_kwargs, "dedup", dedup_obj);
-        Py_XDECREF(dedup_obj);
+        tmp = PyBool_FromLong(dedup);
+        PyDict_SetItemString(loads_kwargs, "dedup", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *trim_obj = PyBool_FromLong(trim);
-        PyDict_SetItemString(loads_kwargs, "trim", trim_obj);
-        Py_XDECREF(trim_obj);
+        tmp = PyBool_FromLong(trim);
+        PyDict_SetItemString(loads_kwargs, "trim", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *mutable_obj = PyBool_FromLong(mutable);
-        PyDict_SetItemString(loads_kwargs, "mutable", mutable_obj);
-        Py_XDECREF(mutable_obj);
+        tmp = PyBool_FromLong(mutable);
+        PyDict_SetItemString(loads_kwargs, "mutable", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *markers_obj = PyBool_FromLong(create_markers);
-        PyDict_SetItemString(loads_kwargs, "create_markers", markers_obj);
-        Py_XDECREF(markers_obj);
+        tmp = PyBool_FromLong(create_markers);
+        PyDict_SetItemString(loads_kwargs, "create_markers", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *comments_obj = PyBool_FromLong(keep_comments);
-        PyDict_SetItemString(loads_kwargs, "keep_comments", comments_obj);
-        Py_XDECREF(comments_obj);
+        tmp = PyBool_FromLong(keep_comments);
+        PyDict_SetItemString(loads_kwargs, "keep_comments", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *style_obj = PyBool_FromLong(keep_style);
-        PyDict_SetItemString(loads_kwargs, "keep_style", style_obj);
-        Py_XDECREF(style_obj);
+        tmp = PyBool_FromLong(keep_style);
+        PyDict_SetItemString(loads_kwargs, "keep_style", tmp);
+        Py_CLEAR(tmp);
 
-        /* Call loads with the content */
-        PyObject *loads_args = Py_BuildValue("(O)", content);
-        PyObject *result = libfyaml_loads(self, loads_args, loads_kwargs);
+        loads_args = Py_BuildValue("(O)", content);
+        if (loads_args == NULL)
+            goto fobj_err;
 
+        result = libfyaml_loads(self, loads_args, loads_kwargs);
+        /* fallthrough: clean up locals and return result (may be NULL) */
+
+    fobj_err:
+        Py_XDECREF(tmp);
         Py_XDECREF(loads_args);
         Py_XDECREF(loads_kwargs);
         Py_XDECREF(content);
@@ -4238,27 +4219,31 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_emit_file() for direct file output */
-        const char *path = PyUnicode_AsUTF8AndSize(file_obj, NULL);
+        struct fy_generic_builder *gb = NULL;
+        const char *path;
+        fy_generic g;
+        unsigned int emit_flags;
+        fy_generic result_g;
+        int result_code;
+
+        path = PyUnicode_AsUTF8AndSize(file_obj, NULL);
         if (path == NULL)
             return NULL;
 
         /* Create generic builder */
-        struct fy_generic_builder *gb = fy_generic_builder_create(NULL);
+        gb = fy_generic_builder_create(NULL);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
 
         /* Convert Python object to fy_generic */
-        fy_generic g = python_to_generic(gb, obj);
-        if (!fy_generic_is_valid(g)) {
-            fy_generic_builder_destroy(gb);
-            /* Exception already set by python_to_generic */
-            return NULL;
-        }
+        g = python_to_generic(gb, obj);
+        if (!fy_generic_is_valid(g))
+            goto file_err;  /* Exception already set by python_to_generic */
 
         /* Determine emit flags based on options */
-        unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY;
+        emit_flags = FYOPEF_DISABLE_DIRECTORY;
 
         if (json_mode) {
             emit_flags |= FYOPEF_MODE_JSON;
@@ -4266,73 +4251,80 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
                 emit_flags |= FYOPEF_INDENT_2;
         } else {
             emit_flags |= FYOPEF_MODE_YAML_1_2;
-            if (compact) {
+            if (compact)
                 emit_flags |= FYOPEF_STYLE_FLOW;
-            } else {
+            else
                 emit_flags |= FYOPEF_STYLE_BLOCK;
-            }
         }
 
         /* Emit to file using new API - returns int 0 on success */
-        fy_generic result_g = fy_gb_emit_file(gb, g, emit_flags, path);
+        result_g = fy_gb_emit_file(gb, g, emit_flags, path);
 
         /* Check for success: should return integer 0 */
         if (!fy_generic_is_valid(result_g)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (invalid result)", path);
-            return NULL;
+            goto file_err;
         }
-
         if (!fy_generic_is_int_type(result_g)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (wrong type: %d)",
                         path, fy_get_type(result_g));
-            return NULL;
+            goto file_err;
         }
 
-        int result_code = fy_cast(result_g, -1);
-        fy_generic_builder_destroy(gb);
-
+        result_code = fy_cast(result_g, -1);
         if (result_code != 0) {
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)", path, result_code);
-            return NULL;
+            goto file_err;
         }
 
+        fy_generic_builder_destroy(gb);
         Py_RETURN_NONE;
+
+    file_err:
+        fy_generic_builder_destroy(gb);
+        return NULL;
     } else {
         /* Assume it's a file object - use dumps() and write */
-        PyObject *dumps_kwargs = PyDict_New();
+        PyObject *dumps_kwargs = NULL;
+        PyObject *tmp = NULL;
+        PyObject *dumps_args = NULL;
+        PyObject *yaml_str = NULL;
+        PyObject *write_result = NULL;
+        PyObject *ret = NULL;
+
+        dumps_kwargs = PyDict_New();
         if (dumps_kwargs == NULL)
-            return NULL;
+            goto fobj_err;
 
-        PyObject *compact_bool = PyBool_FromLong(compact);
-        PyObject *json_bool = PyBool_FromLong(json_mode);
+        tmp = PyBool_FromLong(compact);
+        PyDict_SetItemString(dumps_kwargs, "compact", tmp);
+        Py_CLEAR(tmp);
 
-        PyDict_SetItemString(dumps_kwargs, "compact", compact_bool);
-        PyDict_SetItemString(dumps_kwargs, "json", json_bool);
+        tmp = PyBool_FromLong(json_mode);
+        PyDict_SetItemString(dumps_kwargs, "json", tmp);
+        Py_CLEAR(tmp);
 
-        Py_XDECREF(compact_bool);
-        Py_XDECREF(json_bool);
+        dumps_args = Py_BuildValue("(O)", obj);
+        if (dumps_args == NULL)
+            goto fobj_err;
 
-        /* Convert object to YAML string */
-        PyObject *dumps_args = Py_BuildValue("(O)", obj);
-        PyObject *yaml_str = libfyaml_dumps(self, dumps_args, dumps_kwargs);
+        yaml_str = libfyaml_dumps(self, dumps_args, dumps_kwargs);
+        if (yaml_str == NULL)
+            goto fobj_err;
 
+        write_result = PyObject_CallMethod(file_obj, "write", "O", yaml_str);
+        if (write_result == NULL)
+            goto fobj_err;
+
+        ret = Py_NewRef(Py_None);
+
+    fobj_err:
+        Py_XDECREF(tmp);
         Py_XDECREF(dumps_args);
         Py_XDECREF(dumps_kwargs);
-
-        if (yaml_str == NULL)
-            return NULL;
-
-        /* Write to file object */
-        PyObject *result = PyObject_CallMethod(file_obj, "write", "O", yaml_str);
         Py_XDECREF(yaml_str);
-
-        if (result == NULL)
-            return NULL;
-
-        Py_XDECREF(result);
-        Py_RETURN_NONE;
+        Py_XDECREF(write_result);
+        return ret;
     }
 }
 
@@ -4390,13 +4382,18 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     unsigned int parse_flags;
     fy_generic vdir;
     int doc_count;
-    PyObject *holder_doc_state;
-    FyGenericObject *holder;
-    PyObject *result;
+    PyObject *holder_doc_state = NULL;
+    FyGenericObject *holder = NULL;
+    PyObject *result = NULL;
     int i;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors))
         return NULL;
+
+    /* Parse mode string to flags */
+    mode_flags = parse_mode_flags(mode);
+    if (mode_flags == 0)
+        return NULL;  /* Exception already set */
 
     /* Create generic builder using helper */
     gb = create_builder_with_config(dedup, yaml_len * 2);
@@ -4404,11 +4401,6 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
     }
-
-    /* Parse mode string to flags */
-    mode_flags = parse_mode_flags(mode);
-    if (mode_flags == 0)
-        return NULL;  /* Exception already set */
 
     /* Parse flags: MULTI_DOCUMENT for multiple docs */
     parse_flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_MULTI_DOCUMENT | mode_flags;
@@ -4426,9 +4418,8 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     /* Parse - returns a directory (sequence of VDS) */
     vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
     if (!fy_generic_is_valid(vdir)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_ValueError, "Failed to parse YAML/JSON");
-        return NULL;
+        goto err_out;
     }
 
     /* Get document count */
@@ -4437,56 +4428,56 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     /* Create a holder FyGeneric that owns the builder (invisible to user) */
     /* Create doc_state first (it owns the builder) */
     holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
-    if (holder_doc_state == NULL) {
-        fy_generic_builder_destroy(gb);
-        return NULL;
-    }
+    if (holder_doc_state == NULL)
+        goto err_out;
+    /* gb ownership transferred to holder_doc_state */
+    gb = NULL;
 
     holder = FyGeneric_alloc();
-    if (holder == NULL) {
-        Py_XDECREF(holder_doc_state);
-        return NULL;
-    }
+    if (holder == NULL)
+        goto err_out;
     holder->fyg = vdir;
     holder->doc_state = holder_doc_state;
     holder->path = NULL;
+    /* doc_state ownership transferred to holder */
+    holder_doc_state = NULL;
 
     /* Create Python list to hold all documents */
     result = PyList_New(doc_count);
-    if (result == NULL) {
-        Py_XDECREF(holder);
-        return NULL;
-    }
+    if (result == NULL)
+        goto err_out;
 
     /* Create FyGeneric for each document from its VDS */
     for (i = 0; i < doc_count; i++) {
         fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
         if (!fy_generic_is_valid(vds)) {
-            Py_XDECREF(result);
-            Py_XDECREF(holder);
             PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
-            return NULL;
+            goto err_out;
         }
 
         PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
-        if (doc == NULL) {
-            Py_XDECREF(result);
-            Py_XDECREF(holder);
-            return NULL;
-        }
+        if (doc == NULL)
+            goto err_out;
 
         PyList_SetItem(result, i, doc);  /* Steals reference */
     }
 
+    /* Auto-trim if requested (default behavior) */
+    if (trim)
+        fy_gb_trim(FYG_GB(holder));
+
     /* Release our reference to holder - the docs in the list keep it alive */
     Py_XDECREF(holder);
 
-    /* Auto-trim if requested (default behavior) */
-    if (trim && gb) {
-        fy_gb_trim(gb);
-    }
-
     return result;
+
+err_out:
+    Py_XDECREF(result);
+    Py_XDECREF(holder);
+    Py_XDECREF(holder_doc_state);
+    if (gb)
+        fy_generic_builder_destroy(gb);
+    return NULL;
 }
 
 /* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document from file */
@@ -4512,19 +4503,24 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_parse_file() for mmap-based loading */
         const char *path;
-        struct fy_generic_builder *gb;
+        struct fy_generic_builder *gb = NULL;
         unsigned int mode_flags;
         unsigned int parse_flags;
         fy_generic vdir;
         int doc_count;
-        PyObject *holder_doc_state;
-        FyGenericObject *holder;
-        PyObject *result;
+        PyObject *holder_doc_state = NULL;
+        FyGenericObject *holder = NULL;
+        PyObject *result = NULL;
         int i;
 
         path = PyUnicode_AsUTF8AndSize(file_obj, NULL);
         if (path == NULL)
             return NULL;
+
+        /* Parse mode string to flags */
+        mode_flags = parse_mode_flags(mode);
+        if (mode_flags == 0)
+            return NULL;  /* Exception already set */
 
         /* Create generic builder using helper (1MB estimate for files) */
         gb = create_builder_with_config(dedup, 1024 * 1024);
@@ -4532,11 +4528,6 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
         }
-
-        /* Parse mode string to flags */
-        mode_flags = parse_mode_flags(mode);
-        if (mode_flags == 0)
-            return NULL;  /* Exception already set */
 
         /* Parse flags: MULTI_DOCUMENT for multiple docs */
         parse_flags = FYOPPF_MULTI_DOCUMENT | mode_flags;
@@ -4552,9 +4543,8 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Parse from file - returns a directory (sequence of VDS) */
         vdir = fy_gb_parse_file(gb, parse_flags, path);
         if (!fy_generic_is_valid(vdir)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_ValueError, "Failed to parse YAML/JSON file: %s", path);
-            return NULL;
+            goto file_err;
         }
 
         /* Get document count */
@@ -4563,107 +4553,111 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Create a holder FyGeneric that owns the builder */
         /* Create doc_state first (it owns the builder) */
         holder_doc_state = FyDocumentState_create(vdir, fy_invalid, gb, mutable);
-        if (holder_doc_state == NULL) {
-            fy_generic_builder_destroy(gb);
-            return NULL;
-        }
+        if (holder_doc_state == NULL)
+            goto file_err;
+        /* gb ownership transferred to holder_doc_state */
+        gb = NULL;
 
         holder = FyGeneric_alloc();
-        if (holder == NULL) {
-            Py_XDECREF(holder_doc_state);
-            return NULL;
-        }
+        if (holder == NULL)
+            goto file_err;
         holder->fyg = vdir;
         holder->doc_state = holder_doc_state;
         holder->path = NULL;
+        /* doc_state ownership transferred to holder */
+        holder_doc_state = NULL;
 
         /* Create Python list to hold all documents */
         result = PyList_New(doc_count);
-        if (result == NULL) {
-            Py_XDECREF(holder);
-            return NULL;
-        }
+        if (result == NULL)
+            goto file_err;
 
         /* Create FyGeneric for each document from its VDS */
         for (i = 0; i < doc_count; i++) {
             fy_generic vds = fy_generic_dir_get_document_vds(vdir, i);
             if (!fy_generic_is_valid(vds)) {
-                Py_XDECREF(result);
-                Py_XDECREF(holder);
                 PyErr_SetString(PyExc_RuntimeError, "Failed to get document VDS");
-                return NULL;
+                goto file_err;
             }
 
             PyObject *doc = FyGeneric_from_vds_with_parent(vds, holder, mutable);
-            if (doc == NULL) {
-                Py_XDECREF(result);
-                Py_XDECREF(holder);
-                return NULL;
-            }
+            if (doc == NULL)
+                goto file_err;
 
             PyList_SetItem(result, i, doc);
         }
 
+        /* Auto-trim if requested (default behavior) */
+        if (trim)
+            fy_gb_trim(FYG_GB(holder));
+
         /* Release our reference to holder - docs keep it alive */
         Py_XDECREF(holder);
 
-        /* Auto-trim if requested (default behavior) */
-        if (trim && gb) {
-            fy_gb_trim(gb);
-        }
-
         return result;
+
+    file_err:
+        Py_XDECREF(result);
+        Py_XDECREF(holder);
+        Py_XDECREF(holder_doc_state);
+        if (gb)
+            fy_generic_builder_destroy(gb);
+        return NULL;
     } else {
         /* Assume it's a file object - read and call loads_all() */
-        PyObject *read_method = PyObject_GetAttrString(file_obj, "read");
-        if (read_method == NULL)
-            return NULL;
+        PyObject *content = NULL;
+        PyObject *loads_all_kwargs = NULL;
+        PyObject *tmp = NULL;
+        PyObject *loads_all_args = NULL;
+        PyObject *result = NULL;
 
-        PyObject *content = PyObject_CallObject(read_method, NULL);
-        Py_XDECREF(read_method);
-
+        content = PyObject_CallMethod(file_obj, "read", NULL);
         if (content == NULL)
-            return NULL;
+            goto fobj_err;
 
-        /* Call loads_all with the content */
-        PyObject *loads_all_kwargs = PyDict_New();
-        if (loads_all_kwargs == NULL) {
-            Py_XDECREF(content);
-            return NULL;
-        }
+        loads_all_kwargs = PyDict_New();
+        if (loads_all_kwargs == NULL)
+            goto fobj_err;
 
-        PyObject *mode_str = PyUnicode_FromString(mode);
-        if (mode_str == NULL) {
-            Py_XDECREF(loads_all_kwargs);
-            Py_XDECREF(content);
-            return NULL;
-        }
-        PyObject *dedup_bool = PyBool_FromLong(dedup);
-        PyObject *trim_bool = PyBool_FromLong(trim);
-        PyObject *mutable_bool = PyBool_FromLong(mutable);
-        PyObject *markers_bool = PyBool_FromLong(create_markers);
-        PyObject *comments_bool = PyBool_FromLong(keep_comments);
-        PyObject *style_bool = PyBool_FromLong(keep_style);
+        tmp = PyUnicode_FromString(mode);
+        if (tmp == NULL)
+            goto fobj_err;
+        PyDict_SetItemString(loads_all_kwargs, "mode", tmp);
+        Py_CLEAR(tmp);
 
-        PyDict_SetItemString(loads_all_kwargs, "mode", mode_str);
-        PyDict_SetItemString(loads_all_kwargs, "dedup", dedup_bool);
-        PyDict_SetItemString(loads_all_kwargs, "trim", trim_bool);
-        PyDict_SetItemString(loads_all_kwargs, "mutable", mutable_bool);
-        PyDict_SetItemString(loads_all_kwargs, "create_markers", markers_bool);
-        PyDict_SetItemString(loads_all_kwargs, "keep_comments", comments_bool);
-        PyDict_SetItemString(loads_all_kwargs, "keep_style", style_bool);
+        tmp = PyBool_FromLong(dedup);
+        PyDict_SetItemString(loads_all_kwargs, "dedup", tmp);
+        Py_CLEAR(tmp);
 
-        Py_XDECREF(mode_str);
-        Py_XDECREF(dedup_bool);
-        Py_XDECREF(trim_bool);
-        Py_XDECREF(mutable_bool);
-        Py_XDECREF(markers_bool);
-        Py_XDECREF(comments_bool);
-        Py_XDECREF(style_bool);
+        tmp = PyBool_FromLong(trim);
+        PyDict_SetItemString(loads_all_kwargs, "trim", tmp);
+        Py_CLEAR(tmp);
 
-        PyObject *loads_all_args = PyTuple_Pack(1, content);
-        PyObject *result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
+        tmp = PyBool_FromLong(mutable);
+        PyDict_SetItemString(loads_all_kwargs, "mutable", tmp);
+        Py_CLEAR(tmp);
 
+        tmp = PyBool_FromLong(create_markers);
+        PyDict_SetItemString(loads_all_kwargs, "create_markers", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(keep_comments);
+        PyDict_SetItemString(loads_all_kwargs, "keep_comments", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(keep_style);
+        PyDict_SetItemString(loads_all_kwargs, "keep_style", tmp);
+        Py_CLEAR(tmp);
+
+        loads_all_args = PyTuple_Pack(1, content);
+        if (loads_all_args == NULL)
+            goto fobj_err;
+
+        result = libfyaml_loads_all(self, loads_all_args, loads_all_kwargs);
+        /* fallthrough: cleanup and return result (may be NULL) */
+
+    fobj_err:
+        Py_XDECREF(tmp);
         Py_XDECREF(loads_all_args);
         Py_XDECREF(loads_all_kwargs);
         Py_XDECREF(content);
@@ -4703,9 +4697,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         /* FyGeneric sequence - internalize it */
         FyGenericObject *fyobj = (FyGenericObject *)documents;
         if (!fy_generic_is_sequence(fyobj->fyg)) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_TypeError, "documents must be a sequence");
-            return NULL;
+            goto err_out;
         }
         doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
     } else if (PyList_Check(documents)) {
@@ -4718,24 +4711,21 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
             PyObject *item = PyList_GetItem(documents, i);
             FyGenericObject *fyitem;
             if (Py_TYPE(item) != (PyTypeObject *)FyGenericType) {
-                fy_generic_builder_destroy(gb);
                 PyErr_SetString(PyExc_TypeError, "all documents must be FyGeneric objects");
-                return NULL;
+                goto err_out;
             }
             fyitem = (FyGenericObject *)item;
             items[i] = fy_gb_internalize(gb, fyitem->fyg);
         }
         doc_sequence = fy_gb_sequence_create(gb, count, items);
     } else {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_TypeError, "documents must be a list or FyGeneric sequence");
-        return NULL;
+        goto err_out;
     }
 
     if (!fy_generic_is_valid(doc_sequence)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create document sequence");
-        return NULL;
+        goto err_out;
     }
 
     /* Determine emit flags based on options - add MULTI_DOCUMENT flag */
@@ -4762,9 +4752,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
             } else if (strcmp(style, "oneline") == 0) {
                 emit_flags |= FYOPEF_STYLE_ONELINE;
             } else {
-                fy_generic_builder_destroy(gb);
                 PyErr_Format(PyExc_ValueError, "Unknown style: '%s'. Expected: default, original, block, flow, pretty, compact, or oneline", style);
-                return NULL;
+                goto err_out;
             }
         } else if (compact) {
             emit_flags |= FYOPEF_STYLE_FLOW;
@@ -4777,22 +4766,24 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     emitted = fy_gb_emit(gb, doc_sequence, emit_flags, NULL);
 
     if (!fy_generic_is_valid(emitted) || !fy_generic_is_string(emitted)) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to emit YAML/JSON documents");
-        return NULL;
+        goto err_out;
     }
 
     /* Extract the sized string from the generic */
     szstr = fy_cast(emitted, fy_szstr_empty);
     if (szstr.data == NULL) {
-        fy_generic_builder_destroy(gb);
         PyErr_SetString(PyExc_RuntimeError, "Failed to extract string from emitted generic");
-        return NULL;
+        goto err_out;
     }
 
     result = PyUnicode_FromStringAndSize(szstr.data, szstr.size);
     fy_generic_builder_destroy(gb);
     return result;
+
+err_out:
+    fy_generic_builder_destroy(gb);
+    return NULL;
 }
 
 /* dump_all(file, documents, compact=False, json=False) - Dump FyGeneric sequence to file */
@@ -4825,12 +4816,14 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     /* Check if it's a string (file path) or file object */
     if (PyUnicode_Check(file_obj)) {
         /* It's a file path - use fy_gb_emit_file() for direct file output */
-        const char *path = PyUnicode_AsUTF8AndSize(file_obj, NULL);
+        const char *path;
         struct fy_generic_builder *gb = NULL;
         fy_generic doc_sequence;
         unsigned int emit_flags;
         fy_generic result_g;
         int result_code;
+
+        path = PyUnicode_AsUTF8AndSize(file_obj, NULL);
         if (path == NULL)
             return NULL;
 
@@ -4844,9 +4837,8 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
         /* Internalize the sequence into our builder */
         doc_sequence = fy_gb_internalize(gb, fyobj->fyg);
         if (!fy_generic_is_valid(doc_sequence)) {
-            fy_generic_builder_destroy(gb);
             PyErr_SetString(PyExc_RuntimeError, "Failed to internalize document sequence");
-            return NULL;
+            goto file_err;
         }
 
         /* Build emit flags */
@@ -4857,63 +4849,66 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
         /* Check for success: should return integer 0 */
         if (!fy_generic_is_valid(result_g)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (invalid result)", path);
-            return NULL;
+            goto file_err;
         }
-
         if (!fy_generic_is_int_type(result_g)) {
-            fy_generic_builder_destroy(gb);
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (wrong type: %d)",
                         path, fy_get_type(result_g));
-            return NULL;
+            goto file_err;
         }
 
         result_code = fy_cast(result_g, -1);
-        fy_generic_builder_destroy(gb);
-
         if (result_code != 0) {
             PyErr_Format(PyExc_RuntimeError, "Failed to emit YAML/JSON to file: %s (error code: %d)", path, result_code);
-            return NULL;
+            goto file_err;
         }
 
+        fy_generic_builder_destroy(gb);
         Py_RETURN_NONE;
+
+    file_err:
+        fy_generic_builder_destroy(gb);
+        return NULL;
     } else {
         /* Assume it's a file object - use dumps_all() and write */
-        PyObject *dumps_all_kwargs = PyDict_New();
-        PyObject *compact_bool;
-        PyObject *json_bool;
-        PyObject *dumps_all_args;
-        PyObject *yaml_str;
+        PyObject *dumps_all_kwargs = NULL;
+        PyObject *tmp = NULL;
+        PyObject *dumps_all_args = NULL;
+        PyObject *yaml_str = NULL;
+        PyObject *ret = NULL;
+
+        dumps_all_kwargs = PyDict_New();
         if (dumps_all_kwargs == NULL)
-            return NULL;
+            goto fobj_err;
 
-        compact_bool = PyBool_FromLong(compact);
-        json_bool = PyBool_FromLong(json_mode);
+        tmp = PyBool_FromLong(compact);
+        PyDict_SetItemString(dumps_all_kwargs, "compact", tmp);
+        Py_CLEAR(tmp);
 
-        PyDict_SetItemString(dumps_all_kwargs, "compact", compact_bool);
-        PyDict_SetItemString(dumps_all_kwargs, "json", json_bool);
-
-        Py_XDECREF(compact_bool);
-        Py_XDECREF(json_bool);
+        tmp = PyBool_FromLong(json_mode);
+        PyDict_SetItemString(dumps_all_kwargs, "json", tmp);
+        Py_CLEAR(tmp);
 
         dumps_all_args = PyTuple_Pack(1, documents);
-        yaml_str = libfyaml_dumps_all(self, dumps_all_args, dumps_all_kwargs);
+        if (dumps_all_args == NULL)
+            goto fobj_err;
 
+        yaml_str = libfyaml_dumps_all(self, dumps_all_args, dumps_all_kwargs);
+        if (yaml_str == NULL)
+            goto fobj_err;
+
+        if (write_to_file_object(file_obj, yaml_str) < 0)
+            goto fobj_err;
+
+        ret = Py_NewRef(Py_None);
+
+    fobj_err:
+        Py_XDECREF(tmp);
         Py_XDECREF(dumps_all_args);
         Py_XDECREF(dumps_all_kwargs);
-
-        if (yaml_str == NULL)
-            return NULL;
-
-        /* Write to file object */
-        if (write_to_file_object(file_obj, yaml_str) < 0) {
-            Py_XDECREF(yaml_str);
-            return NULL;
-        }
-
         Py_XDECREF(yaml_str);
-        Py_RETURN_NONE;
+        return ret;
     }
 }
 
@@ -5844,50 +5839,48 @@ static struct PyModuleDef libfyaml_module = {
 PyMODINIT_FUNC
 PyInit__libfyaml(void)
 {
-    PyObject *m;
+    PyObject *m = NULL;
 
     /* Build heap types via PyType_FromSpec (limited-API friendly). The
      * resulting PyObject* references are owned by these globals; the module
      * holds an additional reference for each exposed type. */
     FyGenericType = PyType_FromSpec(&FyGeneric_spec);
     if (FyGenericType == NULL)
-        return NULL;
+        goto err_out;
 
     FyGenericIteratorType = PyType_FromSpec(&FyGenericIterator_spec);
-    if (FyGenericIteratorType == NULL) {
-        Py_DECREF(FyGenericType);
-        FyGenericType = NULL;
-        return NULL;
-    }
+    if (FyGenericIteratorType == NULL)
+        goto err_out;
 
     FyDocumentStateType = PyType_FromSpec(&FyDocumentState_spec);
-    if (FyDocumentStateType == NULL) {
-        Py_DECREF(FyGenericIteratorType);
-        FyGenericIteratorType = NULL;
-        Py_DECREF(FyGenericType);
-        FyGenericType = NULL;
-        return NULL;
-    }
+    if (FyDocumentStateType == NULL)
+        goto err_out;
 
     /* Create module */
     m = PyModule_Create(&libfyaml_module);
     if (m == NULL)
-        return NULL;
+        goto err_out;
 
-    /* Add types to module (PyModule_AddObject steals on success). */
+    /* Add types to module (PyModule_AddObject steals on success;
+     * on failure we own the incref and must release it). */
     Py_INCREF(FyGenericType);
     if (PyModule_AddObject(m, "FyGeneric", FyGenericType) < 0) {
         Py_DECREF(FyGenericType);
-        Py_DECREF(m);
-        return NULL;
+        goto err_out;
     }
 
     Py_INCREF(FyDocumentStateType);
     if (PyModule_AddObject(m, "FyDocumentState", FyDocumentStateType) < 0) {
         Py_DECREF(FyDocumentStateType);
-        Py_DECREF(m);
-        return NULL;
+        goto err_out;
     }
 
     return m;
+
+err_out:
+    Py_CLEAR(FyDocumentStateType);
+    Py_CLEAR(FyGenericIteratorType);
+    Py_CLEAR(FyGenericType);
+    Py_XDECREF(m);
+    return NULL;
 }
