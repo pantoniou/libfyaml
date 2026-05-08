@@ -374,7 +374,7 @@ FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure FY_UNUSED)
             if (handle == NULL)
                 goto err_out;
         } else {
-            handle = Py_None;
+            handle = Py_NewRef(Py_None);
         }
 
         if (tag->prefix) {
@@ -382,7 +382,7 @@ FyDocumentState_get_tags(FyDocumentStateObject *self, void *closure FY_UNUSED)
             if (prefix == NULL)
                 goto err_out;
         } else {
-            prefix = Py_None;
+            prefix = Py_NewRef(Py_None);
         }
 
         PyDict_SetItemString(tag_dict, "handle", handle);
