@@ -40,6 +40,7 @@ struct fy_generic_document_builder {
 	unsigned int max_depth;
 	fy_generic document;
 	bool resolve;
+	bool keep_anchors;
 	bool single_mode;
 	bool in_stream;
 	bool doc_done;
@@ -936,6 +937,7 @@ fy_generic_document_builder_create(const struct fy_generic_document_builder_cfg 
 	fygdb->stack_alloc = fy_depth_limit();
 	fygdb->max_depth = (cfg->parse_cfg.flags & FYPCF_DISABLE_DEPTH_LIMIT) ? 0 : fy_depth_limit();
 	fygdb->resolve = !!(cfg->parse_cfg.flags & FYPCF_RESOLVE_DOCUMENT);
+	fygdb->keep_anchors = !!(cfg->parse_cfg.flags & FYPCF_KEEP_ANCHORS);
 	fygdb->document = fy_invalid;
 	fygdb->original_schema = fy_gb_get_schema(cfg->gb);
 	fygdb->curr_parser_mode = fygdb_parser_mode_from_cfg(&cfg->parse_cfg);
@@ -1336,7 +1338,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		}
 
 		v = fygdb_create_scalar(fygdb, fye,
-					fygdb->resolve ? fy_invalid : va,
+					(fygdb->resolve && !fygdb->keep_anchors) ? fy_invalid : va,
 					vt, vcomment, vstyle,
 					vfailsafe_str, vmarker, &is_empty_plain_scalar);
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
@@ -1360,7 +1362,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		fygdb_error_check(fygdb, gdo, err_out, "fy_generic_decoder_object_alloc() failed");
 
 		gdo->type = fye->type == FYET_SEQUENCE_START ? FYGDOT_SEQUENCE : FYGDOT_MAPPING;
-		gdo->anchor = fygdb->resolve ? fy_invalid : va;
+		gdo->anchor = (fygdb->resolve && !fygdb->keep_anchors) ? fy_invalid : va;
 		gdo->tag = vt;
 		gdo->comment = vcomment;
 		gdo->style = vstyle;
