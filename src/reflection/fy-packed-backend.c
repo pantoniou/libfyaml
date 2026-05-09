@@ -517,7 +517,7 @@ static int packed_decl_setup(struct fy_decl *decl, void *user)
 	struct fy_type *ftt;
 	const char *comment, *field_name;
 	char field_name_buf[64];
-	int i, signess, len;
+	int signess, len;
 
 	/* fake declaration */
 	if (!user)
@@ -554,7 +554,7 @@ static int packed_decl_setup(struct fy_decl *decl, void *user)
 
 		memset(declfu, 0, sizeof(*declfu));
 		declpe = ti->decls + ti->decls_count;
-		for (declpf = declp + 1, i = 0; declpf < declpe; declpf++, i++) {
+		for (declpf = declp + 1; declpf < declpe; declpf++) {
 
 			if (decl->decl_type == FYDT_ENUM) {
 				if (declpf->decl_type != FYDT_ENUM_VALUE)
