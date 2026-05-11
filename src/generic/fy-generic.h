@@ -40,6 +40,7 @@ struct fy_generic_builder {
 	void *linear;	/* when making it linear */
 	FY_ATOMIC(uint64_t) allocation_failures;
 	void *userdata;
+	fy_generic_builder_cleanup_fn cleanup;
 };
 
 enum fy_generic_iterator_state {

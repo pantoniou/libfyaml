@@ -7168,6 +7168,38 @@ void *
 fy_generic_builder_get_userdata(struct fy_generic_builder *gb)
 	FY_EXPORT;
 
+/**
+ * typedef fy_generic_builder_cleanup_fn - Callback for when builder is destroyed
+ */
+typedef void (*fy_generic_builder_cleanup_fn)(struct fy_generic_builder *gb);
+
+/**
+ * fy_generic_builder_set_cleanup() - Set a builder destructor callback
+ *
+ * @gb:       Builder
+ * @cleanup:  Pointer to the function that will be called on cleanup
+ *
+ * Set the cleanup callback - pass NULL to erase it.
+ *
+ * Returns:
+ * The previous cleanup callback or NULL
+ */
+fy_generic_builder_cleanup_fn
+fy_generic_builder_set_cleanup(struct fy_generic_builder *gb, fy_generic_builder_cleanup_fn cleanup)
+	FY_EXPORT;
+
+/**
+ * fy_generic_builder_get_cleanup() - Retrieve cleanup function attached to a builder.
+ *
+ * @gb: Builder
+ *
+ * Returns:
+ * The cleanup function, or NULL if not set.
+ */
+fy_generic_builder_cleanup_fn
+fy_generic_builder_get_cleanup(struct fy_generic_builder *gb)
+	FY_EXPORT;
+
 /* FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE - Minimum buffer size for an in-place builder */
 #define FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE	(FY_LINEAR_ALLOCATOR_IN_PLACE_MIN_SIZE + 128)
 

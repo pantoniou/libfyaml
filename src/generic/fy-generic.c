@@ -303,6 +303,9 @@ void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
 	if (!gb)
 		return;
 
+	if (gb->cleanup)
+		gb->cleanup(gb);
+
 	if (gb->linear)
 		free(gb->linear);
 
@@ -493,6 +496,13 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 	if (!gb)
 		return;
 
+	if (gb->cleanup) {
+		gb->cleanup(gb);
+		gb->cleanup = NULL;
+	}
+
+	gb->userdata = NULL;
+
 	if (gb->linear) {
 		free(gb->linear);
 		gb->linear = NULL;
@@ -572,11 +582,34 @@ void *fy_generic_builder_set_userdata(struct fy_generic_builder *gb, void *userd
 	return old_userdata;
 }
 
+fy_generic_builder_cleanup_fn
+fy_generic_builder_set_cleanup(struct fy_generic_builder *gb, fy_generic_builder_cleanup_fn cleanup)
+{
+	fy_generic_builder_cleanup_fn old_cleanup;
+
+	if (!gb)
+		return NULL;
+
+	old_cleanup = gb->cleanup;
+	gb->cleanup = cleanup;
+
+	return old_cleanup;
+}
+
 void *fy_generic_builder_get_userdata(struct fy_generic_builder *gb)
 {
 	if (!gb)
 		return NULL;
 	return gb->userdata;
+}
+
+fy_generic_builder_cleanup_fn
+fy_generic_builder_get_cleanup(struct fy_generic_builder *gb)
+{
+	if (!gb)
+		return NULL;
+
+	return gb->cleanup;
 }
 
 void fy_gb_free(struct fy_generic_builder *gb, void *ptr)
