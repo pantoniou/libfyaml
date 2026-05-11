@@ -1391,9 +1391,9 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 
 		gdo->marker_end = vmarker;
 		v = fygdb_object_finalize_and_destroy(fygdb, gdo);
+		gdo = NULL;
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
 				  "fy_generic_document_builder finalize failed");
-		gdo = NULL;
 		is_empty_plain_scalar = false;
 		if (fygdb->resolve)
 			fygdb_anchor_collection_ends(fygdb, v);
