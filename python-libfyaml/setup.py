@@ -257,6 +257,7 @@ class CustomBuildExt(build_ext):
             "-B",
             str(build_dir),
             "-DBUILD_SHARED_LIBS=OFF",
+            "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
             "-DBUILD_TESTING=OFF",
             "-DENABLE_NETWORK=OFF",
             "-DENABLE_PYTHON_BINDINGS=OFF",

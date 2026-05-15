@@ -1177,6 +1177,12 @@ if(TARGET_HAS_NEON)
     list(APPEND BLAKE3_TARGETS b3neon)
 endif()
 
+foreach(blake3_target ${BLAKE3_TARGETS})
+    set_property(TARGET ${blake3_target} PROPERTY
+        POSITION_INDEPENDENT_CODE "${CMAKE_POSITION_INDEPENDENT_CODE}"
+    )
+endforeach()
+
 # Main library
 add_library(fyaml
     ${LIBHDRS}
