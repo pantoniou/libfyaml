@@ -34,6 +34,182 @@
 // when to switch to malloc instead of alloca
 #define COPY_MALLOC_CUTOFF	256
 
+static int fy_arena_reloc_src_compare(const void *va, const void *vb)
+{
+	const struct fy_arena_reloc *a = va, *b = vb;
+
+	return a->src.i < b->src.i ? -1 :
+	       a->src.i > b->src.i ?  1 : 0;
+}
+
+static const struct fy_arena_reloc *
+fy_arena_locate_by_src(const struct fy_arena_reloc *arenas, unsigned int count, const void *ptr)
+{
+	uintptr_t p = (uintptr_t)ptr;
+	unsigned int mid;
+
+	while (count > 0) {
+		mid = count / 2;
+		if (p >= arenas[mid].src.i) {
+			if (p < arenas[mid].srce.i)
+				return &arenas[mid];
+			arenas += mid + 1;
+			count -= mid + 1;
+		} else
+			count = mid;
+	}
+
+	return NULL;
+}
+
+static fy_generic
+fy_generic_arena_relocate_ptr_internal(const struct fy_arena_reloc *arenas,
+				       unsigned int num_arenas, fy_generic v,
+				       unsigned int mask)
+{
+	const void *p;
+	const struct fy_arena_reloc *arena;
+	uintptr_t tag, off;
+
+	p = mask == FY_COLLECTION_MASK ?
+		fy_generic_resolve_collection_ptr(v) : fy_generic_resolve_ptr(v);
+	arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+	if (!arena)
+		return fy_invalid;
+
+	tag = v.v & mask;
+	off = (uintptr_t)p - arena->src.i;
+	v.v = (fy_generic_value)(arena->dst.i + off) | tag;
+	return v;
+}
+
+fy_generic
+fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_arenas,
+			  void *start, size_t size, fy_generic v)
+{
+	void *end = start + size;
+	const void *p;
+	const struct fy_arena_reloc *arena;
+	fy_generic_indirect *gi;
+	fy_generic_value flags, *gvp;
+	enum fy_generic_type type;
+	fy_generic *items;
+	size_t i, count;
+
+	if (!arenas || !num_arenas)
+		return fy_invalid;
+
+	if (fy_generic_is_indirect(v)) {
+		p = fy_generic_resolve_ptr(v);
+		arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+		if (!arena && p >= start && p < end)
+			return v;
+		if (!arena)
+			return fy_invalid;
+
+		v = fy_generic_arena_relocate_ptr_internal(arenas, num_arenas, v,
+							   FY_INPLACE_TYPE_MASK);
+		if (fy_generic_is_invalid(v))
+			return fy_invalid;
+		gi = (fy_generic_indirect *)fy_generic_resolve_ptr(v);
+		gvp = (fy_generic_value *)gi;
+		flags = *gvp++;
+		if (flags & FYGIF_VALUE) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_ANCHOR) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_TAG) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_DIAG) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_MARKER) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_COMMENT) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_STYLE) {
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+			gvp++;
+		}
+		if (flags & FYGIF_FAILSAFE_STR)
+			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+		return v;
+	}
+
+	type = fy_generic_get_type(v);
+	switch (type) {
+	case FYGT_NULL:
+	case FYGT_BOOL:
+	case FYGT_INVALID:
+		return v;
+	case FYGT_INT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+		if (!arena && p >= start && p < end)
+			return v;
+		if (!arena)
+			return fy_invalid;
+		return fy_generic_arena_relocate_ptr_internal(arenas, num_arenas, v,
+							      FY_INPLACE_TYPE_MASK);
+	case FYGT_FLOAT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+		if (!arena && p >= start && p < end)
+			return v;
+		if (!arena)
+			return fy_invalid;
+		return fy_generic_arena_relocate_ptr_internal(arenas, num_arenas, v,
+							      FY_INPLACE_TYPE_MASK);
+	case FYGT_STRING:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+		if (!arena && p >= start && p < end)
+			return v;
+		if (!arena)
+			return fy_invalid;
+		return fy_generic_arena_relocate_ptr_internal(arenas, num_arenas, v,
+							      FY_INPLACE_TYPE_MASK);
+	case FYGT_SEQUENCE:
+	case FYGT_MAPPING:
+		p = fy_generic_resolve_collection_ptr(v);
+		if (!p)
+			return v;
+		arena = fy_arena_locate_by_src(arenas, num_arenas, p);
+		if (!arena && p >= start && p < end)
+			return v;
+		if (!arena)
+			return fy_invalid;
+		v = fy_generic_arena_relocate_ptr_internal(arenas, num_arenas, v,
+							   FY_COLLECTION_MASK);
+		if (fy_generic_is_invalid(v))
+			return fy_invalid;
+		items = (void *)fy_generic_collectionp_get_items(type,
+				fy_generic_resolve_collection_ptr(v), &count);
+		for (i = 0; i < count; i++)
+			items[i] = fy_generic_arena_relocate(arenas, num_arenas, start, size, items[i]);
+		return v;
+	default:
+		return fy_invalid;
+	}
+}
+
 enum fy_generic_type fy_generic_get_type_indirect(fy_generic v)
 {
 	const fy_generic_value *p;
@@ -2139,6 +2315,90 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 	}
 
 	return v;
+}
+
+const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_generic *vp, size_t *sizep)
+{
+	struct fy_allocator_info *info = NULL;
+	struct fy_allocator_tag_info *tag_info;
+	struct fy_allocator_arena_info *arena_info;
+	struct fy_arena_reloc *arenas = NULL, *arena;
+	const void *linear_data = NULL;
+	fy_generic v, linear_v = fy_invalid;
+	size_t size = 0, linear_size = 0, offset;
+	unsigned int i, j, num_arenas;
+
+	if (!gb || !vp || !sizep)
+		return NULL;
+
+	v = *vp;
+	*vp = fy_invalid;
+	*sizep = 0;
+
+	info = fy_allocator_get_info(gb->allocator, gb->alloc_tag);
+	if (!info)
+		return NULL;
+
+	if (info->num_tag_infos == 1 && info->tag_infos[0].num_arena_infos == 1) {
+		arena_info = &info->tag_infos[0].arena_infos[0];
+		linear_v = v;
+		linear_data = arena_info->data;
+		linear_size = arena_info->size;
+		goto out;
+	}
+
+	num_arenas = 0;
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+		num_arenas += tag_info->num_arena_infos;
+		for (j = 0; j < tag_info->num_arena_infos; j++) {
+			arena_info = &tag_info->arena_infos[j];
+			size = fy_size_t_align(size, FY_GENERIC_CONTAINER_ALIGN);
+			size += arena_info->size;
+		}
+	}
+
+	if (!num_arenas || !size)
+		goto out;
+
+	arenas = alloca(sizeof(*arenas) * num_arenas);
+
+	free(gb->linear);
+	gb->linear = malloc(size);
+	if (!gb->linear)
+		goto out;
+
+	arena = arenas;
+	offset = 0;
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+		for (j = 0; j < tag_info->num_arena_infos; j++) {
+			arena_info = &tag_info->arena_infos[j];
+			offset = fy_size_t_align(offset, FY_GENERIC_CONTAINER_ALIGN);
+			arena->src.p = arena_info->data;
+			arena->size = arena_info->size;
+			arena->srce.p = arena->src.p + arena->size;
+			arena->dst.p = gb->linear + offset;
+			memcpy(arena->dst.p, arena->src.p, arena->size);
+			offset += arena->size;
+			arena++;
+		}
+	}
+
+	qsort(arenas, num_arenas, sizeof(*arenas), fy_arena_reloc_src_compare);
+
+	linear_v = fy_generic_arena_relocate(arenas, num_arenas, gb->linear, size, v);
+	if (fy_generic_is_invalid(linear_v))
+		goto out;
+
+	linear_data = gb->linear;
+	linear_size = size;
+
+out:
+	free(info);
+	*vp = linear_v;
+	*sizep = linear_size;
+	return linear_data;
 }
 
 static const char *generic_schema_txt[FYGS_COUNT] = {

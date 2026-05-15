@@ -31,6 +31,18 @@
 
 struct fy_generic_iterator;
 
+union fy_arena_reloc_ptr {
+	void *p;
+	uintptr_t i;
+};
+
+struct fy_arena_reloc {
+	union fy_arena_reloc_ptr src;
+	union fy_arena_reloc_ptr srce;
+	union fy_arena_reloc_ptr dst;
+	size_t size;
+};
+
 struct fy_generic_builder {
 	struct fy_generic_builder_cfg cfg;
 	enum fy_generic_schema schema;
@@ -103,6 +115,11 @@ struct fy_generic_iterator *fy_generic_iterator_create(void);
 void fy_generic_iterator_destroy(struct fy_generic_iterator *fygi);
 struct fy_event *
 fy_generic_iterator_generate_emit_next(struct fy_generic_iterator *fygi, struct fy_emitter *emit);
+
+const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_generic *vp, size_t *sizep);
+fy_generic fy_generic_arena_relocate(const struct fy_arena_reloc *arenas,
+				     unsigned int num_arenas, void *start,
+				     size_t size, fy_generic v);
 
 struct fy_generic_iterator_body_result {
 	fy_generic v;
