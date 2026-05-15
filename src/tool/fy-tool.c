@@ -35,6 +35,7 @@
 #endif
 
 #ifndef _WIN32
+#include <dirent.h>
 #include <unistd.h>
 #include <regex.h>
 #else
@@ -45,7 +46,6 @@
 
 #include "fy-valgrind.h"
 #include "fy-tool-util.h"
-
 #ifdef _WIN32
 #undef SORT_DEFAULT
 #endif
@@ -134,6 +134,13 @@
 #define OPT_PRESERVE_FLOW_LAYOUT	2026
 #define OPT_INDENTED_SEQ_IN_MAP		2027
 #define OPT_RELAXED_FLOW_DOC		2028
+#define OPT_ENABLE_CACHE		2029
+#define OPT_CACHE_LIST			2030
+#define OPT_CACHE_REMOVE		2031
+#define OPT_CACHE_STATS			2032
+#define OPT_CACHE_CLEAR			2033
+#define OPT_CACHE_DIR			2034
+#define OPT_CACHE_INFO			2035
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -235,6 +242,13 @@ static struct option lopts[] = {
 	{"yaml-1.3",		no_argument,		0,	OPT_YAML_1_3 },
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"relaxed-flow-doc",	no_argument,		0,	OPT_RELAXED_FLOW_DOC },
+	{"enable-cache",	no_argument,		0,	OPT_ENABLE_CACHE },
+	{"cache-list",		no_argument,		0,	OPT_CACHE_LIST },
+	{"cache-remove",	required_argument,	0,	OPT_CACHE_REMOVE },
+	{"cache-stats",		no_argument,		0,	OPT_CACHE_STATS },
+	{"cache-clear",		no_argument,		0,	OPT_CACHE_CLEAR },
+	{"cache-dir",		no_argument,		0,	OPT_CACHE_DIR },
+	{"cache-info",		required_argument,	0,	OPT_CACHE_INFO },
 	{"prefer-recursive",	no_argument,		0,	OPT_PREFER_RECURSIVE },
 	{"ypath-aliases",	no_argument,		0,	OPT_YPATH_ALIASES },
 	{"disable-flow-markers",no_argument,		0,	OPT_DISABLE_FLOW_MARKERS },
@@ -463,6 +477,13 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM_DEFAULT("--disable-buffering", "Disable buffering (use unix fd)", DISABLE_BUFFERING_DEFAULT ? "true" : "false");
 	USAGE_ITEM("--disable-mmap", "Disable mmap usage");
 	USAGE_ITEM_DEFAULT("--disable-depth-limit", "Disable depth limit", DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
+	USAGE_ITEM("--enable-cache", "Enable transparent regular-file parse cache");
+	USAGE_ITEM("--cache-list", "List parse cache entries");
+	USAGE_ITEM("--cache-info <path|source>", "Show detailed cache entry info in YAML");
+	USAGE_ITEM("--cache-remove <path|source>", "Remove cache entries by cache path or source filename");
+	USAGE_ITEM("--cache-clear", "Remove all cache entries");
+	USAGE_ITEM("--cache-dir", "Print the parse cache directory");
+	USAGE_ITEM("--cache-stats", "Show parse cache directory statistics");
 
 	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
 		USAGE_SECTION("Emitter options");
@@ -1309,6 +1330,249 @@ do_b3sum(int argc, char *argv[], int optind, const struct b3sum_config *cfg)
 
 #ifdef HAVE_GENERIC
 
+static int cache_list_cb(const char *path FY_UNUSED,
+			 const struct fy_parse_cache_file_info *info,
+			 void *userdata FY_UNUSED)
+{
+	struct stat sb;
+	uintmax_t file_size = 0;
+
+	if (path && !stat(path, &sb) && S_ISREG(sb.st_mode) && sb.st_size >= 0)
+		file_size = (uintmax_t)sb.st_size;
+	printf("%s\t%s\t%" PRIuMAX "\n",
+	       info->b3sum,
+	       info->source_file,
+	       file_size);
+	return 0;
+}
+
+struct cache_stats {
+	size_t files;
+	uintmax_t bytes;
+};
+
+static int cache_stats_cb(const char *path,
+			  const struct fy_parse_cache_file_info *info FY_UNUSED,
+			  void *userdata)
+{
+	struct cache_stats *stats = userdata;
+	struct stat sb;
+
+	if (!stats)
+		return -1;
+	if (!stat(path, &sb) && S_ISREG(sb.st_mode) && sb.st_size >= 0) {
+		stats->files++;
+		stats->bytes += (uintmax_t)sb.st_size;
+	}
+	return 0;
+}
+
+struct cache_remove_ctx {
+	const char *target;
+	size_t removed;
+};
+
+struct cache_info_ctx {
+	const char *target;
+	size_t count;
+};
+
+static char *yaml_single_quote_dup(const char *s)
+{
+	const char *p;
+	char *out, *q;
+	size_t extra = 0, len;
+
+	if (!s)
+		s = "";
+	for (p = s; *p; p++) {
+		if (*p == '\'')
+			extra++;
+	}
+	len = strlen(s);
+	out = malloc(len + extra + 3);
+	if (!out)
+		return NULL;
+	q = out;
+	*q++ = '\'';
+	for (p = s; *p; p++) {
+		*q++ = *p;
+		if (*p == '\'')
+			*q++ = '\'';
+	}
+	*q++ = '\'';
+	*q = '\0';
+	return out;
+}
+
+static int cache_remove_cb(const char *path,
+			   const struct fy_parse_cache_file_info *info,
+			   void *userdata)
+{
+	struct cache_remove_ctx *ctx = userdata;
+
+	if (!ctx)
+		return -1;
+	if (ctx->target &&
+	    strcmp(ctx->target, path) &&
+	    strcmp(ctx->target, info->b3sum) &&
+	    strcmp(ctx->target, info->source_file))
+		return 0;
+	if (unlink(path))
+		return -1;
+	ctx->removed++;
+	return 0;
+}
+
+static int cache_info_cb(const char *path,
+			 const struct fy_parse_cache_file_info *info,
+			 void *userdata)
+{
+	struct cache_info_ctx *ctx = userdata;
+	struct stat sb;
+	uintmax_t file_size = 0;
+	struct fy_document *fyd = NULL;
+	char *path_quoted = NULL, *source_file_quoted = NULL;
+	int rc = -1;
+
+	if (!ctx || !ctx->target)
+		return -1;
+
+	if (strcmp(ctx->target, path) &&
+	    strcmp(ctx->target, info->b3sum) &&
+	    strcmp(ctx->target, info->source_file))
+		return 0;
+
+	if (!stat(path, &sb) && S_ISREG(sb.st_mode) && sb.st_size >= 0)
+		file_size = (uintmax_t)sb.st_size;
+
+	path_quoted = yaml_single_quote_dup(info->path);
+	source_file_quoted = yaml_single_quote_dup(info->source_file);
+	if (!path_quoted || !source_file_quoted)
+		goto out;
+
+	fyd = fy_document_buildf(NULL,
+			"{ magic: %s, "
+			  "b3sum: %s, "
+			  "path: %s, "
+			  "source_file: %s, "
+			  "file_size: %" PRIuMAX ", "
+			  "version: %" PRIu32 ", "
+			  "endian: %s, "
+			  "ptr_size: %" PRIu32 ", "
+			  "header_size: %zu, "
+			  "arena_base: %s, "
+			  "arena_size: %zu, "
+			  "map_base: %s, "
+			  "map_size: %zu, "
+			  "arena_file_offset: %s, "
+			  "source_name_size: %s, "
+			  "parser_flags: %s, "
+			  "decoder_flags: %s, "
+			  "root: %s }",
+			info->magic,
+			info->b3sum,
+			path_quoted,
+			source_file_quoted,
+			file_size,
+			info->version,
+			fy_sprintfa("0x%08" PRIx32, info->endian),
+			info->ptr_size,
+			info->header_size,
+			fy_sprintfa("0x%016" PRIx64, info->arena_base),
+			info->arena_size,
+			fy_sprintfa("0x%016" PRIx64, info->map_base),
+			info->map_size,
+			fy_sprintfa("0x%016" PRIx64, info->arena_file_offset),
+			fy_sprintfa("%" PRIu64, info->source_name_size),
+			fy_sprintfa("0x%016" PRIx64, info->parser_flags),
+			fy_sprintfa("0x%016" PRIx64, info->decoder_flags),
+			fy_sprintfa("0x%016" PRIx64, info->root));
+	if (!fyd)
+		goto out;
+	if (fy_emit_document_to_fp(fyd, FYECF_MODE_BLOCK | FYECF_DOC_START_MARK_OFF, stdout))
+		goto out;
+	ctx->count++;
+	rc = 0;
+out:
+	free(path_quoted);
+	free(source_file_quoted);
+	fy_document_destroy(fyd);
+	return rc;
+}
+
+static int do_cache_list(void)
+{
+	puts("b3sum\tsource_file\tcache_size");
+	return fy_parse_cache_walk(cache_list_cb, NULL);
+}
+
+static int do_cache_dir(void)
+{
+	char buf[PATH_MAX];
+	const char *dir;
+
+	dir = fy_parse_cache_get_dir(buf, sizeof(buf));
+	if (!dir)
+		return -1;
+	printf("%s\n", dir);
+	return 0;
+}
+
+static int do_cache_stats(void)
+{
+	int rc = 0;
+	struct cache_stats stats = { 0 };
+
+	rc = fy_parse_cache_walk(cache_stats_cb, &stats);
+	if (!rc)
+		printf("files: %zu\nbytes: %" PRIuMAX "\n",
+		       stats.files, stats.bytes);
+	return rc;
+}
+
+static int do_cache_clear(void)
+{
+	int rc = 0;
+	struct cache_remove_ctx ctx = { .target = NULL, .removed = 0 };
+
+	rc = fy_parse_cache_walk(cache_remove_cb, &ctx);
+	if (!rc)
+		printf("removed: %zu\n", ctx.removed);
+	return rc;
+}
+
+static int do_cache_remove(const char *target)
+{
+	int rc = 0;
+	struct cache_remove_ctx ctx = { .target = target, .removed = 0 };
+
+	if (!target)
+		return -1;
+
+	rc = fy_parse_cache_walk(cache_remove_cb, &ctx);
+	if (!rc && !ctx.removed)
+		rc = -1;
+	if (!rc)
+		printf("removed: %zu\n", ctx.removed);
+	return rc;
+}
+
+static int do_cache_info(const char *target)
+{
+	int rc = 0;
+	struct cache_info_ctx ctx = { .target = target, .count = 0 };
+
+	if (!target)
+		return -1;
+
+	rc = fy_parse_cache_walk(cache_info_cb, &ctx);
+	if (!rc && !ctx.count)
+		rc = -1;
+
+	return rc;
+}
+
 static size_t estimate_max_file_size(int argc, char **argv)
 {
 	struct stat sb;
@@ -1474,6 +1738,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 
 		if (gcfg->relaxed_flow_doc)
 			parse_flags |= FYOPPF_RELAXED_FLOW_DOC;
+
+		if (gcfg->parse_cfg_flags & FYPCF_ENABLE_CACHE)
+			parse_flags |= FYOPPF_ENABLE_CACHE;
 
 		if (!strcmp(filename, "-"))
 			v = fy_parse(gb, fy_invalid,
@@ -1721,6 +1988,8 @@ int main(int argc, char *argv[])
 	bool create_markers = false;
 	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
+	bool cache_list = false, cache_stats = false, cache_clear = false, cache_dir = false;
+	const char *cache_remove = NULL, *cache_info = NULL;
 #endif
 #ifdef HAVE_REFLECTION
 	/* reflection */
@@ -2093,6 +2362,29 @@ int main(int argc, char *argv[])
 		case OPT_RELAXED_FLOW_DOC:
 			cfg.flags |= FYPCF_RELAXED_FLOW_DOC;
 			break;
+#ifdef HAVE_GENERIC
+		case OPT_ENABLE_CACHE:
+			cfg.flags |= FYPCF_ENABLE_CACHE;
+			break;
+		case OPT_CACHE_LIST:
+			cache_list = true;
+			break;
+		case OPT_CACHE_REMOVE:
+			cache_remove = optarg;
+			break;
+		case OPT_CACHE_STATS:
+			cache_stats = true;
+			break;
+		case OPT_CACHE_CLEAR:
+			cache_clear = true;
+			break;
+		case OPT_CACHE_DIR:
+			cache_dir = true;
+			break;
+		case OPT_CACHE_INFO:
+			cache_info = optarg;
+			break;
+#endif
 		case OPT_PREFER_RECURSIVE:
 			cfg.flags |= FYPCF_PREFER_RECURSIVE;
 			break;
@@ -2366,6 +2658,25 @@ int main(int argc, char *argv[])
 		}
 
 	}
+
+#ifdef HAVE_GENERIC
+	if (cache_list || cache_remove || cache_stats || cache_clear || cache_dir || cache_info) {
+		if (cache_list)
+			rc = do_cache_list();
+		else if (cache_info)
+			rc = do_cache_info(cache_info);
+		else if (cache_remove)
+			rc = do_cache_remove(cache_remove);
+		else if (cache_clear)
+			rc = do_cache_clear();
+		else if (cache_dir)
+			rc = do_cache_dir();
+		else
+			rc = do_cache_stats();
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
+	}
+#endif
 
 	switch (tool_mode) {
 
