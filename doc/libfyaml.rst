@@ -10,6 +10,7 @@ Subsystem Pages
 Guides
 ~~~~~~
 
+* :doc:`transparent-cache`
 * :doc:`generics-guide`
 * :doc:`reflection-guide`
 
