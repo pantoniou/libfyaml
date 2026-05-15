@@ -519,6 +519,16 @@ static inline int fy_win32_asprintf(char **strp, const char *fmt, ...)
 #define strdup _strdup
 #endif
 
+#ifndef link
+#define link _link
+#endif
+#ifndef unlink
+#define unlink _unlink
+#endif
+#ifndef rmdir
+#define rmdir _rmdir
+#endif
+
 /*
  * Sleep functions
  */
@@ -628,6 +638,124 @@ typedef union {
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+
+/* readdir emulation */
+
+#define DT_UNKNOWN 0
+#define DT_DIR     4
+#define DT_REG     8
+
+struct dirent {
+    char d_name[MAX_PATH];
+    unsigned char d_type;
+};
+
+typedef struct {
+    HANDLE handle;
+    WIN32_FIND_DATAW find_data;
+    struct dirent result;
+    int first_read;
+} DIR;
+
+static inline DIR *
+opendir(const char *name)
+{
+	DIR *dir;
+	char search_path[PATH_MAX];
+	wchar_t search_path_w[PATH_MAX];
+	int len;
+	int wlen;
+
+	if (!name)
+		return NULL;
+
+	/* Create the search path (e.g., "C:\folder\*"). */
+	len = snprintf(search_path, sizeof(search_path), "%s\\*", name);
+	if (len < 0 || (size_t)len >= sizeof(search_path) - 1)
+		return NULL;
+
+	wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+				   search_path, -1,
+				   search_path_w,
+				   (int)(sizeof(search_path_w) / sizeof(search_path_w[0])));
+	if (wlen <= 0)
+		return NULL;
+
+	dir = malloc(sizeof(*dir));
+	if (!dir)
+		return NULL;
+
+	/* Start the file search. */
+	dir->handle = FindFirstFileW(search_path_w, &dir->find_data);
+	if (dir->handle == INVALID_HANDLE_VALUE) {
+		free(dir);
+		return NULL;
+	}
+
+	dir->first_read = 1;
+	return dir;
+}
+
+static inline struct dirent *
+readdir(DIR *dirp)
+{
+	int len;
+
+	if (!dirp || dirp->handle == INVALID_HANDLE_VALUE)
+	    return NULL;
+
+	/* First iteration uses data from opendir's FindFirstFileW. */
+	/* Subsequent iterations call FindNextFileW. */
+	if (dirp->first_read)
+		dirp->first_read = 0;
+	else if (!FindNextFileW(dirp->handle, &dirp->find_data))
+		return NULL;
+
+	len = WideCharToMultiByte(CP_UTF8, 0,
+				  dirp->find_data.cFileName, -1,
+				  dirp->result.d_name,
+				  (int)sizeof(dirp->result.d_name),
+				  NULL, NULL);
+	if (len <= 0)
+		return NULL;
+	dirp->result.d_name[sizeof(dirp->result.d_name) - 1] = '\0';
+
+	/* Map Windows file attributes to POSIX d_type. */
+	if (dirp->find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		dirp->result.d_type = DT_DIR;
+	else
+		dirp->result.d_type = DT_REG;
+
+	return &dirp->result;
+}
+
+static inline int
+closedir(DIR *dirp)
+{
+	if (!dirp)
+		return -1;
+
+	if (dirp->handle != INVALID_HANDLE_VALUE)
+		FindClose(dirp->handle);
+
+	free(dirp);
+	return 0;
+}
+
+static inline int
+setenv(const char *name, const char *value, int overwrite)
+{
+	(void)overwrite;
+	_putenv_s(name, value);	/* always overwrite */
+	return 0;
+}
+
+static inline int
+unsetenv(const char *name)
+{
+	_putenv_s(name, "");
+	return 0;
+}
 
 #endif /* _WIN32 */
 
