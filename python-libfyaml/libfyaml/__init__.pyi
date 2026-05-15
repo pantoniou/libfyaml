@@ -213,6 +213,22 @@ class FyDocumentState:
     """
     ...
 
+def get_cache_dir() -> str:
+    """Return the active libfyaml parse cache directory."""
+    ...
+
+def set_cache_dir(path: Optional[str] = None) -> None:
+    """Override the active parse cache directory, or clear it when path is None."""
+    ...
+
+def get_cache_min_file_size() -> int:
+    """Return the active minimum file size, in bytes, required for parse caching."""
+    ...
+
+def set_cache_min_file_size(min_size: int) -> None:
+    """Override the active minimum file size, or pass -1 to restore the built-in default."""
+    ...
+
 
 # Core parsing functions
 @overload
@@ -224,6 +240,7 @@ def loads(
     trim: bool = True,
     mutable: bool = False,
     collect_diag: bool = False,
+    enable_cache: bool = False,
 ) -> FyGeneric: ...
 
 @overload
@@ -235,6 +252,7 @@ def loads(
     trim: bool = True,
     mutable: bool = False,
     collect_diag: bool = False,
+    enable_cache: bool = False,
 ) -> FyGeneric: ...
 
 def load(
@@ -244,6 +262,7 @@ def load(
     dedup: bool = True,
     trim: bool = True,
     mutable: bool = False,
+    enable_cache: bool = False,
 ) -> FyGeneric:
     """Parse YAML/JSON from a file.
 
@@ -253,6 +272,7 @@ def load(
         dedup: Enable string deduplication (default: True)
         trim: Auto-trim arena after parsing (default: True)
         mutable: Enable mutation support (default: False)
+        enable_cache: Enable transparent parse cache (default: False)
 
     Returns:
         FyGeneric object representing the parsed document
@@ -266,6 +286,7 @@ def loads_all(
     dedup: bool = True,
     trim: bool = True,
     mutable: bool = False,
+    enable_cache: bool = False,
 ) -> Iterator[FyGeneric]:
     """Parse multiple YAML documents from a string.
 
@@ -275,6 +296,7 @@ def loads_all(
         dedup: Enable string deduplication (default: True)
         trim: Auto-trim arena after parsing (default: True)
         mutable: Enable mutation support (default: False)
+        enable_cache: Enable transparent parse cache (default: False)
 
     Yields:
         FyGeneric objects, one per document
@@ -288,6 +310,7 @@ def load_all(
     dedup: bool = True,
     trim: bool = True,
     mutable: bool = False,
+    enable_cache: bool = False,
 ) -> Iterator[FyGeneric]:
     """Parse multiple YAML documents from a file.
 
@@ -297,6 +320,7 @@ def load_all(
         dedup: Enable string deduplication (default: True)
         trim: Auto-trim arena after parsing (default: True)
         mutable: Enable mutation support (default: False)
+        enable_cache: Enable transparent parse cache (default: False)
 
     Yields:
         FyGeneric objects, one per document

@@ -8,6 +8,8 @@ in native format with lazy conversion to Python objects.
 
 import sys
 import os
+import tempfile
+import subprocess
 
 # Add parent directory to path for imports
 
@@ -26,6 +28,67 @@ def test_load_file():
     print(f"Document type: {type(doc)}")
     print(f"Document repr: {repr(doc)}")
     print()
+
+
+def test_load_file_enable_cache():
+    """Test loading YAML from file with transparent cache enabled."""
+    fixture_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'config.yaml')
+    import_root = os.path.dirname(os.path.dirname(os.path.abspath(libfyaml.__file__)))
+    with tempfile.TemporaryDirectory(prefix="libfyaml-py-cache-") as cache_root:
+        env = os.environ.copy()
+        env["FY_PARSE_CACHE_OVERRIDE"] = cache_root
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (
+                import_root,
+                env.get("PYTHONPATH"),
+            ) if part
+        )
+
+        code = (
+            "import libfyaml; "
+            "libfyaml.set_cache_min_file_size(0); "
+            f"doc=libfyaml.load({fixture_path!r}, enable_cache=True); "
+            "assert str(doc['server']['host']) == 'localhost'"
+        )
+        subprocess.run([sys.executable, "-c", code], env=env, cwd=cache_root, check=True)
+
+        cache_dir = cache_root
+        found = False
+        for root, _, files in os.walk(cache_dir):
+            if any(name.endswith(".fygc") for name in files):
+                found = True
+                break
+        assert found
+
+
+def test_loads_enable_cache():
+    """Test loading YAML from string with transparent cache enabled."""
+    import_root = os.path.dirname(os.path.dirname(os.path.abspath(libfyaml.__file__)))
+    with tempfile.TemporaryDirectory(prefix="libfyaml-py-cache-loads-") as cache_root:
+        env = os.environ.copy()
+        env["FY_PARSE_CACHE_OVERRIDE"] = cache_root
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (
+                import_root,
+                env.get("PYTHONPATH"),
+            ) if part
+        )
+
+        code = (
+            "import libfyaml; "
+            "libfyaml.set_cache_min_file_size(0); "
+            "doc=libfyaml.loads('server:\\n  host: localhost\\n', enable_cache=True); "
+            "assert str(doc['server']['host']) == 'localhost'"
+        )
+        subprocess.run([sys.executable, "-c", code], env=env, cwd=cache_root, check=True)
+
+        cache_dir = cache_root
+        found = False
+        for root, _, files in os.walk(cache_dir):
+            if any(name.endswith(".fygc") for name in files):
+                found = True
+                break
+        assert found
 
 
 def test_lazy_access():

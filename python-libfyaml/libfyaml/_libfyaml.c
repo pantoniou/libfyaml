@@ -3544,7 +3544,7 @@ parse_mode_flags(const char *mode)
     }
 }
 
-/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False, create_markers=False, keep_comments=False, keep_style=False) - Parse YAML/JSON from string
+/* loads(string, mode='yaml', dedup=True, trim=True, mutable=False, create_markers=False, keep_comments=False, keep_style=False, enable_cache=False) - Parse YAML/JSON from string
  *
  * mode can be:
  *   - 'yaml' or 'yaml1.2' or '1.2': YAML 1.2 (default)
@@ -3565,7 +3565,8 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int keep_comments = 0;  /* Default to False */
     int keep_style = 0;  /* Default to False */
     int keep_anchors = 0;  /* Default to False */
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", NULL};
+    int enable_cache = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", "enable_cache", NULL};
     unsigned int mode_flags;
     struct fy_generic_builder *gb = NULL;
     unsigned int parse_flags;
@@ -3574,7 +3575,7 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     fy_generic vds;
     PyObject *result;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors, &enable_cache))
         return NULL;
 
     /* Parse mode string to flags */
@@ -3601,6 +3602,8 @@ libfyaml_loads(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_STYLE;
     if (keep_anchors)
         parse_flags |= FYOPPF_KEEP_ANCHORS;
+    if (enable_cache)
+        parse_flags |= FYOPPF_ENABLE_CACHE;
     vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
 
     /* When collect_diag is enabled, errors return an indirect with diag attached */
@@ -4042,7 +4045,7 @@ err_out:
     return NULL;
 }
 
-/* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, keep_style=False) - Load YAML/JSON from file object or path */
+/* load(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, keep_style=False, enable_cache=False) - Load YAML/JSON from file object or path */
 static PyObject *
 libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4055,9 +4058,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
     int create_markers = 0;  /* Default to False */
     int keep_comments = 0;  /* Default to False */
     int keep_style = 0;  /* Default to False */
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    int enable_cache = 0;  /* Default to False */
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "enable_cache", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppppppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppppp", kwlist, &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &enable_cache))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -4098,6 +4102,8 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_KEEP_COMMENTS;
         if (keep_style)
             parse_flags |= FYOPPF_KEEP_STYLE;
+        if (enable_cache)
+            parse_flags |= FYOPPF_ENABLE_CACHE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4182,6 +4188,10 @@ libfyaml_load(PyObject *self, PyObject *args, PyObject *kwargs)
 
         tmp = PyBool_FromLong(keep_style);
         PyDict_SetItemString(loads_kwargs, "keep_style", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(enable_cache);
+        PyDict_SetItemString(loads_kwargs, "enable_cache", tmp);
         Py_CLEAR(tmp);
 
         loads_args = Py_BuildValue("(O)", content);
@@ -4361,7 +4371,7 @@ FyGeneric_from_vds_with_parent(fy_generic vds, FyGenericObject *parent, int muta
     return (PyObject *)self;
 }
 
-/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document YAML */
+/* loads_all(string, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False, enable_cache=False) - Parse multi-document YAML */
 static PyObject *
 libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 {
@@ -4376,7 +4386,8 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int keep_comments = 0;
     int keep_style = 0;
     int keep_anchors = 0;
-    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", NULL};
+    int enable_cache = 0;
+    static char *kwlist[] = {"s", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "keep_anchors", "enable_cache", NULL};
     struct fy_generic_builder *gb;
     unsigned int mode_flags;
     unsigned int parse_flags;
@@ -4387,7 +4398,7 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     PyObject *result = NULL;
     int i;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|spppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|sppppppppp", kwlist, &yaml_str, &yaml_len, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &keep_anchors, &enable_cache))
         return NULL;
 
     /* Parse mode string to flags */
@@ -4414,6 +4425,8 @@ libfyaml_loads_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
         parse_flags |= FYOPPF_KEEP_STYLE;
     if (keep_anchors)
         parse_flags |= FYOPPF_KEEP_ANCHORS;
+    if (enable_cache)
+        parse_flags |= FYOPPF_ENABLE_CACHE;
 
     /* Parse - returns a directory (sequence of VDS) */
     vdir = fy_gb_parse(gb, yaml_str, parse_flags, NULL);
@@ -4480,7 +4493,7 @@ err_out:
     return NULL;
 }
 
-/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False) - Parse multi-document from file */
+/* load_all(file, mode='yaml', dedup=True, trim=True, mutable=False, collect_diag=False, create_markers=False, keep_comments=False, keep_style=False, enable_cache=False) - Parse multi-document from file */
 static PyObject *
 libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -4493,10 +4506,11 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
     int create_markers = 0;
     int keep_comments = 0;
     int keep_style = 0;
-    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", NULL};
+    int enable_cache = 0;
+    static char *kwlist[] = {"file", "mode", "dedup", "trim", "mutable", "collect_diag", "create_markers", "keep_comments", "keep_style", "enable_cache", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sppppppp", kwlist,
-                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|spppppppp", kwlist,
+                                     &file_obj, &mode, &dedup, &trim, &mutable, &collect_diag, &create_markers, &keep_comments, &keep_style, &enable_cache))
         return NULL;
 
     /* Check if it's a string (file path) or file object */
@@ -4539,6 +4553,8 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
             parse_flags |= FYOPPF_KEEP_COMMENTS;
         if (keep_style)
             parse_flags |= FYOPPF_KEEP_STYLE;
+        if (enable_cache)
+            parse_flags |= FYOPPF_ENABLE_CACHE;
 
         /* Parse from file - returns a directory (sequence of VDS) */
         vdir = fy_gb_parse_file(gb, parse_flags, path);
@@ -4647,6 +4663,10 @@ libfyaml_load_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
         tmp = PyBool_FromLong(keep_style);
         PyDict_SetItemString(loads_all_kwargs, "keep_style", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(enable_cache);
+        PyDict_SetItemString(loads_all_kwargs, "enable_cache", tmp);
         Py_CLEAR(tmp);
 
         loads_all_args = PyTuple_Pack(1, content);
@@ -5793,6 +5813,70 @@ emit_error:
     return NULL;
 }
 
+/* get_cache_dir() - Return the active libfyaml parse cache directory */
+static PyObject *
+libfyaml_get_cache_dir(PyObject *self FY_UNUSED, PyObject *args FY_UNUSED)
+{
+    char buf[4096];
+    const char *path;
+
+    path = fy_parse_cache_get_dir(buf, sizeof(buf));
+    if (!path) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to resolve parse cache directory");
+        return NULL;
+    }
+
+    return PyUnicode_FromString(path);
+}
+
+/* set_cache_dir(path=None) - Override or clear the active libfyaml parse cache directory */
+static PyObject *
+libfyaml_set_cache_dir(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
+{
+    const char *path = NULL;
+    static char *kwlist[] = {"path", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|z", kwlist, &path))
+        return NULL;
+
+    if (fy_parse_cache_override(path) != 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to override parse cache directory");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* get_cache_min_file_size() - Return the active parse-cache file-size cutoff */
+static PyObject *
+libfyaml_get_cache_min_file_size(PyObject *self FY_UNUSED, PyObject *args FY_UNUSED)
+{
+    return PyLong_FromSize_t(fy_parse_cache_get_min_file_size());
+}
+
+/* set_cache_min_file_size(min_size) - Override the active parse-cache file-size cutoff */
+static PyObject *
+libfyaml_set_cache_min_file_size(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
+{
+    Py_ssize_t py_min_size;
+    static char *kwlist[] = {"min_size", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "n", kwlist, &py_min_size))
+        return NULL;
+
+    if (py_min_size < -1) {
+        PyErr_SetString(PyExc_ValueError, "min_size must be >= -1");
+        return NULL;
+    }
+
+    if (fy_parse_cache_set_min_file_size((ssize_t)py_min_size) != 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to override parse cache minimum file size");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 /* Module method table */
 static PyMethodDef module_methods[] = {
     {"loads", _PyCFunction_CAST(libfyaml_loads), METH_VARARGS | METH_KEYWORDS,
@@ -5817,6 +5901,14 @@ static PyMethodDef module_methods[] = {
      "Convert path list (e.g., ['server', 'host']) to Unix-style path string (e.g., '/server/host')"},
     {"unix_path_to_path_list", _PyCFunction_CAST(libfyaml_unix_path_to_path_list), METH_O,
      "Convert Unix-style path string (e.g., '/server/host') to path list (e.g., ['server', 'host'])"},
+    {"get_cache_dir", _PyCFunction_CAST(libfyaml_get_cache_dir), METH_NOARGS,
+     "Return the active libfyaml parse cache directory"},
+    {"set_cache_dir", _PyCFunction_CAST(libfyaml_set_cache_dir), METH_VARARGS | METH_KEYWORDS,
+     "Override or clear the active libfyaml parse cache directory"},
+    {"get_cache_min_file_size", _PyCFunction_CAST(libfyaml_get_cache_min_file_size), METH_NOARGS,
+     "Return the active parse-cache minimum file size"},
+    {"set_cache_min_file_size", _PyCFunction_CAST(libfyaml_set_cache_min_file_size), METH_VARARGS | METH_KEYWORDS,
+     "Override the active parse-cache minimum file size"},
     {"_parse", _PyCFunction_CAST(libfyaml_stream_parse), METH_VARARGS | METH_KEYWORDS,
      "Parse YAML string and return list of event tuples"},
     {"_scan", _PyCFunction_CAST(libfyaml_stream_scan), METH_VARARGS | METH_KEYWORDS,
