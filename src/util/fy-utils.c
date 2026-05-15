@@ -23,6 +23,7 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #endif
 
 #include "fy-win32.h"
@@ -1007,6 +1008,52 @@ char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep)
 	return buf;
 }
 
+#ifdef _WIN32
+wchar_t *fy_win32_u8tow(const char *s)
+{
+	int n;
+	wchar_t *w;
+
+	n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, 0, 0);
+	if (!n) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	w = malloc(n * sizeof(*w));
+	if (!w)
+		return NULL;
+
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, w, n) <= 0) {
+		free(w);
+		errno = EINVAL;
+		return NULL;
+	}
+	return w;
+}
+
+char *fy_win32_wtou8(const wchar_t *w)
+{
+	int n;
+	char *s;
+
+	n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+	if (n <= 0)
+		return NULL;
+
+	s = malloc((size_t)n);
+	if (!s)
+		return NULL;
+
+	if (WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL) <= 0) {
+		free(s);
+		return NULL;
+	}
+
+	return s;
+}
+#endif
+
 // this function is merely a helper - do not use it for security stuff
 FILE *fy_tmpfile(char *path, size_t pathsz)
 {
@@ -1098,4 +1145,362 @@ err_out:
 			remove(path);
 	}
 	return -1;
+}
+
+int fy_rename(const char *old_file, const char *new_file, bool no_replace)
+{
+	int rc;
+
+#if defined(__linux__) && defined(RENAME_NOREPLACE)
+	/* libc method exists */
+	rc = renameat2(AT_FDCWD, old_file, AT_FDCWD, new_file, no_replace ? RENAME_NOREPLACE : 0);
+#elif defined(__linux__) && defined(SYS_renameat2)
+	/* go with a raw syscall */
+	rc = syscall(SYS_renameat2, AT_FDCWD, old_file, AT_FDCWD, new_file,
+			no_replace ? (1U << 0) : 0); // RENAME_NOREPLACE
+#elif defined (__APPLE__) && defined (__MACH__)
+	rc = renameatx_np(AT_FDCWD, old_file, AT_FDCWD, new_file, no_replace ? RENAME_EXCL : 0);
+#elif defined(_WIN32)
+	/* here comes the pain */
+	wchar_t *oldw, *neww;
+	BOOL result;
+	DWORD error;
+
+	oldw = fy_win32_u8tow(old_file);
+	neww = fy_win32_u8tow(new_file);
+
+	if (oldw && neww) {
+		result = MoveFileExW(oldw, neww, no_replace ? MOVEFILE_REPLACE_EXISTING : 0);
+		if (result) {
+			rc = 0;
+		} else {
+			rc = -1;
+			error = GetLastError();
+			/* if it already exists on atomic is fine */
+			if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
+				errno = EEXIST;
+			else
+				errno = EINVAL;
+		}
+	} else {
+		rc = -1;
+		errno = ENOMEM;
+	}
+
+	if (oldw)
+		free(oldw);
+	if (neww)
+		free(neww);
+#else
+	/* portable fallback - this one will overwrite always */
+	rc = rename(old_file, new_file);
+#endif
+	return rc;
+}
+
+const char *fy_realpath(const char *path, char *buf, size_t bufsize)
+{
+#ifndef _WIN32
+	char tmpbuf[PATH_MAX];
+	size_t len;
+	char *s;
+
+	s = realpath(path, tmpbuf);
+	if (!s)
+		return NULL;
+	len = strlen(s);
+	if (len + 1 > bufsize) {
+		errno = ENOSPC;
+		return NULL;
+	}
+	strncpy(buf, s, bufsize);
+	return buf;
+#else
+	wchar_t *path_w = NULL;
+	wchar_t *resolved_w = NULL;
+	char *resolved_utf8 = NULL;
+	const char *p;
+	HANDLE h = INVALID_HANDLE_VALUE;
+	DWORD n, written;
+	size_t len;
+
+	path_w = fy_win32_u8tow(path);
+	if (!path_w) {
+		errno = ENOMEM;
+		goto err_out;
+	}
+
+	h = CreateFileW(path_w, 0,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	free(path_w);
+	path_w = NULL;
+
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EINVAL;
+		goto err_out;
+	}
+
+	n = GetFinalPathNameByHandleW(h, NULL, 0,
+			FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+	if (n == 0) {
+		errno = EINVAL;
+		goto err_out;
+	}
+
+	resolved_w = malloc(((size_t)n + 1) * sizeof(wchar_t));
+	if (!resolved_w) {
+		errno = EINVAL;
+		goto err_out;
+	}
+
+	written = GetFinalPathNameByHandleW(h, resolved_w,
+			n + 1, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+
+	CloseHandle(h);
+	h = INVALID_HANDLE_VALUE;
+
+	if (written == 0 || written > n) {
+		errno = EINVAL;
+		goto err_out;
+	}
+
+	resolved_w[written] = L'\0';
+
+	resolved_utf8 = fy_win32_wtou8(resolved_w);
+	if (!resolved_utf8) {
+		errno = ENOMEM;
+		goto err_out;
+	}
+
+	free(resolved_w);
+	resolved_w = NULL;
+
+	/* GetFinalPathNameByHandleW always prepends \\?\ — strip it */
+	p = resolved_utf8;
+	if (p[0] == '\\' && p[1] == '\\' && p[2] == '?' && p[3] == '\\')
+		p += 4;
+	len = strlen(p);
+	if (len + 1 > bufsize) {
+		errno = ENOSPC;
+		goto err_out;
+	}
+	strncpy(buf, p, bufsize);
+
+	free(resolved_utf8);
+	resolved_utf8 = NULL;
+
+	return buf;
+
+err_out:
+	if (path_w)
+		free(path_w);
+	if (h != INVALID_HANDLE_VALUE)
+		CloseHandle(h);
+	if (resolved_w)
+		free(resolved_w);
+	if (resolved_utf8)
+		free(resolved_utf8);
+	return NULL;
+#endif
+}
+
+const char *fy_tmpdir(char *buf, size_t size)
+{
+#ifndef _WIN32
+	const char *tmp;
+
+	tmp = getenv("TMPDIR");
+	if (!tmp || !*tmp)
+		tmp = "/tmp";
+
+	/* the directory must have a realpath to always be absolute */
+	return fy_realpath(tmp, buf, size);
+#else
+	DWORD n;
+	wchar_t *w = NULL;
+	char *s = NULL;
+	const char *ret;
+
+	n = GetTempPathW(0, NULL);
+	if (!n)
+		goto err_out;
+
+	w = malloc((size_t)n * sizeof(*w));
+	if (!w)
+		goto err_out;
+
+	n = GetTempPathW(n, w);
+	if (!n)
+		goto err_out;
+
+	s = fy_win32_wtou8(w);
+	free(w);
+	w = NULL;
+	if (!s)
+		goto err_out;
+
+	ret = fy_realpath(s, buf, size);
+	free(s);
+	s = NULL;
+
+	return ret;
+
+err_out:
+	if (w)
+		free(w);
+	if (s)
+		free(s);
+	return NULL;
+#endif
+}
+
+const char *fy_cachedir(char *buf, size_t size)
+{
+#ifndef _WIN32
+	static const char *cache_home_env = "XDG_CACHE_HOME";
+	static const char *home_env = "HOME";
+#else
+	static const char *cache_home_env = "LOCALAPPDATA";
+	static const char *home_env = "USERPROFILE";
+#endif
+	char tmpbuf[PATH_MAX];
+	const char *base, *home;
+	const char *tmp;
+	int len;
+
+	/* try with base first */
+	base = getenv(cache_home_env);
+	if (base) {
+		/* the directory must have a realpath */
+		tmp = fy_realpath(base, buf, size);
+		if (tmp)
+			return buf;
+		/* fall-through */
+	}
+
+	/* home */
+	home = getenv(home_env);
+	if (home) {
+		tmp = fy_realpath(home, tmpbuf, sizeof(tmpbuf));
+		if (tmp) {
+			len = snprintf(buf, (int)size, "%s/.cache", tmp);
+			if ((size_t)len + 1 < size)
+				return buf;
+		}
+	}
+
+	return NULL;
+}
+
+#ifdef _WIN32
+int fy_win32_mktemp(char *tmpl, bool is_dir)
+{
+	static const char *alnum =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	size_t len;
+	char *x;
+	unsigned tries;
+        DWORD e;
+        wchar_t *w = NULL;
+        HANDLE h = INVALID_HANDLE_VALUE;
+        int i, fd = -1;
+	BOOL ok;
+
+	if (!tmpl) {
+		errno = EINVAL;
+		goto err_out;
+	}
+
+	len = strlen(tmpl);
+	if (len < 6 || strcmp(tmpl + len - 6, "XXXXXX") != 0) {
+		errno = EINVAL;
+		goto err_out;
+	}
+	x = tmpl + len - 6;
+
+	for (tries = 0; tries < 100; tries++) {
+
+		for (i = 0; i < 6; i++)
+			x[i] = alnum[rand() % sizeof(alnum - 1)];
+
+		w = fy_win32_u8tow(tmpl);
+		if (!w)
+			goto err_out;
+
+		if (!is_dir) {
+			h = CreateFileW(w, GENERIC_READ | GENERIC_WRITE,
+					0, NULL, CREATE_NEW,	/* atomic: fail if already exists */
+					FILE_ATTRIBUTE_TEMPORARY, NULL);
+
+			e = GetLastError();
+			free(w);
+			w = NULL;
+
+			if (h == INVALID_HANDLE_VALUE) {
+				/* try again if it exists */
+				if (e == ERROR_FILE_EXISTS || e == ERROR_ALREADY_EXISTS)
+					continue;
+				errno = EACCES;
+				goto err_out;
+			}
+
+			fd = _open_osfhandle((intptr_t)h, _O_RDWR | _O_BINARY);
+			if (fd < 0) {
+				errno = EINVAL;
+				goto err_out;
+			}
+
+			return fd;
+		} else {
+			ok = CreateDirectoryW(w, NULL);
+
+			e = GetLastError();
+
+			free(w);
+			w = NULL;
+
+			if (ok)	/* ok, directory created */
+				return 0;
+
+			if (e == ERROR_ALREADY_EXISTS)
+				continue;
+
+			errno = EACCES;
+			goto err_out;
+		}
+	}
+
+	/* after all the trouble nothing worked */
+	errno = EEXIST;
+
+err_out:
+	if (w)
+		free(w);
+	if (h != INVALID_HANDLE_VALUE)
+		CloseHandle(h);
+	errno = EEXIST;
+	return -1;
+}
+#endif
+
+int fy_mkstemp(char *tmpl)
+{
+#ifndef _WIN32
+	return mkstemp(tmpl);
+#else
+	return fy_win32_mktemp(tmpl, false);
+#endif
+}
+
+char *fy_mkdtemp(char *tmpl)
+{
+#ifndef _WIN32
+	return mkdtemp(tmpl);
+#else
+	int rc;
+
+	rc = fy_win32_mktemp(tmpl, true);
+	return rc ? NULL : tmpl;
+#endif
 }

@@ -219,9 +219,43 @@ struct fy_memstream;	// opaque
 struct fy_memstream *fy_memstream_open(FILE **fpp);
 char *fy_memstream_close(struct fy_memstream *fyms, size_t *sizep);
 
+#ifdef _WIN32
+wchar_t *fy_win32_u8tow(const char *s);
+char *fy_win32_wtou8(const wchar_t *w);
+#endif
+
 /* wrapper for creating a temporary file, on all platforms */
 FILE *fy_tmpfile(char *path, size_t pathsz);
 int fy_create_tmpfile(char *path, size_t pathsz, const void *data, size_t datasz);
 
+/* wrapper for a file rename (atomic if possible on most platforms) */
+int fy_rename(const char *old_file, const char *new_file, bool no_replace);
+
+/* wrapper for realpath */
+const char *fy_realpath(const char *path, char *buf, size_t bufsize);
+
+/* the tmp directory, uses realpath to make absolute path */
+const char *fy_tmpdir(char *buf, size_t size);
+
+/* XDG_CACHE_HOME/${HOME}.config or LOCALAPPDATA on windows */
+/* uses realpath to make sure it's an absolute path */
+const char *fy_cachedir(char *buf, size_t size);
+
+#ifndef _WIN32
+int fy_win32_mktemp(char *tmpl, bool is_dir);
+#endif
+
+/* provide a working mkstemp/mkdtemp even on windows */
+int fy_mkstemp(char *tmpl);
+char *fy_mkdtemp(char *tmpl);
+
+/* path separator */
+#ifndef _WIN32
+#define FY_PS	"/"
+#define FY_PSC	'/'
+#else
+#define FY_PS	"\\"
+#define FY_PSC	'\\'
+#endif
 
 #endif
