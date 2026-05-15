@@ -1225,7 +1225,7 @@ endif()
 
 add_library(libfyaml::libfyaml ALIAS fyaml)
 
-# Always build a static library for internal tools (they need access to internal APIs)
+# Always build a static library for tests (they need access to internal APIs)
 # This is separate from BUILD_SHARED_LIBS and matches autotools behavior
 add_library(fyaml_static STATIC
     ${LIBHDRS}
@@ -1443,122 +1443,6 @@ target_link_libraries(fy-tool PRIVATE fyaml)
 if(ENABLE_STATIC_TOOLS AND NOT MSVC)
     target_link_options(fy-tool PRIVATE -static)
 endif()
-
-# Build internal tools - these are never installed, built for internal testing
-# These tools use private/internal APIs and embed libfyaml code via fyaml_static
-# System libraries are dynamically linked (works with or without ASAN)
-# Skip when cross-compiling since these tools cannot be executed on build host
-
-set(INTERNAL_TOOL_INCLUDES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/thread
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
-    ${CMAKE_CURRENT_BINARY_DIR}
-    ${LIBYAML_INCLUDE_DIRS}
-    ${GETOPT_INCLUDES}
-)
-
-# libfyaml-parser requires libyaml
-if(HAVE_LIBYAML)
-    add_executable(libfyaml-parser
-        src/internal/libfyaml-parser.c
-        ${GETOPT_SOURCES}
-    )
-    target_compile_definitions(libfyaml-parser PRIVATE ${COMMON_C_DEFINITIONS})
-    target_compile_options(libfyaml-parser PRIVATE ${COMMON_C_FLAGS})
-
-    target_include_directories(libfyaml-parser PRIVATE ${INTERNAL_TOOL_INCLUDES})
-    target_link_directories(libfyaml-parser PRIVATE ${LIBYAML_LIBRARY_DIRS})
-    link_whole_archive_static(libfyaml-parser fyaml_static)
-    target_link_libraries(libfyaml-parser PRIVATE
-        ${LIBYAML_LIBRARIES}
-        $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-    )
-    if(NOT MSVC)
-        if(HAVE_ASAN)
-            target_link_options(libfyaml-parser PRIVATE ${ASAN_C_FLAGS})
-        endif()
-    endif()
-    if(HAVE_LIBCLANG)
-        target_link_directories(libfyaml-parser PRIVATE ${LIBCLANG_LINK_DIRS})
-    endif()
-    add_dependencies(libfyaml-parser fyaml_static)
-endif()
-
-add_executable(fy-thread
-    src/internal/fy-thread.c
-    ${GETOPT_SOURCES}
-)
-target_include_directories(fy-thread PRIVATE ${INTERNAL_TOOL_INCLUDES})
-target_compile_definitions(fy-thread PRIVATE
-    ${COMMON_C_DEFINITIONS}
-    FY_STATIC)
-link_whole_archive_static(fy-thread fyaml_static)
-target_link_libraries(fy-thread PRIVATE
-    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-)
-if(NOT MSVC)
-    if(HAVE_ASAN)
-        target_link_options(fy-thread PRIVATE ${ASAN_C_FLAGS})
-    endif()
-endif()
-if(HAVE_LIBCLANG)
-    target_link_directories(fy-thread PRIVATE ${LIBCLANG_LINK_DIRS})
-endif()
-add_dependencies(fy-thread fyaml_static)
-
-add_executable(fy-b3sum
-    src/internal/fy-b3sum.c
-    ${GETOPT_SOURCES}
-)
-target_include_directories(fy-b3sum PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
-    ${INTERNAL_TOOL_INCLUDES}
-)
-target_compile_definitions(fy-b3sum PRIVATE
-    ${COMMON_C_DEFINITIONS}
-    FY_STATIC)
-link_whole_archive_static(fy-b3sum fyaml_static)
-target_link_libraries(fy-b3sum PRIVATE
-    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-)
-if(NOT MSVC)
-    if(HAVE_ASAN)
-        target_link_options(fy-b3sum PRIVATE ${ASAN_C_FLAGS})
-    endif()
-endif()
-if(HAVE_LIBCLANG)
-    target_link_directories(fy-b3sum PRIVATE ${LIBCLANG_LINK_DIRS})
-endif()
-add_dependencies(fy-b3sum fyaml_static)
-
-add_executable(fy-allocators
-    src/internal/fy-allocators.c
-    ${GETOPT_SOURCES}
-)
-target_include_directories(fy-allocators PRIVATE ${INTERNAL_TOOL_INCLUDES})
-target_compile_definitions(fy-allocators PRIVATE
-    ${COMMON_C_DEFINITIONS}
-    FY_STATIC)
-link_whole_archive_static(fy-allocators fyaml_static)
-target_link_libraries(fy-allocators PRIVATE
-    $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
-)
-if(NOT MSVC)
-    if(HAVE_ASAN)
-        target_link_options(fy-allocators PRIVATE ${ASAN_C_FLAGS})
-    endif()
-endif()
-if(HAVE_LIBCLANG)
-    target_link_directories(fy-allocators PRIVATE ${LIBCLANG_LINK_DIRS})
-endif()
-add_dependencies(fy-allocators fyaml_static)
 
 if(BUILD_TESTING AND HAVE_BASH AND HAVE_CHECK AND (NOT CROSS_COMPILING OR HAVE_WINE))
     set(CAN_TEST 1)

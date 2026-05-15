@@ -588,22 +588,6 @@ if have_check:
 
 # --- Internal test tools (no check dependency) ---
 
-internal_dir = src_dir / "internal"
-
-internal_test_env = env.clone()
-if plat.is_windows:
-    internal_test_env.cc.includes.append(src_dir / "getopt")
-
-for tool_name, tool_src in [
-    ("fy-thread", "fy-thread.c"),
-    ("fy-b3sum", "fy-b3sum.c"),
-    ("fy-allocators", "fy-allocators.c"),
-]:
-    prog = project.Program(tool_name, internal_test_env, sources=[internal_dir / tool_src])
-    link_whole_archive(prog, fyaml_static)
-    prog.link(fyaml_static)
-    test_programs.append(prog)
-
 # =============================================================================
 # Default targets and generate
 # =============================================================================
