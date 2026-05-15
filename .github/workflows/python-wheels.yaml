@@ -65,22 +65,22 @@ jobs:
           - name: macos-x86_64
             runner: macos-15-intel
             cibw_archs: x86_64
-            cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+            cibw_environment: LIBFYAML_REPO_ROOT=$GITHUB_WORKSPACE
           - name: macos-arm64
             runner: macos-14
             cibw_archs: arm64
-            cibw_environment: LIBFYAML_REPO_ROOT=${{ github.workspace }}
+            cibw_environment: LIBFYAML_REPO_ROOT=$GITHUB_WORKSPACE
           - name: windows-amd64
             runner: windows-latest
             cibw_archs: AMD64
             cibw_environment: >-
-              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              LIBFYAML_REPO_ROOT=%GITHUB_WORKSPACE%
               CC=clang-cl
               CXX=clang-cl
               CMAKE_GENERATOR=Ninja
               LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
             cibw_environment_windows: >-
-              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              LIBFYAML_REPO_ROOT=%GITHUB_WORKSPACE%
               CC=clang-cl
               CXX=clang-cl
               CMAKE_GENERATOR=Ninja
@@ -89,13 +89,13 @@ jobs:
             runner: windows-11-arm
             cibw_archs: ARM64
             cibw_environment: >-
-              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              LIBFYAML_REPO_ROOT=%GITHUB_WORKSPACE%
               CC=clang-cl
               CXX=clang-cl
               CMAKE_GENERATOR=Ninja
               LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
             cibw_environment_windows: >-
-              LIBFYAML_REPO_ROOT=${{ github.workspace }}
+              LIBFYAML_REPO_ROOT=%GITHUB_WORKSPACE%
               CC=clang-cl
               CXX=clang-cl
               CMAKE_GENERATOR=Ninja
