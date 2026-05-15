@@ -5762,6 +5762,133 @@ START_TEST(generic_iterator_events)
 }
 END_TEST
 
+static size_t generic_test_builder_arena_count(struct fy_generic_builder *gb)
+{
+	struct fy_allocator_info *info;
+	struct fy_allocator_tag_info *tag_info;
+	size_t count = 0;
+	unsigned int i;
+
+	info = fy_gb_get_allocator_info(gb);
+	ck_assert_ptr_ne(info, NULL);
+	for (i = 0; i < info->num_tag_infos; i++) {
+		tag_info = &info->tag_infos[i];
+		count += tag_info->num_arena_infos;
+	}
+	free(info);
+	return count;
+}
+
+static fy_generic generic_test_make_chunked_value(struct fy_generic_builder *gb, size_t min_arenas)
+{
+	fy_generic seq, item;
+	char buf[128];
+	size_t i;
+
+	snprintf(buf, sizeof(buf), "value-%03d-abcdefghijklmnopqrstuvwxyz-0123456789", 0);
+	item = fy_mapping(gb,
+			  "id", 0,
+			  "name", buf,
+			  "tag", "linearize-test");
+	ck_assert(fy_generic_is_mapping(item));
+	seq = fy_sequence(gb, item);
+	ck_assert(fy_generic_is_sequence(seq));
+	for (i = 1; i < 256 && generic_test_builder_arena_count(gb) < min_arenas; i++) {
+		snprintf(buf, sizeof(buf), "value-%03zu-abcdefghijklmnopqrstuvwxyz-0123456789", i);
+		item = fy_mapping(gb,
+				  "id", (int)i,
+				  "name", buf,
+				  "tag", "linearize-test");
+		ck_assert(fy_generic_is_mapping(item));
+		seq = fy_append(gb, seq, item);
+		ck_assert(fy_generic_is_sequence(seq));
+	}
+	return seq;
+}
+
+static void generic_test_linearize_and_compare(struct fy_generic_builder *gb,
+					       fy_generic v,
+					       size_t min_arenas)
+{
+	const void *linear;
+	size_t linear_size, arena_count;
+	size_t emit_size;
+	fy_generic linear_v;
+	char *before, *after;
+
+	arena_count = generic_test_builder_arena_count(gb);
+	ck_assert_uint_ge(arena_count, min_arenas);
+	before = fy_generic_emit_to_string(v, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF, &emit_size);
+	ck_assert_ptr_ne(before, NULL);
+	linear_v = v;
+	linear = fy_generic_builder_linearize(gb, &linear_v, &linear_size);
+	ck_assert_ptr_ne(linear, NULL);
+	ck_assert(linear_size > 0);
+	ck_assert(fy_generic_is_valid(linear_v));
+	after = fy_generic_emit_to_string(linear_v, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF, &emit_size);
+	ck_assert_ptr_ne(after, NULL);
+	ck_assert_str_eq(before, after);
+	free(before);
+	free(after);
+}
+
+START_TEST(generic_linearize_single_chunk)
+{
+	struct fy_generic_builder *gb;
+	fy_generic v;
+	char buffer[8192];
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+						buffer, sizeof(buffer));
+	ck_assert_ptr_ne(gb, NULL);
+	v = fy_mapping(gb, "root", fy_sequence(gb, 1, 2, 3));
+	generic_test_linearize_and_compare(gb, v, 1);
+	fy_generic_builder_cleanup(gb);
+}
+END_TEST
+
+START_TEST(generic_linearize_two_chunks)
+{
+	struct fy_allocator *allocator;
+	struct fy_generic_builder_cfg gbcfg = {
+		.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+	};
+	struct fy_generic_builder *gb;
+	fy_generic v;
+
+	allocator = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(allocator, NULL);
+	gbcfg.allocator = allocator;
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_make_chunked_value(gb, 2);
+	generic_test_linearize_and_compare(gb, v, 2);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(allocator);
+}
+END_TEST
+
+START_TEST(generic_linearize_many_chunks)
+{
+	struct fy_allocator *allocator;
+	struct fy_generic_builder_cfg gbcfg = {
+		.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+	};
+	struct fy_generic_builder *gb;
+	fy_generic v;
+
+	allocator = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(allocator, NULL);
+	gbcfg.allocator = allocator;
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_make_chunked_value(gb, 8);
+	generic_test_linearize_and_compare(gb, v, 8);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(allocator);
+}
+END_TEST
+
 void libfyaml_case_generic(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -5889,6 +6016,9 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
 	fy_check_testcase_add_test(ctc, generic_iterator_events);
+	fy_check_testcase_add_test(ctc, generic_linearize_single_chunk);
+	fy_check_testcase_add_test(ctc, generic_linearize_two_chunks);
+	fy_check_testcase_add_test(ctc, generic_linearize_many_chunks);
 }
 
 FY_DIAG_POP
