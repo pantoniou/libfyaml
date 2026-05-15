@@ -15,13 +15,297 @@
 #include <string.h>
 #include <assert.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#else
+#include "fy-win32.h"
+#endif
+
 #include <check.h>
 
 #include <libfyaml.h>
+
+#ifdef HAVE_GENERIC
+#include <libfyaml/libfyaml-generic.h>
+#endif
+
+#include "fy-cache.h"
 #include "fy-parse.h"
 #include "fy-utf8.h"
 
 #include "fy-check.h"
+
+#ifdef HAVE_GENERIC
+static int cache_count_cb(const char *path FY_UNUSED,
+			  const struct fy_parse_cache_file_info *info FY_UNUSED,
+			  void *userdata)
+{
+	int *countp = userdata;
+	(*countp)++;
+	return 0;
+}
+
+static int cache_dir_entry_count(void)
+{
+	int count = 0, rc;
+
+	rc = fy_parse_cache_walk(cache_count_cb, &count);
+	return rc >= 0 ? count : -1;
+}
+
+static int cache_first_cb(const char *path,
+			  const struct fy_parse_cache_file_info *info FY_UNUSED,
+			  void *userdata)
+{
+	char *filep = userdata;	/* PATH_MAX */
+
+	if (strlen(path) >= PATH_MAX - 1)
+		return -1;
+	strncpy(filep, path, PATH_MAX);
+	return 1;
+}
+
+static char *cache_find_first_file(void)
+{
+	char buf[PATH_MAX];
+	int rc;
+
+	buf[0] = '\0';
+	rc = fy_parse_cache_walk(cache_first_cb, buf);
+	return rc >= 0 && buf[0] ? strdup(buf) : NULL;
+}
+
+static int remove_tmpdir(const char *tmpdir, const char *path)
+{
+	DIR *dir = NULL;
+	struct dirent *de;
+	char child[PATH_MAX];
+	struct stat sb;
+	int rc = 0, len;
+	size_t tmp_len;
+
+	if (!tmpdir)
+		return -1;
+
+	tmp_len = strlen(tmpdir);
+
+	/* every path must start with the tmpdir prefix */
+	if (strlen(path) < tmp_len || memcmp(path, tmpdir, tmp_len))
+		return -1;
+
+	dir = opendir(path);
+	if (!dir)
+		return 0;
+
+	while ((de = readdir(dir)) != NULL) {
+
+		if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
+			continue;
+
+		len = snprintf(child, sizeof(child) - 1, "%s" FY_PS "%s", path, de->d_name);
+		if (len < 0 || (size_t)len >= sizeof(child) - 1)
+			goto err_out;
+
+		child[len] = '\0';
+
+		if (stat(child, &sb))
+			continue;
+
+		if (S_ISDIR(sb.st_mode)) {
+			rc = remove_tmpdir(tmpdir, child);
+			if (rc < 0)
+				goto err_out;
+			continue;
+		}
+
+		fprintf(stderr, "removing file: %s\n", child);
+		unlink(child);
+
+	}
+out:
+	closedir(dir);
+	fprintf(stderr, "removing directory: %s\n", path);
+	rmdir(path);
+
+	return rc;
+
+err_out:
+	rc = -1;
+	goto out;
+}
+
+START_TEST(parser_file_parse_cache)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_DOC | FYPCF_ENABLE_CACHE,
+	};
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	char *cache_template;
+	char *yaml_template;
+	char *cache_dir, *out1, *out2;
+	size_t old_min_size;
+	const char *yaml_realpath;
+	char yaml_realbuf[PATH_MAX];
+	struct fy_document *fyd1, *fyd2;
+	int fd;
+	static const char yaml[] =
+		"root:\n"
+		"  scalar: value\n"
+		"  seq: [1, 2, 3]\n"
+		"  map: {key: val}\n";
+	struct fy_parse_cache_file_info info;
+	char *cache_file;
+	struct fy_document *fydc;
+	char *outc;
+
+	tmp = fy_tmpdir(tmpbuf, sizeof(tmpbuf));
+	ck_assert_ptr_ne(tmp, NULL);
+
+	cache_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-test-XXXXXX", tmp);
+	yaml_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-yaml-XXXXXX", tmp);
+
+	cache_dir = fy_mkdtemp(cache_template);
+	ck_assert_ptr_ne(cache_dir, NULL);
+	old_min_size = fy_parse_cache_get_min_file_size();
+	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(0), 0);
+
+	fd = fy_mkstemp(yaml_template);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq((int)write(fd, yaml, sizeof(yaml) - 1), (int)sizeof(yaml) - 1);
+	ck_assert_int_eq(close(fd), 0);
+	yaml_realpath = fy_realpath(yaml_template, yaml_realbuf, sizeof(yaml_realbuf));
+	ck_assert_ptr_ne(yaml_realpath, NULL);
+
+	fyd1 = fy_document_build_from_file(&cfg, yaml_template);
+	ck_assert_ptr_ne(fyd1, NULL);
+	out1 = fy_emit_document_to_string(fyd1, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(out1, NULL);
+
+	fyd2 = fy_document_build_from_file(&cfg, yaml_template);
+	ck_assert_ptr_ne(fyd2, NULL);
+	out2 = fy_emit_document_to_string(fyd2, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(out2, NULL);
+	ck_assert_str_eq(out1, out2);
+
+	ck_assert_int_gt(cache_dir_entry_count(), 0);
+
+	cache_file = cache_find_first_file();
+	ck_assert_ptr_ne(cache_file, NULL);
+	ck_assert_int_eq(fy_parse_cache_file_info_load(cache_file, &info), 0);
+	ck_assert_ptr_ne(info.source_file, NULL);
+	ck_assert_str_eq(info.source_file, yaml_realpath);
+
+	fydc = fy_document_build_from_file(NULL, cache_file);
+	ck_assert_ptr_ne(fydc, NULL);
+	outc = fy_emit_document_to_string(fydc, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(outc, NULL);
+	ck_assert_str_eq(out1, outc);
+	free(outc);
+	fy_document_destroy(fydc);
+	free(cache_file);
+
+	free(out1);
+	free(out2);
+	fy_document_destroy(fyd1);
+	fy_document_destroy(fyd2);
+	unlink(yaml_template);
+
+	fy_parse_cache_override(NULL);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size((ssize_t)old_min_size), 0);
+
+	remove_tmpdir(cache_dir, cache_dir);
+}
+END_TEST
+
+START_TEST(parser_file_parse_cache_multi_document_lifecycle)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_DOC | FYPCF_ENABLE_CACHE,
+	};
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	char *cache_template;
+	char *yaml_template;
+	char *cache_dir;
+	struct fy_parser *fyp1 = NULL, *fyp2 = NULL;
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	int fd, i, value;
+	FILE *fp = NULL;
+	static const int expect[] = { 1, 2, 3 };
+	static const char *docs =
+		"---\n"
+		"doc: 1\n"
+		"---\n"
+		"doc: 2\n"
+		"---\n"
+		"doc: 3\n";
+
+	tmp = fy_tmpdir(tmpbuf, sizeof(tmpbuf));
+	ck_assert_ptr_ne(tmp, NULL);
+
+	cache_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-test-XXXXXX", tmp);
+	yaml_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-yaml-XXXXXX", tmp);
+
+	cache_dir = fy_mkdtemp(cache_template);
+	ck_assert_ptr_ne(cache_dir, NULL);
+	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+
+	fd = fy_mkstemp(yaml_template);
+	ck_assert_int_ge(fd, 0);
+
+	fp = fdopen(fd, "w");
+	ck_assert_ptr_ne(fp, NULL);
+	fd = -1;
+
+	for (i = 0; i < 20000; i++)
+		ck_assert_int_ge(fputs("# filler to exceed cache threshold without affecting semantics\n", fp), 0);
+	ck_assert_int_ge(fputs(docs, fp), 0);
+	ck_assert_int_eq(fclose(fp), 0);
+	fp = NULL;
+
+	fyp1 = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp1, NULL);
+	ck_assert_int_eq(fy_parser_set_input_file(fyp1, yaml_template), 0);
+	for (i = 0; i < (int)ARRAY_SIZE(expect); i++) {
+		fyd = fy_parse_load_document(fyp1);
+		ck_assert_ptr_ne(fyd, NULL);
+		fyn = fy_node_mapping_lookup_by_string(fy_document_root(fyd), "doc", FY_NT);
+		ck_assert_ptr_ne(fyn, NULL);
+		value = atoi(fy_node_get_scalar0(fyn));
+		ck_assert_int_eq(value, expect[i]);
+		fy_document_destroy(fyd);
+	}
+	ck_assert_ptr_eq(fy_parse_load_document(fyp1), NULL);
+	fy_parser_destroy(fyp1);
+	fyp1 = NULL;
+
+	fyp2 = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp2, NULL);
+	ck_assert_int_eq(fy_parser_set_input_file(fyp2, yaml_template), 0);
+	for (i = 0; i < (int)ARRAY_SIZE(expect); i++) {
+		fyd = fy_parse_load_document(fyp2);
+		ck_assert_ptr_ne(fyd, NULL);
+		fyn = fy_node_mapping_lookup_by_string(fy_document_root(fyd), "doc", FY_NT);
+		ck_assert_ptr_ne(fyn, NULL);
+		value = atoi(fy_node_get_scalar0(fyn));
+		ck_assert_int_eq(value, expect[i]);
+		fy_document_destroy(fyd);
+	}
+	ck_assert_ptr_eq(fy_parse_load_document(fyp2), NULL);
+
+	fy_parser_destroy(fyp2);
+	unlink(yaml_template);
+	fy_parse_cache_override(NULL);
+
+	remove_tmpdir(cache_dir, cache_dir);
+}
+END_TEST
+#endif
 
 /* Test: Mapping iterator (forward and reverse) */
 START_TEST(parser_mapping_iterator)
@@ -2356,6 +2640,10 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parser_manual_emitter);
 
 	/* Parser and document builder tests */
+#ifdef HAVE_GENERIC
+	fy_check_testcase_add_test(ctc, parser_file_parse_cache);
+	fy_check_testcase_add_test(ctc, parser_file_parse_cache_multi_document_lifecycle);
+#endif
 	fy_check_testcase_add_test(ctc, parser_parse_load_document);
 	fy_check_testcase_add_test(ctc, parser_document_resolve);
 	fy_check_testcase_add_test(ctc, parser_document_clone);
