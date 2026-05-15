@@ -38,6 +38,9 @@
 #include "fy-emit-accum.h"
 #include "fy-path.h"
 #include "fy-composer.h"
+#ifdef HAVE_GENERIC
+#include <libfyaml/libfyaml-generic.h>
+#endif
 
 struct fy_parser;
 struct fy_input;
@@ -292,6 +295,15 @@ struct fy_parser {
 		struct fy_eventp_list args;
 		struct fy_document *fyd;
 	} mks;
+#ifdef HAVE_GENERIC
+	struct {
+		struct fy_generic_builder *gb;
+		struct fy_generic_document_builder *fygdb;
+		fy_generic vdir;
+		char *file;
+		bool enabled;
+	} cache_build;
+#endif
 	struct fy_eventp *fyep_peek;
 };
 

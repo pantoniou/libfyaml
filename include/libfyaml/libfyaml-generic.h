@@ -8268,6 +8268,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
  * @FYOPPF_SLOPPY_FLOW_INDENTATION: Allow sloppy indentation in flow mode
  * @FYOPPF_RELAX_FLOW_DOC:          Documents are implicitly started via flow markers
  * @FYOPPF_KEEP_ANCHORS:            Preserve anchor metadata even when resolving documents
+ * @FYOPPF_ENABLE_CACHE:            Enable transparent regular-file parse caching
  */
 enum fy_op_parse_flags {
 	FYOPPF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8292,6 +8293,7 @@ enum fy_op_parse_flags {
 	FYOPPF_SLOPPY_FLOW_INDENTATION	= FY_BIT(19),
 	FYOPPF_RELAXED_FLOW_DOC		= FY_BIT(20),
 	FYOPPF_KEEP_ANCHORS		= FY_BIT(21),
+	FYOPPF_ENABLE_CACHE		= FY_BIT(22),
 };
 
 /* FYOPPF_DEFAULT - Recommended default parse flags (disables directory) */

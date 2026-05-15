@@ -89,6 +89,7 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *gd,
 {
 	struct fy_generic_document_builder_cfg cfg;
 	struct fy_generic_document_builder *fygdb = NULL;
+	struct fy_eventp *fyep;
 	fy_generic *items = NULL, *items_new;
 	fy_generic v, vdoc;
 	size_t count, alloc;
@@ -125,6 +126,11 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *gd,
 
 		if (!(flags & FYGDPF_MULTI_DOCUMENT))
 			break;
+	}
+
+	if (!(flags & FYGDPF_MULTI_DOCUMENT) && !fy_parser_get_stream_error(gd->fyp)) {
+		while ((fyep = fy_parse_private(gd->fyp)) != NULL)
+			fy_parse_eventp_recycle(gd->fyp, fyep);
 	}
 
 	if (fy_parser_get_stream_error(gd->fyp))

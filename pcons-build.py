@@ -305,6 +305,7 @@ lib_sources: list[Path] = [
     src_dir / "lib" / "fy-docbuilder-diag.c",
     src_dir / "lib" / "fy-input-diag.c",
     src_dir / "lib" / "fy-parse-diag.c",
+    src_dir / "lib" / "fy-cache.c",
     src_dir / "util" / "fy-blob.c",
     src_dir / "util" / "fy-ctype.c",
     src_dir / "util" / "fy-utf8.c",

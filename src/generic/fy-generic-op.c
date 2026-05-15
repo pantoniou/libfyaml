@@ -27,6 +27,7 @@
 #include "fy-generic.h"
 #include "fy-generic-encoder.h"
 #include "fy-generic-decoder.h"
+#include "fy-cache.h"
 
 static int fy_generic_seqmap_qsort_cmp(const void *a, const void *b)
 {
@@ -116,6 +117,54 @@ fy_generic_op_internalize(struct fy_generic_builder *gb, enum fy_gb_op_flags fla
 		return fy_gb_validate(gb, v);
 
 	return fy_gb_internalize(gb, v);
+}
+
+static fy_generic
+fy_generic_op_cache_hit_prepare(struct fy_generic_builder *gb,
+				fy_generic vdir,
+				enum fy_generic_decoder_parse_flags decoder_parse_flags)
+{
+	fy_generic out;
+	fy_generic *docs = NULL;
+	int doc_count;
+	size_t i;
+
+	out = vdir;
+	if (decoder_parse_flags & FYGDPF_MULTI_DOCUMENT) {
+		doc_count = fy_generic_dir_get_document_count(out);
+		if (doc_count < 0)
+			return fy_invalid;
+
+		if (decoder_parse_flags & FYGDPF_DISABLE_DIRECTORY) {
+			if (!doc_count) {
+				out = fy_null;
+			} else if (doc_count == 1) {
+				out = fy_generic_vds_get_root(
+					fy_generic_dir_get_document_vds(out, 0));
+			} else {
+				docs = malloc(sizeof(*docs) * (size_t)doc_count);
+				if (!docs)
+					return fy_invalid;
+				for (i = 0; i < (size_t)doc_count; i++)
+					docs[i] = fy_generic_vds_get_root(
+						fy_generic_dir_get_document_vds(out, i));
+				out = fy_gb_sequence_create(gb, (size_t)doc_count, docs);
+				free(docs);
+				docs = NULL;
+				if (fy_generic_is_invalid(out))
+					return fy_invalid;
+			}
+		} else if (doc_count == 1 && !fy_generic_is_sequence(out)) {
+			out = fy_gb_sequence(gb, out);
+			if (fy_generic_is_invalid(out))
+				return fy_invalid;
+		}
+	} else if (decoder_parse_flags & FYGDPF_DISABLE_DIRECTORY) {
+		out = fy_generic_vds_get_root(
+			fy_generic_dir_get_document_vds(out, 0));
+	}
+
+	return out;
 }
 
 /* iov_flags */
@@ -3070,6 +3119,14 @@ fy_generic_op_rest(const struct fy_generic_op_desc *desc FY_UNUSED,
 	return fy_generic_op_slice_internal(gb, flags, in, &local_args, 1, SIZE_MAX);
 }
 
+static void cache_entry_cleanup(struct fy_generic_builder *gb)
+{
+	struct fy_parse_cache_entry *entry;
+
+	entry = fy_generic_builder_get_userdata(gb);
+	fy_parse_cache_entry_destroy(entry);
+}
+
 static fy_generic
 fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 		    struct fy_generic_builder *gb,
@@ -3091,6 +3148,8 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 	fy_generic out;
 	size_t count, i;
 	fy_generic_indirect gi;
+	struct fy_parse_cache_entry *cache_entry = NULL;
+	bool cacheable_string_input = false;
 
 	parse_flags = args->parse.flags;
 
@@ -3117,6 +3176,9 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	if (parse_flags & FYOPPF_KEEP_ANCHORS)
 		parse_cfg.flags |= FYPCF_KEEP_ANCHORS;
+
+	if (parse_flags & FYOPPF_ENABLE_CACHE)
+		parse_cfg.flags |= FYPCF_ENABLE_CACHE;
 
 	parse_cfg.flags &= ~(FYPCF_DEFAULT_VERSION(FYPCF_DEFAULT_VERSION_MASK) |
 			     FYPCF_JSON(FYPCF_JSON_MASK));
@@ -3184,6 +3246,23 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 		if (!szstr.data)
 			goto err_out;
 
+		cacheable_string_input = !!(parse_cfg.flags & FYPCF_ENABLE_CACHE);
+		if (cacheable_string_input) {
+			cache_entry = fy_parse_cache_load_data_cfg(&parse_cfg, szstr.data, szstr.size);
+			if (cache_entry) {
+				out = fy_generic_op_cache_hit_prepare(gb, cache_entry->vdir,
+									      decoder_parse_flags);
+				if (fy_generic_is_invalid(out))
+					goto err_out;
+
+				fy_generic_builder_set_userdata(gb, cache_entry);
+				fy_generic_builder_set_cleanup(gb, cache_entry_cleanup);
+
+				cache_entry = NULL;
+				goto out;
+			}
+		}
+
 		/* Set input string */
 		if (fy_parser_set_string(fyp, szstr.data, szstr.size) != 0)
 			goto err_out;
@@ -3192,6 +3271,22 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 	case FYOPPF_INPUT_TYPE_FILENAME:
 		if (!args->parse.input_data)
 			goto err_out;
+
+		if (parse_cfg.flags & FYPCF_ENABLE_CACHE) {
+			cache_entry = fy_parse_cache_load_cfg(&parse_cfg, args->parse.input_data);
+			if (cache_entry) {
+				out = fy_generic_op_cache_hit_prepare(gb, cache_entry->vdir,
+									      decoder_parse_flags);
+				if (fy_generic_is_invalid(out))
+					goto err_out;
+
+				fy_generic_builder_set_userdata(gb, cache_entry);
+				fy_generic_builder_set_cleanup(gb, cache_entry_cleanup);
+				cache_entry = NULL;
+
+				goto out;
+			}
+		}
 
 		/* set input file is at items[0] */
 		if (fy_parser_set_input_file(fyp, args->parse.input_data))
@@ -3221,6 +3316,10 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* Parse the input */
 	out = fy_generic_decoder_parse(fygd, decoder_parse_flags);
+	if (cacheable_string_input && fy_generic_is_valid(out) &&
+	    !(decoder_parse_flags & FYGDPF_DISABLE_DIRECTORY))
+		fy_parse_cache_store_data_generic(&parse_cfg, szstr.data, szstr.size,
+						  "<string>", gb, out);
 
 out:
 	vdiag = fy_invalid;
@@ -3306,6 +3405,8 @@ out:
 	}
 	if (vp)
 		free(vp);
+	if (cache_entry)
+		fy_parse_cache_entry_destroy(cache_entry);
 	fy_diag_destroy(collect_diag);
 	fy_generic_decoder_destroy(fygd);
 	fy_parser_destroy(fyp);

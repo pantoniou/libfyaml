@@ -21,6 +21,7 @@ INTERNAL_INCLUDES = \
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
 	lib/fy-parse.c lib/fy-parse.h \
+	lib/fy-cache.c lib/fy-cache.h \
 	lib/fy-types.c lib/fy-types.h \
 	lib/fy-diag.c lib/fy-diag.h \
 	lib/fy-dump.c lib/fy-dump.h \

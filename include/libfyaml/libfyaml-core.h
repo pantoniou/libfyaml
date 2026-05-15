@@ -291,6 +291,7 @@ enum fy_error_module {
  * @FYPCF_KEEP_STYLE: Retain original scalar/collection style information
  * @FYPCF_RELAXED_FLOW_DOC: Documents are implicitly started via flow markers
  * @FYPCF_KEEP_ANCHORS: Preserve anchor metadata even when resolving documents
+ * @FYPCF_ENABLE_CACHE: Enable transparent regular-file parse cache
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -317,6 +318,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_KEEP_STYLE		= FY_BIT(21),
 	FYPCF_RELAXED_FLOW_DOC		= FY_BIT(22),
 	FYPCF_KEEP_ANCHORS		= FY_BIT(23),
+	FYPCF_ENABLE_CACHE		= FY_BIT(24),
 };
 
 #define FYPCF_PARSE_COMMENTS	FYPCF_KEEP_COMMENTS
@@ -7595,6 +7597,165 @@ struct fy_event *
 fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list ap)
 	FY_EXPORT;
 
+
+/*
+ * DOC: Parse cache API
+ *
+ * The parse cache makes it possible to completely forgo parsing
+ * for files that are already in the cache.
+ *
+ * Note that there is an implicit dependency on generics since this
+ * is the backend used, so if there is no generic support all those
+ * calls fail
+ */
+
+/**
+ * struct fy_parse_cache_file_info - On-disk parse cache entry metadata
+ *
+ * @path: Full path of the cache entry file
+ * @source_file: Original source file or source name stored in the header
+ * @magic: Cache file magic in hexadecimal form
+ * @b3sum: BLAKE3 cache key in hexadecimal form
+ * @version: Cache file format version
+ * @endian: Endianness marker stored in the cache header
+ * @ptr_size: Pointer size used when the cache entry was created
+ * @parser_flags: Parser flags used when generating the cache entry
+ * @decoder_flags: Generic decoder flags used when generating the cache entry
+ * @root: Root fy_generic pointer value recorded in the header
+ * @arena_base: Original arena base address recorded in the header
+ * @map_base: Original mapped base address recorded in the header
+ * @arena_file_offset: Offset in the cache file where arena bytes start
+ * @source_name_size: Stored source name size, including the trailing NUL
+ * @arena_size: Size in bytes of the serialized arena
+ * @map_size: Total mapped payload size in bytes
+ * @header_size: Total header size in bytes, including stored source name
+ *
+ * This structure is filled by fy_parse_cache_file_info_load() and by
+ * callbacks passed to fy_parse_cache_walk().
+ */
+struct fy_parse_cache_file_info {
+	char path[4096];
+	char source_file[4096];
+	char magic[17];
+	char b3sum[65];
+	uint32_t version;
+	uint32_t endian;
+	uint32_t ptr_size;
+	uint64_t parser_flags;
+	uint64_t decoder_flags;
+	uint64_t root;
+	uint64_t arena_base;
+	uint64_t map_base;
+	uint64_t arena_file_offset;
+	uint64_t source_name_size;
+	size_t arena_size;
+	size_t map_size;
+	size_t header_size;
+};
+
+/**
+ * fy_parse_cache_get_dir() - Get the parse cache directory
+ *
+ * @buf: Buffer that will receive the absolute cache directory path
+ * @size: Size of @buf in bytes
+ *
+ * Resolve the cache directory that libfyaml will use for parse cache
+ * entries. This honors the cache override environment variable if set.
+ *
+ * Returns:
+ * A pointer to @buf on success, or %NULL on error.
+ */
+const char *
+fy_parse_cache_get_dir(char *buf, size_t size)
+	FY_EXPORT;
+
+/**
+ * fy_parse_cache_file_info_load() - Load parse cache metadata from a file
+ *
+ * @file: Cache entry file to inspect
+ * @info: Target metadata structure to fill
+ *
+ * Load and validate the parse cache header from @file and fill @info with
+ * the decoded metadata.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_parse_cache_file_info_load(const char *file, struct fy_parse_cache_file_info *info)
+	FY_EXPORT;
+
+/**
+ * typedef fy_parse_cache_walk_cb - Parse cache directory walk callback
+ * @path: Full path of the cache entry file
+ * @info: Decoded cache entry metadata
+ * @userdata: Opaque user pointer passed to fy_parse_cache_walk()
+ *
+ * Return:
+ * 0 to continue the walk, a positive value to stop successfully,
+ * or a negative value to stop with an error.
+ */
+typedef int (*fy_parse_cache_walk_cb)(const char *path, const struct fy_parse_cache_file_info *info, void *userdata);
+
+/**
+ * fy_parse_cache_walk() - Walk all cache entries in the parse cache directory
+ *
+ * @cb: Callback invoked once for each cache entry
+ * @userdata: Opaque user pointer passed to @cb
+ *
+ * Walk the current parse cache directory and invoke @cb for each valid cache
+ * entry discovered.
+ *
+ * Returns:
+ * 0 if the walk completed, a positive value if @cb requested an early stop,
+ * or -1 on error.
+ */
+int
+fy_parse_cache_walk(fy_parse_cache_walk_cb cb, void *userdata)
+	FY_EXPORT;
+
+/**
+ * fy_parse_cache_override() - Override the parse cache directory
+ *
+ * @override_dir: New cache directory, or %NULL to clear the override
+ *
+ * Set or clear the process-local parse cache directory override. When set,
+ * subsequent cache operations use @override_dir as their cache root.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_parse_cache_override(const char *override_dir)
+	FY_EXPORT;
+
+/**
+ * fy_parse_cache_get_min_file_size() - Get the current parse cache file-size cutoff
+ *
+ * Return the minimum regular-file size, in bytes, required before transparent
+ * parse caching is considered.
+ *
+ * Returns:
+ * The active minimum file size in bytes.
+ */
+size_t
+fy_parse_cache_get_min_file_size(void)
+	FY_EXPORT;
+
+/**
+ * fy_parse_cache_set_min_file_size() - Override the parse cache file-size cutoff
+ * @min_size: New minimum size in bytes, or -1 to clear the override
+ *
+ * Override the process-local minimum regular-file size required before
+ * transparent parse caching is considered. Passing -1 clears the override
+ * and restores the built-in default.
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_parse_cache_set_min_file_size(ssize_t min_size)
+	FY_EXPORT;
 
 #ifdef __cplusplus
 }

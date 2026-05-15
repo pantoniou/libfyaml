@@ -27,6 +27,7 @@
 #endif
 
 #include "fy-parse.h"
+#include "fy-cache.h"
 
 #include "fy-utils.h"
 
@@ -883,6 +884,7 @@ void fy_parse_cleanup(struct fy_parser *fyp)
 
 	fy_composer_destroy(fyp->fyc);
 	fy_document_builder_destroy(fyp->fydb);
+	fy_parse_cache_build_cleanup(fyp);
 
 	fy_parse_indent_list_recycle_all(fyp, &fyp->indent_stack);
 	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
@@ -6155,7 +6157,6 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 			rc = fy_reader_input_done(fyp->reader);
 			fyp_error_check(fyp, !rc, err_out,
 					"fy_parse_input_done() failed");
-
 			fy_parser_debug(fyp, "%s: NULL: !fyt && fy_reader_generates_events(fyp->reader)", __func__);
 			return NULL;
 		}
@@ -7155,6 +7156,9 @@ struct fy_eventp *fy_parse_private(struct fy_parser *fyp)
 	struct fy_eventp *fyep = NULL;
 
 	fyep = fy_parse_internal(fyp);
+
+	fy_parse_cache_build_process_event_private(fyp, fyep);
+
 	fy_parse_dump_eventp(fyp, fyep, "gen> ");
 
 	return fyep;
@@ -7245,6 +7249,7 @@ static void fy_parse_input_reset(struct fy_parser *fyp)
 
 	fy_input_unref(fyp->last_event_handle.fyi);
 	fy_atom_reset(&fyp->last_event_handle);
+	fy_parse_cache_build_cleanup(fyp);
 }
 
 int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
@@ -7254,6 +7259,23 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 
 	if (!fyp || !file)
 		return -1;
+
+	/* must not be in the middle of something */
+	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
+			err_out, "parser cannot be reset at state '%s'",
+				state_txt[fyp->state]);
+
+	fy_parse_input_reset(fyp);
+
+	rc = fy_parse_cache_set_input_file(fyp, file);
+	fyp_error_check(fyp, rc >= 0, err_out_rc,
+			"fy_parse_cache_set_input_file() failed");
+
+	/* reading from cache now */
+	if (rc > 0)
+		return 0;
+
+	/* no cache, continue */
 
 	memset(&fyic, 0, sizeof(fyic));
 
@@ -7266,13 +7288,6 @@ int fy_parser_set_input_file(struct fy_parser *fyp, const char *file)
 		fyic.file.filename = file;
 	}
 	fyic.ignore_stdio = !!(fyp->cfg.flags & FYPCF_DISABLE_BUFFERING);
-
-	/* must not be in the middle of something */
-	fyp_error_check(fyp, fyp->state == FYPS_NONE || fyp->state == FYPS_END,
-			err_out, "parser cannot be reset at state '%s'",
-				state_txt[fyp->state]);
-
-	fy_parse_input_reset(fyp);
 
 	rc = fy_parse_input_append(fyp, &fyic);
 	fyp_error_check(fyp, !rc, err_out_rc,

@@ -524,8 +524,8 @@ int fy_generic_builder_setup(struct fy_generic_builder *gb, const struct fy_gene
 	if (!cfg->allocator) {
 		memset(&auto_cfg, 0, sizeof(auto_cfg));
 		auto_cfg.scenario = (gb->flags & FYGBF_DEDUP_ENABLED) ?
-					FYAST_SINGLE_LINEAR_RANGE_DEDUP :
-					FYAST_SINGLE_LINEAR_RANGE;
+					FYAST_PER_TAG_FREE_DEDUP :
+					FYAST_PER_TAG_FREE;
 		auto_cfg.estimated_max_size = cfg->estimated_max_size;
 		gb->allocator = fy_allocator_create("auto", &auto_cfg);	// let the system decide
 		if (!gb->allocator)

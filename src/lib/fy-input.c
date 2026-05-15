@@ -30,6 +30,7 @@
 
 #include "fy-win32.h"
 #include "fy-parse.h"
+#include "fy-cache.h"
 #include "fy-ctype.h"
 
 #ifdef HAVE_GENERIC
@@ -373,7 +374,10 @@ void fy_input_close(struct fy_input *fyi)
 		break;
 
 	case fyit_geniter:
-		/* nothing */
+#ifdef HAVE_GENERIC
+		if (fyi->cfg.geniter.owns_iterator)
+			fy_parse_cache_entry_destroy(fyi->cfg.userdata);
+#endif
 		break;
 
 	default:

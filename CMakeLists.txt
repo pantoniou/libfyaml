@@ -926,6 +926,7 @@ set(LIBHDRS
     src/lib/fy-accel.h
     src/lib/fy-atom.h
     src/lib/fy-composer.h
+    src/lib/fy-cache.h
     src/lib/fy-diag.h
     src/lib/fy-doc.h
     src/lib/fy-docbuilder.h
@@ -961,6 +962,7 @@ set(LIBSRCS
     src/lib/fy-accel.c
     src/lib/fy-atom.c
     src/lib/fy-composer.c
+    src/lib/fy-cache.c
     src/lib/fy-diag.c
     src/lib/fy-doc.c
     src/lib/fy-docbuilder.c
