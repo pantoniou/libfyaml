@@ -3620,6 +3620,8 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 		encoder_emit_flags |= FYGEEF_MULTI_DOCUMENT;
 	if (emit_flags & FYOPEF_TRACE)
 		encoder_emit_flags |= FYGEEF_TRACE;
+	if (emit_flags & FYOPEF_EMIT_EVENTS)
+		encoder_emit_flags |= FYGEEF_EMIT_EVENTS;
 
 	/* Emit the value */
 	rc = fy_generic_encoder_emit(fyge, encoder_emit_flags, in);

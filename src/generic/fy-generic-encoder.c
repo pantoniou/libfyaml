@@ -106,7 +106,7 @@ err_out:
 }
 
 static int
-fy_generic_encoder_emit_vdir(struct fy_generic_encoder *fyge, fy_generic vdir)
+fy_generic_encoder_emit_vdir_iter(struct fy_generic_encoder *fyge, fy_generic vdir)
 {
 	struct fy_generic_iterator_cfg cfg;
 	struct fy_generic_iterator *fygi = NULL;
@@ -175,6 +175,7 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 	fy_generic vroot, vds, vdir;
 	fy_generic *docs;
 	size_t i, count;
+	int rc;
 
 	if ((emit_flags & FYGEEF_DISABLE_DIRECTORY)) {
 
@@ -215,7 +216,12 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 		}
 	}
 
-	return fy_generic_encoder_emit_vdir(fyge, vdir);
+	if (emit_flags & FYGEEF_EMIT_EVENTS)
+		rc = fy_generic_encoder_emit_vdir_iter(fyge, vdir);
+	else
+		rc = fy_emit_generic_vdir(fyge->emit, vdir);
+
+	return rc;
 }
 
 int fy_generic_emit(fy_generic v, enum fy_emitter_cfg_flags flags)

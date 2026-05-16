@@ -22,6 +22,7 @@ enum fy_generic_encoder_emit_flags {
 	FYGEEF_MULTI_DOCUMENT		= FY_BIT(1),
 	FYGEEF_TRACE			= FY_BIT(2),
 	FYGEEF_OUTPUT_COMMENTS		= FY_BIT(3),
+	FYGEEF_EMIT_EVENTS		= FY_BIT(4),
 };
 
 struct fy_generic_encoder {

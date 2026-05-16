@@ -141,6 +141,7 @@
 #define OPT_CACHE_CLEAR			2033
 #define OPT_CACHE_DIR			2034
 #define OPT_CACHE_INFO			2035
+#define OPT_EMIT_EVENTS			2036
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -243,6 +244,7 @@ static struct option lopts[] = {
 	{"sloppy-flow-indentation", no_argument,	0,	OPT_SLOPPY_FLOW_INDENTATION },
 	{"relaxed-flow-doc",	no_argument,		0,	OPT_RELAXED_FLOW_DOC },
 	{"enable-cache",	no_argument,		0,	OPT_ENABLE_CACHE },
+	{"emit-events",		no_argument,		0,	OPT_EMIT_EVENTS },
 	{"cache-list",		no_argument,		0,	OPT_CACHE_LIST },
 	{"cache-remove",	required_argument,	0,	OPT_CACHE_REMOVE },
 	{"cache-stats",		no_argument,		0,	OPT_CACHE_STATS },
@@ -477,6 +479,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM_DEFAULT("--disable-buffering", "Disable buffering (use unix fd)", DISABLE_BUFFERING_DEFAULT ? "true" : "false");
 	USAGE_ITEM("--disable-mmap", "Disable mmap usage");
 	USAGE_ITEM_DEFAULT("--disable-depth-limit", "Disable depth limit", DISABLE_DEPTH_LIMIT_DEFAULT ? "true" : "false");
+
+#ifdef HAVE_GENERIC
 	USAGE_ITEM("--enable-cache", "Enable transparent regular-file parse cache");
 	USAGE_ITEM("--cache-list", "List parse cache entries");
 	USAGE_ITEM("--cache-info <path|source>", "Show detailed cache entry info in YAML");
@@ -484,6 +488,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM("--cache-clear", "Remove all cache entries");
 	USAGE_ITEM("--cache-dir", "Print the parse cache directory");
 	USAGE_ITEM("--cache-stats", "Show parse cache directory statistics");
+	USAGE_ITEM("--emit-events", "Use events to drive the emitter");
+#endif
 
 	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
 		USAGE_SECTION("Emitter options");
@@ -1617,6 +1623,7 @@ struct generic_config {
 	bool keep_style;
 	bool sloppy_flow_indentation;
 	bool relaxed_flow_doc;
+	bool emit_events;
 };
 
 struct generic_config default_generic_cfg = {
@@ -1854,6 +1861,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (gcfg->emit_cfg_flags & FYECF_NO_ENDING_NEWLINE)
 			emit_flags |= FYOPEF_NO_ENDING_NEWLINE;
 
+		if (gcfg->emit_events)
+			emit_flags |= FYOPEF_EMIT_EVENTS;
+
 		if (!gcfg->null_output) {
 
 			if (!gcfg->testsuite && !gcfg->parse_dump) {
@@ -1990,6 +2000,7 @@ int main(int argc, char *argv[])
 	bool keep_style = false;
 	bool cache_list = false, cache_stats = false, cache_clear = false, cache_dir = false;
 	const char *cache_remove = NULL, *cache_info = NULL;
+	bool emit_events = false;
 #endif
 #ifdef HAVE_REFLECTION
 	/* reflection */
@@ -2383,6 +2394,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_CACHE_INFO:
 			cache_info = optarg;
+			break;
+		case OPT_EMIT_EVENTS:
+			emit_events = true;
 			break;
 #endif
 		case OPT_PREFER_RECURSIVE:
@@ -3382,8 +3396,7 @@ int main(int argc, char *argv[])
 		gcfg.dump_primitives = dump_primitives;
 		gcfg.create_markers = create_markers;
 		gcfg.schema = schema;
-		gcfg.emit_cfg_flags = emit_flags |
-				      (manual_width ? emit_width_flags : 0) |
+		gcfg.emit_cfg_flags = emit_flags | emit_width_flags |
 				      FYECF_INDENT(indent);
 		gcfg.emit_xcfg_flags = emit_xflags;
 		gcfg.parse_cfg_flags = cfg.flags;
@@ -3395,6 +3408,7 @@ int main(int argc, char *argv[])
 		gcfg.keep_style = keep_style;
 		gcfg.sloppy_flow_indentation = !!(cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION);
 		gcfg.relaxed_flow_doc = !!(cfg.flags & FYPCF_RELAXED_FLOW_DOC);
+		gcfg.emit_events = emit_events;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */

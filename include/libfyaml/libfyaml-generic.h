@@ -8498,6 +8498,7 @@ struct fy_op_parse_args {
  * @FYOPEF_STYLE_PRETTY:           Pretty-printed style
  * @FYOPEF_STYLE_COMPACT:          Compact (minimal whitespace) style
  * @FYOPEF_STYLE_ONELINE:          Single-line style
+ * @FYOPEF_EMIT_EVENTS:            Use emit events, not the optimized generic emit path
  */
 enum fy_op_emit_flags {
 	FYOPEF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8537,7 +8538,7 @@ enum fy_op_emit_flags {
 	FYOPEF_STYLE_PRETTY		= FYOPEF_STYLE(3),
 	FYOPEF_STYLE_COMPACT		= FYOPEF_STYLE(4),
 	FYOPEF_STYLE_ONELINE		= FYOPEF_STYLE(5),
-	FYOPEF_XXX			= FY_BIT(25),
+	FYOPEF_EMIT_EVENTS		= FY_BIT(25),
 };
 
 /* FYOPEF_DEFAULT - Recommended default emit flags (disables directory) */
