@@ -105,8 +105,9 @@ AC_PROG_LN_S
 
 AX_PTHREAD([], [AC_MSG_ERROR("Missing required pthread support")])
 
-# in some cases PTHREAD_LIBS is empty - force -lpthread */
-if test "x$PTHREAD_LIBS" = "x"; then
+# In some cases PTHREAD_LIBS is empty; force -lpthread only when PTHREAD_CFLAGS
+# also provides no pthread support (e.g. on Darwin, -pthread in CFLAGS suffices).
+if test "x$PTHREAD_LIBS" = "x" && test "x$PTHREAD_CFLAGS" = "x"; then
 	PTHREAD_LIBS="-lpthread"
 fi
 
