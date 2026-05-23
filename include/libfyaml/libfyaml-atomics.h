@@ -67,15 +67,27 @@ extern "C" {
  * The check is required only for _really_ old compilers
  */
 #if !defined(__STDC__NO_ATOMICS__) && \
-	(defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
-	(defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
-	(defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6)))
+	((!defined(__cplusplus) && \
+	  ((defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
+	   (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
+	   (defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))) || \
+	   (defined(_MSC_VER) && _MSC_VER >= 1928))) || \
+	 (defined(__cplusplus) && defined(_MSC_VER) && _MSC_VER >= 1938))
 #define FY_HAVE_STDATOMIC_H
 #endif
 
 /* Detect standard C11 atomics */
 #ifdef FY_HAVE_STDATOMIC_H
+/* <stdatomic.h> may contain templates (MSVC) or other C++-incompatible
+ * constructs when included inside extern "C"; close the linkage block,
+ * include the header at C++ file scope, then reopen it. */
+#ifdef __cplusplus
+} /* close extern "C" */
+#endif
 #include <stdatomic.h>
+#ifdef __cplusplus
+extern "C" { /* reopen extern "C" */
+#endif
 /*
  * FY_HAVE_C11_ATOMICS - Defined when the ``_Atomic`` qualifier is usable.
  *

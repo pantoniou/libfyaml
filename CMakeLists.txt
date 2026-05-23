@@ -311,7 +311,7 @@ if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
             GIT_TAG        0.15.2
         )
         # Disable check's own tests and docs
-        set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
         set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
         if(WIN32)
             # check's itimerspec/clock_gettime detection is unreliable on
