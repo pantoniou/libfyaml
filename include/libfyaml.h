@@ -27,6 +27,13 @@
 #ifndef LIBFYAML_H
 #define LIBFYAML_H
 
+/* Pull in the portability/atomics shim BEFORE opening the umbrella's
+ * extern "C" block.  libfyaml-atomics.h may transitively #include
+ * <stdatomic.h> (in C++ mode on MSVC C++23 / Clang), whose contents are
+ * C++ templates and therefore cannot live inside extern "C".  The header
+ * is otherwise self-contained (its own extern "C" wrapping is internal). */
+#include <libfyaml/libfyaml-atomics.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -80,7 +87,7 @@ extern "C" {
 #include <libfyaml/libfyaml-blake3.h>
 #include <libfyaml/libfyaml-align.h>
 #include <libfyaml/libfyaml-endian.h>
-#include <libfyaml/libfyaml-atomics.h>
+/* libfyaml-atomics.h is included above, before extern "C", for C++ safety */
 #include <libfyaml/libfyaml-vlsize.h>
 
 #ifdef __cplusplus

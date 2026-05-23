@@ -1285,7 +1285,11 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckClangBlocks.cmake)
 
 # Apply flags if available
 if (HAVE_CLANG_BLOCKS)
-    add_compile_options(-fblocks)
+    # Restrict the global -fblocks flag to C targets only: C++ targets inherit
+    # add_compile_options() entries but -fblocks is a Clang/Apple extension
+    # that GCC's C++ frontend rejects.  C targets also receive it via
+    # COMMON_C_FLAGS below, so there is no change in behaviour for them.
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:-fblocks>)
     list(APPEND COMMON_C_FLAGS -fblocks)
 
     if (CLANG_BLOCKS_LIB)

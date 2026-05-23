@@ -50,6 +50,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* MSVC's _mm_pause()/__yield() intrinsics used by fy_cpu_relax() require
+ * <intrin.h>; pull it in here so the inline definition compiles cleanly in
+ * any translation unit (including C++ TUs that don't otherwise include it). */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,22 +67,57 @@ extern "C" {
  * When defined, the standard ``atomic_*`` types and functions are in scope
  * and all ``fy_atomic_*`` macros delegate to them.
  *
- * This macro is defined if STDC version >= 201112L or
- * for GCC version >= 4.9
- * for clang version >= 3.6
+ * C mode  : STDC version >= 201112L, GCC >= 4.9, Clang >= 3.6, MSVC >= 1928
+ * C++ mode: Clang >= 3.6 (supports <stdatomic.h> and _Atomic as extensions),
+ *           MSVC >= 1938 + C++23 (_MSVC_LANG >= 202302L): MSVC's <stdatomic.h>
+ *           is a stub before C++23 (STL4038 warning) and _Atomic is not
+ *           provided as an extension keyword, so older MSVC C++ modes cannot
+ *           use it.  Build the test executables with /std:c++latest on MSVC.
+ *
+ *           GCC C++ intentionally excluded: it falls back to its own
+ *           ({ }/__typeof__) extension macros instead, which is sufficient
+ *           and avoids pulling <stdatomic.h> into C++ translation units on
+ *           libstdc++ where the interaction is less well-tested.
+ *           Clang must use <stdatomic.h> because libc++'s <atomic> declares
+ *           functions named atomic_load/atomic_store/... that collide with
+ *           the fallback macros when any C++ header transitively includes
+ *           <atomic> (e.g. <optional>, <string_view> on libc++).
  *
  * The check is required only for _really_ old compilers
  */
 #if !defined(__STDC__NO_ATOMICS__) && \
-	(defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
-	(defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
-	(defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6)))
+	((!defined(__cplusplus) && \
+	  ((defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
+	   (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
+	   (defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))) || \
+	   (defined(_MSC_VER) && _MSC_VER >= 1928))) || \
+	 (defined(__cplusplus) && \
+	  ((defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))) || \
+	   (defined(_MSC_VER) && _MSC_VER >= 1938 && \
+	    defined(_MSVC_LANG) && _MSVC_LANG >= 202302L))))
 #define FY_HAVE_STDATOMIC_H
 #endif
 
 /* Detect standard C11 atomics */
 #ifdef FY_HAVE_STDATOMIC_H
+/* <stdatomic.h> may contain templates (MSVC C++23) or other C++-incompatible
+ * constructs when included inside an extern "C" linkage scope.  Use
+ * ``extern "C++"`` to escape *any* depth of enclosing extern "C" blocks --
+ * not just the one this header opens at the top, but also any opened by an
+ * umbrella header that included us (e.g. libfyaml.h wraps all sub-headers in
+ * its own extern "C"). When the brace closes, the enclosing C-linkage scope
+ * is automatically restored.
+ *
+ * Function declarations inside <stdatomic.h> (e.g. atomic_thread_fence) get
+ * C++ linkage in this block, but they are overshadowed by macros in the same
+ * header on every supported compiler, so no symbol is ever referenced. */
+#ifdef __cplusplus
+extern "C++" {
+#endif
 #include <stdatomic.h>
+#ifdef __cplusplus
+} /* close extern "C++" */
+#endif
 /*
  * FY_HAVE_C11_ATOMICS - Defined when the ``_Atomic`` qualifier is usable.
  *
@@ -201,15 +243,16 @@ typedef bool atomic_flag;
 	} while(0)
 
 
+/* C11 atomic_flag_test_and_set returns the *old* value of the flag,
+ * unconditionally setting it to true.  The previous implementation had the
+ * return values inverted (returning true on a previously-clear flag), which
+ * caused fy_atomic_flag_test_and_set() to misreport state on every compiler
+ * that falls back to these macros (e.g. GCC in C++ mode). */
 #define atomic_flag_test_and_set(_ptr) \
 	({ \
 		volatile atomic_flag *__ptr = (_ptr); \
-		bool __ret; \
-		if (!*__ptr) { \
-			*__ptr = true; \
-			__ret = true; \
-		} else \
-			__ret = false; \
+		bool __ret = *__ptr; \
+		*__ptr = true; \
 		__ret; \
 	})
 
