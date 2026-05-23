@@ -1629,6 +1629,64 @@ if(CAN_TEST)
 
 endif()
 
+# C++ compatibility tests
+# These executables are built as C++ translation units and verify that the
+# public libfyaml headers (in particular libfyaml-atomics.h) can be included
+# and used from C++ code — the usage pattern in projects such as MRPT.
+# They require only a C++ compiler and the shared fyaml target; no check/bash.
+include(CheckLanguage)
+check_language(CXX)
+if(CMAKE_CXX_COMPILER)
+    enable_language(CXX)
+
+    # Pick a C++ standard high enough for libfyaml-atomics.h to find a usable
+    # atomic backend on every supported compiler:
+    #
+    #   * GCC / Clang: any C++ standard (>= 17) works — they expose <stdatomic.h>
+    #     or fall back to GCC-extension macros that are accepted in C++.
+    #   * MSVC:        requires C++23 (/std:c++latest), since MSVC's
+    #                  <stdatomic.h> is a stub before C++23 (warning STL4038)
+    #                  and _Atomic is not provided as an extension keyword.
+    if(MSVC)
+        set(_FYAML_CPP_TEST_STANDARD 23)
+    else()
+        set(_FYAML_CPP_TEST_STANDARD 17)
+    endif()
+
+    # Test 1: libfyaml-atomics.h usable from a C++ TU
+    add_executable(libfyaml-test-cpp-atomics
+        test/libfyaml-test-cpp-atomics.cpp
+    )
+    set_target_properties(libfyaml-test-cpp-atomics PROPERTIES
+        CXX_STANDARD ${_FYAML_CPP_TEST_STANDARD}
+        CXX_STANDARD_REQUIRED ON
+    )
+    target_include_directories(libfyaml-test-cpp-atomics PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(libfyaml-test-cpp-atomics PRIVATE fyaml)
+    if(BUILD_TESTING)
+        add_test(NAME cpp-atomics COMMAND libfyaml-test-cpp-atomics)
+    endif()
+
+    # Test 2: libfyaml-core.h (and therefore the full public API) usable
+    # from a pure C++ translation unit — mirrors the MRPT yaml.cpp use-case.
+    add_executable(libfyaml-test-cpp-include-tu
+        test/libfyaml-test-cpp-include-tu.cpp
+    )
+    set_target_properties(libfyaml-test-cpp-include-tu PROPERTIES
+        CXX_STANDARD ${_FYAML_CPP_TEST_STANDARD}
+        CXX_STANDARD_REQUIRED ON
+    )
+    target_include_directories(libfyaml-test-cpp-include-tu PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(libfyaml-test-cpp-include-tu PRIVATE fyaml)
+    if(BUILD_TESTING)
+        add_test(NAME cpp-include-tu COMMAND libfyaml-test-cpp-include-tu)
+    endif()
+endif()
+
 # Documentation
 find_program(SPHINX_EXECUTABLE NAMES sphinx-build)
 find_program(LATEXMK_EXECUTABLE NAMES latexmk)
