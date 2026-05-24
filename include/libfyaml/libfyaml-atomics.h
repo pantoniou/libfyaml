@@ -154,6 +154,68 @@ extern "C++" {
  * therefore only safe in single-threaded contexts.
  */
 #define FY_HAVE_SAFE_ATOMIC_OPS
+#elif defined(_MSC_VER) && defined(__cplusplus)
+
+/* MSVC C++ fallback (C++17 and earlier, where <stdatomic.h> is unavailable).
+ * MSVC does not support GCC statement-expressions ({ }) or __typeof__, so we
+ * use decltype and immediately-invoked C++ lambdas for the fetch-and-modify
+ * operations.  These are plain (non-atomic) loads/stores; safe only in
+ * single-threaded contexts. */
+
+#undef FY_HAVE_SAFE_ATOMIC_OPS
+
+typedef bool atomic_flag;
+
+#define atomic_load(_ptr) \
+	(*(_ptr))
+
+#define atomic_store(_ptr, _val) \
+	do { \
+		*(_ptr) = (_val); \
+	} while(0)
+
+#define atomic_exchange(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) = (_v); return __old; }())
+
+#define atomic_compare_exchange_strong(_ptr, _exp, _des) \
+	([&]() -> bool { \
+		bool __res; \
+		if (*(_ptr) == *(_exp)) { *(_ptr) = (_des); __res = true; } \
+		else __res = false; \
+		return __res; \
+	}())
+
+#define atomic_compare_exchange_weak(_ptr, _exp, _des) \
+	atomic_compare_exchange_strong((_ptr), (_exp), (_des))
+
+#define atomic_fetch_add(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) += (_v); return __old; }())
+
+#define atomic_fetch_sub(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) -= (_v); return __old; }())
+
+#define atomic_fetch_or(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) |= (_v); return __old; }())
+
+#define atomic_fetch_xor(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) ^= (_v); return __old; }())
+
+#define atomic_fetch_and(_ptr, _v) \
+	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) &= (_v); return __old; }())
+
+#define atomic_flag_clear(_ptr) \
+	do { \
+		*(_ptr) = false; \
+	} while(0)
+
+#define atomic_flag_set(_ptr) \
+	do { \
+		*(_ptr) = true; \
+	} while(0)
+
+#define atomic_flag_test_and_set(_ptr) \
+	([&]() -> bool { volatile atomic_flag *__p = (_ptr); bool __ret = *__p; *__p = true; return __ret; }())
+
 #else
 
 #undef FY_HAVE_SAFE_ATOMIC_OPS
