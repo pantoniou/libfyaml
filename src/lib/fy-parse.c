@@ -6177,8 +6177,11 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 
 	/* keep on producing STREAM_END */
 	if (!fyt && fyp->stream_end_token) {
-		fyt = fyp->stream_end_token;
-		fy_token_list_add_tail(&fyp->queued_tokens, fyt);
+		fyt = fy_token_create_rl(fyp->recycled_token_list,
+					 fyp->stream_end_token->type,
+					 &fyp->stream_end_token->handle);
+		if (fyt)
+			fy_token_list_add_tail(&fyp->queued_tokens, fyt);
 
 		fyp_parse_debug(fyp, "generated copy of STRM-");
 	}
