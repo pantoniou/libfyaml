@@ -712,6 +712,80 @@ START_TEST(fuzz_parse_comment_with_override)
 }
 END_TEST
 
+START_TEST(fuzz_stream_end_token_replay_cleanup)
+{
+	char data[] = "\x2a\x26\x7b\x7b\x26\x26\x26\x7b\x26\x26\x26\x26\x5b\x26\x26\x26";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_COLLECT_DIAG | FYPCF_DEFAULT_VERSION_1_1 |
+			 FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE |
+			 FYPCF_JSON_FORCE | FYPCF_RELAXED_FLOW_DOC,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, data, sizeof(data));
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(fuzz_issue_298_list_del_uaf_repro)
+{
+	char data[] =
+		"\x5b\x5d\x5b\x5b\x5b\x5b\x00\x6c\x6f\x6e\x67\xff\x00\xbc\xbc\x0a"
+		"\xbc\x9c\x2a\x0a\xbc\x43\x43\xbc\xbc\xac\x36\xbc\xbc\xbc\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x67\xff\x00\x5b\x5b\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x74\x5b\x5b"
+		"\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x5b\x3f";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_VERSION_1_1 |
+			 FYPCF_SLOPPY_FLOW_INDENTATION |
+			 FYPCF_YPATH_ALIASES |
+			 FYPCF_ALLOW_DUPLICATE_KEYS |
+			 FYPCF_CREATE_MARKERS |
+			 FYPCF_RELAXED_FLOW_DOC,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, data, sizeof(data));
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(fuzz_issue_299_token_unref_uaf_repro)
+{
+	char data[] = "\x2a\x26\x7b\x7b\x26\x26\x26\x7b\x26\x26\x26\x26\x5b\x26\x26\x26";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_COLLECT_DIAG | FYPCF_DEFAULT_VERSION_1_1 |
+			 FYPCF_PREFER_RECURSIVE | FYPCF_JSON_NONE |
+			 FYPCF_JSON_FORCE | FYPCF_RELAXED_FLOW_DOC,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, data, sizeof(data));
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(fuzz_issue_300_token_unref_overflow_repro)
+{
+	char data[] = "\x20\x20\x2a\x2a\x09\x5b";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_VERSION_1_1 |
+			 FYPCF_SLOPPY_FLOW_INDENTATION |
+			 FYPCF_JSON_NONE |
+			 FYPCF_JSON_FORCE |
+			 FYPCF_RELAXED_FLOW_DOC |
+			 FYPCF_ENABLE_CACHE,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, data, sizeof(data));
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(fuzz_resolve_document_ypath_null_alias)
 {
 	char buf[] = ":\n*.null";
@@ -1225,6 +1299,10 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_collect_diag_parse_comments_sequence);
 	fy_check_testcase_add_test(ctc, fuzz_node_compare_clone_quoted_scalar);
 	fy_check_testcase_add_test(ctc, fuzz_parse_comment_with_override);
+	fy_check_testcase_add_test(ctc, fuzz_stream_end_token_replay_cleanup);
+	fy_check_testcase_add_test(ctc, fuzz_issue_298_list_del_uaf_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_299_token_unref_uaf_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_300_token_unref_overflow_repro);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
