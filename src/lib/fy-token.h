@@ -35,7 +35,7 @@ static inline bool fy_token_type_is_sequence_start(enum fy_token_type type)
 
 static inline bool fy_token_type_is_sequence_end(enum fy_token_type type)
 {
-	return type == FYTT_BLOCK_SEQUENCE_START || type == FYTT_FLOW_SEQUENCE_START;
+	return type == FYTT_BLOCK_END || type == FYTT_FLOW_SEQUENCE_END;
 }
 
 static inline bool fy_token_type_is_sequence_marker(enum fy_token_type type)
@@ -50,7 +50,7 @@ static inline bool fy_token_type_is_mapping_start(enum fy_token_type type)
 
 static inline bool fy_token_type_is_mapping_end(enum fy_token_type type)
 {
-	return type == FYTT_BLOCK_MAPPING_START || type == FYTT_FLOW_MAPPING_START;
+	return type == FYTT_BLOCK_END || type == FYTT_FLOW_MAPPING_END;
 }
 
 static inline bool fy_token_type_is_mapping_marker(enum fy_token_type type)
