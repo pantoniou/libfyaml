@@ -1642,6 +1642,23 @@ bool fy_generic_is_direct_collection(const fy_generic v)
 FY_GENERIC_IS_TEMPLATE_INLINE(collection);
 
 /**
+ * fy_generic_is_direct_scalar() - Test whether a direct generic is a scalar
+ *
+ * @v: A direct generic value.
+ *
+ * Returns:
+ * true if @v is a scalar (but not invalid)
+ */
+static inline FY_ALWAYS_INLINE
+bool fy_generic_is_direct_scalar(const fy_generic v)
+{
+	return !fy_generic_is_invalid(v) && !fy_generic_is_collection(v);
+}
+
+/* Generates fy_generic_is_scalar() and indirect variants */
+FY_GENERIC_IS_TEMPLATE_INLINE(scalar);
+
+/**
  * fy_generic_collectionp_get_items() - Get the items array from a collection pointer.
  *
  * Returns the flat item array of a sequence or mapping storage block.
