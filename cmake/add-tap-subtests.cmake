@@ -52,6 +52,9 @@ endfunction()
 # Used by add_testsuite_tests to avoid code duplication
 macro(_register_testsuite_test test_name test_dir test_id skip_list xfail_list extra_env)
     if(EXISTS "${test_dir}/===")
+        set(_skip_list ${skip_list})
+        set(_xfail_list ${xfail_list})
+
         # Read description from === file
         file(READ "${test_dir}/===" _test_desc)
         string(STRIP "${_test_desc}" _test_desc)
@@ -68,13 +71,13 @@ macro(_register_testsuite_test test_name test_dir test_id skip_list xfail_list e
         set(_test_disabled FALSE)
 
         # Check if test should be skipped
-        if(test_id IN_LIST skip_list)
+        if("${test_id}" IN_LIST _skip_list)
             set(_test_disabled TRUE)
             set(_test_labels "${test_name};skipped")
         endif()
 
         # Check if test is expected to fail (xfail)
-        if(test_id IN_LIST xfail_list)
+        if("${test_id}" IN_LIST _xfail_list)
             set(_test_labels "${test_name};xfail")
         endif()
 
@@ -83,6 +86,12 @@ macro(_register_testsuite_test test_name test_dir test_id skip_list xfail_list e
                 LABELS "${_test_labels}"
                 EXTRA_ENV "${extra_env}"
                 DISABLED
+            )
+        elseif("${test_id}" IN_LIST _xfail_list)
+            add_tap_test("${_test_name_full}" "${test_name}" "${test_id}"
+                LABELS "${_test_labels}"
+                EXTRA_ENV "${extra_env}"
+                WILL_FAIL
             )
         else()
             add_tap_test("${_test_name_full}" "${test_name}" "${test_id}"
@@ -194,20 +203,26 @@ function(add_testsuite_tests test_name test_script)
     # Define skip/xfail lists based on test suite variant
     # These match the lists in test/*.test scripts
     if(test_name STREQUAL "testsuite-json")
+        if(NOT JQ_EXECUTABLE)
+            message(STATUS "Skipping ${test_name} subtests: jq not found")
+            return()
+        endif()
         set(skip_list "UGM3")
         set(xfail_list "C4HZ")
+        set(extra_env "JQ=${JQ_EXECUTABLE}")
     elseif(test_name STREQUAL "testsuite-resolution")
         set(skip_list "2JQS" "X38W")
         set(xfail_list "")
+        set(extra_env "")
     elseif(test_name STREQUAL "testsuite-evstream")
         set(skip_list "2JQS")
         set(xfail_list "")
+        set(extra_env "")
     else()
         set(skip_list "")
         set(xfail_list "")
+        set(extra_env "")
     endif()
-
-    set(extra_env "JQ=${JQ_EXECUTABLE}")
 
     message(STATUS "Registering individual ${test_name} subtests")
 
@@ -222,6 +237,12 @@ function(add_testsuite_tests test_name test_script)
         # Filter: must be 4 alphanumeric chars (YAML test suite IDs like "229Q", "2JQS")
         if(NOT base_id MATCHES "^[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
             continue()
+        endif()
+
+        if(test_name STREQUAL "testsuite-json")
+            if(EXISTS "${base_test}/error" OR NOT EXISTS "${base_test}/in.json")
+                continue()
+            endif()
         endif()
 
         # Register base test
@@ -241,6 +262,12 @@ function(add_testsuite_tests test_name test_script)
             endif()
 
             set(full_test_id "${base_id}/${subtest_id}")
+            if(test_name STREQUAL "testsuite-json")
+                if(EXISTS "${subtest}/error" OR NOT EXISTS "${subtest}/in.json")
+                    continue()
+                endif()
+            endif()
+
             _register_testsuite_test("${test_name}" "${subtest}" "${full_test_id}"
                 "${skip_list}" "${xfail_list}" "${extra_env}")
         endforeach()

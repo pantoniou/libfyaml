@@ -206,7 +206,7 @@ case "$test_suite" in
             "${EMITTER_PARSE_ARGS:---testsuite --disable-flow-markers}"
         ;;
 
-    testsuite|testsuite-json|testsuite-resolution)
+    testsuite|testsuite-resolution)
         tst="${YAML_TEST_SUITE}/${test_id}"
         desctxt=$(cat 2>/dev/null "$tst/===")
 
@@ -244,6 +244,40 @@ case "$test_suite" in
         rm -f "$t"
 
         echo "$res 1 $test_id - $desctxt"
+
+        if [ "$res" == "ok" ]; then
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+
+    testsuite-json)
+        tst="${YAML_TEST_SUITE}/${test_id}"
+        desctxt=$(cat 2>/dev/null "$tst/===")
+
+        t1=$(mktemp)
+        t2=$(mktemp)
+
+        res="not ok"
+
+        if [ -x "$JQ" ]; then
+            run_tool "${FY_TOOL}" --dump --strip-labels --strip-tags --strip-doc -r -mjson "$tst/in.yaml" | \
+                "$JQ" --sort-keys . >"$t1"
+            if [ $? -eq 0 ]; then
+                "$JQ" --sort-keys . <"$tst/in.json" >"$t2"
+                if [ $? -eq 0 ]; then
+                    diff -u "$t1" "$t2"
+                    if [ $? -eq 0 ]; then
+                        res="ok"
+                    fi
+                fi
+            fi
+        fi
+
+        rm -f "$t1" "$t2"
+
+        echo "$res 1 $test_id - $desctxt (JSON)"
 
         if [ "$res" == "ok" ]; then
             exit 0
