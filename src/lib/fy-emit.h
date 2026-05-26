@@ -29,6 +29,7 @@
 #define FYEF_HAD_DOCUMENT_END		0x0010
 #define FYEF_HAD_DOCUMENT_OUTPUT	0x0020
 #define FYEF_HAD_DOCUMENT_END_OUTPUT	0x0040
+#define FYEF_NEED_WS_BEFORE_IND		0x0080
 
 struct fy_document;
 struct fy_emitter;

@@ -420,6 +420,12 @@ void fy_emit_write_indicator(struct fy_emitter *emit,
 				wtype <= FYEWT_EXTENDED_INDICATORS_LAST);
 	}
 
+	if (emit->flags & FYEF_NEED_WS_BEFORE_IND) {
+		emit->flags &= ~FYEF_NEED_WS_BEFORE_IND;
+		if (!fy_emit_whitespace(emit))
+			fy_emit_write_ws(emit);
+	}
+
 	switch (indicator) {
 
 	case di_question_mark:
