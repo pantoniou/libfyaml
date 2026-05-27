@@ -21,6 +21,9 @@
 
 #include "fy-parse.h"
 #include "fy-emit.h"
+#ifdef HAVE_GENERIC
+#include "fy-generic.h"
+#endif
 
 static void fy_emitter_fill_default_colors(struct fy_emitter *fye);
 static FILE *fy_emitter_get_output_fp(struct fy_emitter *fye);
@@ -5086,3 +5089,958 @@ err_out:
 	fy_document_iterator_destroy(fydi);
 	return -1;
 }
+
+#ifdef HAVE_GENERIC
+
+static inline bool
+fy_emit_generic_is_null_scalar(struct fy_emitter *emit FY_UNUSED,
+			       fy_generic v)
+{
+	return fy_generic_is_string(v) && fy_len(v) == 0;
+}
+
+static inline bool
+fy_emit_generic_is_json_plain(struct fy_emitter *emit, fy_generic v)
+{
+	/* must be one of these JSON modes */
+	if (!(fy_emit_is_json_mode(emit) || emit->source_json || fy_emit_is_dejson_mode(emit)))
+		return false;
+
+	return fy_emit_generic_is_null_scalar(emit, v) ||
+	       fy_generic_is_null_type(v) ||
+	       fy_generic_is_bool_type(v) ||
+	       fy_generic_is_int_type(v) ||
+	       fy_generic_is_float_type(v);
+}
+
+static enum fy_node_style
+fy_emit_generic_scalar_style(struct fy_emitter *emit, fy_generic v, fy_generic_sized_string szstr,
+			     int flags, int indent, enum fy_node_style style,
+			     fy_generic_sized_string szstr_tag, struct fy_text_analysis *ta)
+{
+	struct fy_text_analysis ta_mod;
+
+	/* analyze only if needed */
+	if (!ta || !(ta->flags & FYTTAF_ANALYZED))
+		fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta_mod);
+	else /* already analyzed, use that */
+		ta_mod = *ta;
+
+	if (fy_emit_generic_is_null_scalar(emit, v))
+		ta_mod.flags |= FYTTAF_X_NULL_SCALAR;
+	if (fy_emit_generic_is_json_plain(emit, v))
+		ta_mod.flags |= FYTTAF_X_JSON_PLAIN;
+	if ((ta_mod.flags & FYTTAF_X_JSON_PLAIN) &&
+			fy_emit_tag_text_is_double_quoted(emit, szstr_tag.data, szstr_tag.size))
+		ta_mod.flags |= FYTTAF_X_TAG_DQ;
+	if (ta_mod.lbs >= FY_EMIT_MIN_LITERAL_LBS)
+		ta_mod.flags |= FYTTAF_X_OVER_MIN_LITERAL_LBS;
+
+	return fy_emit_scalar_style_from_analysis(emit, flags, indent, style, &ta_mod);
+}
+
+bool fy_emit_generic_has_comment(struct fy_emitter *emit, fy_generic v,
+				 enum fy_comment_placement placement)
+{
+	return (emit->xcfg.cfg.flags & FYECF_OUTPUT_COMMENTS) &&
+		fy_generic_is_valid(fy_generic_get_comment(v, placement));
+}
+
+void fy_emit_generic_comment(struct fy_emitter *emit, fy_generic v, int flags, int indent,
+			     enum fy_comment_placement placement)
+{
+	fy_generic vcomm;
+	fy_generic_sized_string szstr;
+
+	vcomm = fy_generic_get_comment(v, placement);
+	if (fy_generic_is_invalid(vcomm))
+		return;
+
+	szstr = fy_cast(vcomm, fy_szstr_empty);
+	fy_emit_comment(emit, flags, indent, placement,
+			szstr.data, szstr.size, 0, fylb_cr_nl, true);
+}
+
+int fy_emit_generic_scalar_prolog(struct fy_emitter *emit, fy_generic v, int flags, int indent)
+{
+	struct fy_emit_save_ctx *sc = &emit->s_sc;
+
+	if (sc->flags & DDNF_HANGING_INDENT)
+		fy_emit_write_indent(emit, sc->indent);
+
+	/* root scalar with a comment needs special handling */
+	if ((flags & DDNF_ROOT) && fy_emit_generic_has_comment(emit, v, fycp_top))
+		fy_emit_generic_comment(emit, v, flags, indent, fycp_top);
+
+	indent = fy_emit_increase_indent(emit, flags, indent);
+
+	if (!fy_emit_whitespace(emit))
+		fy_emit_write_ws(emit);
+
+	return indent;
+}
+
+void fy_emit_generic_scalar_epilog(struct fy_emitter *emit FY_UNUSED, fy_generic v, int flags, int indent)
+{
+	struct fy_emit_save_ctx *sc = &emit->s_sc;
+
+	/* root scalar with a comment needs special handling */
+	if ((flags & DDNF_ROOT) && fy_emit_generic_has_comment(emit, v, fycp_right)) {
+		fy_emit_generic_comment(emit, v, flags, indent, fycp_right);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+}
+
+/* generic */
+
+/* for generic */
+struct generic_state {
+	fy_generic v;
+	fy_generic_sized_string szstr;
+	const char *s;
+	const char *e;
+};
+
+/* simple run of characters, fast and 90% of the plain cases */
+static const char *
+generic_get_direct(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state, size_t *lenp)
+{
+	struct generic_state *gstate = state->user;
+
+	/* scalars that are not strings are directs */
+	if (!fy_generic_is_string(gstate->v)) {
+		*lenp = gstate->szstr.size;
+		return gstate->szstr.data;
+	}
+
+	/* maybe do something smart for strings */
+	*lenp = 0;
+	return NULL;
+}
+
+static void
+generic_iter_start(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state)
+{
+	struct generic_state *gstate = state->user;
+	gstate->s = gstate->szstr.data;
+	gstate->e = gstate->s + gstate->szstr.size;
+}
+
+static void
+generic_iter_end(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state FY_UNUSED)
+{
+	/* nothing */
+}
+
+static int
+generic_iter_getc(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state)
+{
+	struct generic_state *gstate = state->user;
+	int c, w;
+
+	c = fy_utf8_get(gstate->s, (size_t)(gstate->e - gstate->s), &w);
+	if (c < 0)
+		return c;
+
+	gstate->s += w;
+	return c;
+}
+
+static int
+generic_iter_peekc(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state)
+{
+	struct generic_state *gstate = state->user;
+	int w;
+
+	/* do not advance */
+	return fy_utf8_get(gstate->s, (size_t)(gstate->e - gstate->s), &w);
+}
+
+static int generic_iter_getc_dq(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state, uint8_t *buf, size_t *lenp)
+{
+	struct generic_state *gstate = state->user;
+	int c, w;
+	size_t avail;
+	uint8_t b;
+
+	if (!lenp || !buf || *lenp < 4)
+		return -1;
+
+	avail = (size_t)(gstate->e - gstate->s);
+
+	/* EOF */
+	if (!avail)
+		return FYUG_EOF;
+
+	b = *(uint8_t *)gstate->s;
+	w = fy_utf8_width_by_first_octet(b);
+
+	/* illegal utf8 */
+	if (!w) {
+		buf[0] = b;
+		*lenp = 1;
+		return 0;	/* illegal */
+	}
+
+	/* not enough in avail */
+	if ((size_t)w > avail) {
+		memcpy(buf, gstate->s, avail);
+		*lenp = avail;
+		return 0;
+	}
+
+	c = fy_utf8_get(gstate->s, (size_t)(gstate->e - gstate->s), &w);
+	if (c < 0)	/* any kind of error */
+		return c;
+
+	gstate->s += w;
+	if (c == 0) {
+		buf[0] = '\0';
+		*lenp = 1;
+	}
+
+	return c;
+}
+
+static const struct fy_emit_write_ops generic_ops = {
+	.get_direct = generic_get_direct,
+	.iter_start = generic_iter_start,
+	.iter_end = generic_iter_end,
+	.iter_getc = generic_iter_getc,
+	.iter_peekc = generic_iter_peekc,
+	.iter_getc_dq = generic_iter_getc_dq,
+};
+
+void fy_emit_generic_write_plain(struct fy_emitter *emit, fy_generic v,
+				 fy_generic_sized_string szstr,
+				 struct fy_text_analysis *ta,
+				 int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE s/e/ not initialized; it is on iter_start */
+
+	state.style = FYNS_PLAIN;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_plain_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_write_alias(struct fy_emitter *emit, fy_generic v,
+				 fy_generic_sized_string szstr,
+				 struct fy_text_analysis *ta,
+				 int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE s/e/ not initialized; it is on iter_start */
+
+	state.style = FYNS_ALIAS;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_alias_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_write_single_quoted(struct fy_emitter *emit, fy_generic v,
+					 fy_generic_sized_string szstr,
+					 struct fy_text_analysis *ta,
+					 int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+	struct fy_text_analysis ta_local;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE iter not initialized; it is on iter_start */
+
+	if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+		fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta_local);
+		ta = &ta_local;
+	}
+
+	state.style = FYNS_SINGLE_QUOTED;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_single_quoted_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_write_double_quoted(struct fy_emitter *emit, fy_generic v,
+					 fy_generic_sized_string szstr,
+					 struct fy_text_analysis *ta,
+					 int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+	struct fy_text_analysis ta_local;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE iter not initialized; it is on iter_start */
+
+	if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+		fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta_local);
+		ta = &ta_local;
+	}
+
+	state.style = FYNS_DOUBLE_QUOTED;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_double_quoted_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_write_literal(struct fy_emitter *emit, fy_generic v,
+				   fy_generic_sized_string szstr,
+				   struct fy_text_analysis *ta,
+				   int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+	struct fy_text_analysis ta_local;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE iter not initialized; it is on iter_start */
+
+	if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+		fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta_local);
+		ta = &ta_local;
+	}
+
+	state.style = FYNS_LITERAL;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_literal_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_write_folded(struct fy_emitter *emit, fy_generic v,
+				  fy_generic_sized_string szstr,
+				  struct fy_text_analysis *ta,
+				  int flags, int indent)
+{
+	struct generic_state gstate;
+	struct fy_emit_write_state state;
+	struct fy_text_analysis ta_local;
+
+	gstate.v = v;
+	gstate.szstr = szstr;
+	/* NOTE iter not initialized; it is on iter_start */
+
+	if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+		fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta_local);
+		ta = &ta_local;
+	}
+
+	state.style = FYNS_FOLDED;
+	state.lb_mode = fylb_cr_nl;
+	state.ta = ta;
+	state.user = &gstate;
+	state.ops = &generic_ops;
+
+	fy_emit_write_folded_with_state(emit, flags, indent, &state);
+}
+
+void fy_emit_generic_scalar(struct fy_emitter *emit, fy_generic v, int flags, int indent,
+			    enum fy_node_style style, fy_generic_sized_string szstr_tag,
+			    fy_generic_sized_string *szstrp, struct fy_text_analysis *ta)
+{
+	fy_generic cv;
+	fy_generic_sized_string szstr;
+
+	assert(style != FYNS_FLOW && style != FYNS_BLOCK);
+
+	/* convert everything for now to string */
+	if (!szstrp) {
+		cv = fy_convert(v, FYGT_STRING);
+		szstr = fy_cast(cv, fy_szstr_empty);
+	} else {
+		szstr = *szstrp;	/* avoid double conversion */
+	}
+
+	if (style != FYNS_ALIAS)
+		style = fy_emit_generic_scalar_style(emit, v, szstr, flags, indent, style, szstr_tag, ta);
+
+	indent = fy_emit_generic_scalar_prolog(emit, v, flags, indent);
+
+	switch (style) {
+	case FYNS_ALIAS:
+		fy_emit_generic_write_alias(emit, v, szstr, ta, flags, indent);
+		break;
+	case FYNS_PLAIN:
+		fy_emit_generic_write_plain(emit, v, szstr, ta, flags, indent);
+		break;
+	case FYNS_DOUBLE_QUOTED:
+		fy_emit_generic_write_double_quoted(emit, v, szstr, ta, flags, indent);
+		break;
+	case FYNS_SINGLE_QUOTED:
+		fy_emit_generic_write_single_quoted(emit, v, szstr, ta, flags, indent);
+		break;
+	case FYNS_LITERAL:
+		fy_emit_generic_write_literal(emit, v, szstr, ta, flags, indent);
+		break;
+	case FYNS_FOLDED:
+		fy_emit_generic_write_folded(emit, v, szstr, ta, flags, indent);
+		break;
+
+	default:
+		break;
+	}
+
+	fy_emit_generic_scalar_epilog(emit, v, flags, indent);
+}
+
+static void fy_emit_generic_collection_comment_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						     fy_generic v)
+{
+	if (!(sc->flags & DDNF_SEQ) && fy_emit_generic_has_comment(emit, v, fycp_top)) {
+		fy_emit_generic_comment(emit, v, sc->flags, sc->indent, fycp_top);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+}
+
+static void fy_emit_generic_collection_comment_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						      fy_generic v)
+{
+	if (fy_emit_generic_has_comment(emit, v, fycp_bottom))
+		fy_emit_generic_comment(emit, v, sc->flags, sc->old_indent, fycp_bottom);
+}
+
+static void fy_emit_generic_sequence_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					    fy_generic v)
+{
+	fy_emit_generic_collection_comment_prolog(emit, sc, v);
+	fy_emit_sequence_prolog(emit, sc);
+}
+
+static void fy_emit_generic_sequence_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					    fy_generic v)
+{
+	fy_emit_sequence_epilog(emit, sc);
+	fy_emit_generic_collection_comment_epilog(emit, sc, v);
+}
+
+static void fy_emit_generic_sequence_item_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						 fy_generic v)
+{
+	fy_emit_sequence_item_prolog_before_comment(emit, sc);
+
+	if (fy_emit_generic_has_comment(emit, v, fycp_top)) {
+		fy_emit_generic_comment(emit, v, sc->flags, sc->indent, fycp_top);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+
+	fy_emit_sequence_item_prolog_after_comment(emit, sc);
+}
+
+static void fy_emit_generic_sequence_item_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						 bool last, fy_generic v)
+{
+	fy_emit_sequence_item_epilog_before_comment(emit, sc, last);
+
+	if (fy_emit_generic_has_comment(emit, v, fycp_right)) {
+		fy_emit_generic_comment(emit, v, sc->flags, sc->indent, fycp_right);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+	fy_emit_sequence_item_epilog_after_comment(emit, sc, last);
+}
+
+static int
+fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int indent, bool is_key,
+			 fy_generic_sized_string *scalar_szstr, struct fy_text_analysis *scalar_ta);
+
+void fy_emit_generic_sequence(struct fy_emitter *emit, fy_generic v, int flags, int indent)
+{
+	fy_generic_sequence_handle seqh;
+	fy_generic vitem;
+	size_t i;
+	bool last;
+	struct fy_emit_save_ctx sct, *sc = &sct;
+
+	seqh = fy_cast(v, fy_seq_handle_null);
+
+	memset(sc, 0, sizeof(*sc));
+
+	sc->flags = flags;
+	sc->indent = indent;
+	sc->flow = !!(flags & DDNF_FLOW);
+	sc->old_indent = sc->indent;
+
+	sc->xstyle = fy_generic_get_node_style(v);
+	sc->flow_token = sc->xstyle == FYNS_FLOW;
+	sc->empty = !seqh || seqh->count == 0;
+	sc->oneline_flow = false;	/* yeah, we don't do that */
+
+	fy_emit_generic_sequence_prolog(emit, sc, v);
+
+	if (seqh) {
+		for (i = 0; i < seqh->count; i++) {
+
+			vitem = seqh->items[i];
+			last = i == (seqh->count - 1);
+
+			fy_emit_generic_sequence_item_prolog(emit, sc, vitem);
+			fy_emit_generic_internal(emit, vitem, sc->flags & ~DDNF_ROOT, sc->indent,
+						 false, NULL, NULL);
+			fy_emit_generic_sequence_item_epilog(emit, sc, last, vitem);
+		}
+	}
+
+	fy_emit_generic_sequence_epilog(emit, sc, v);
+}
+
+static void fy_emit_generic_mapping_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					   fy_generic v)
+{
+	fy_emit_generic_collection_comment_prolog(emit, sc, v);
+	fy_emit_mapping_prolog(emit, sc);
+}
+
+static void fy_emit_generic_mapping_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					   fy_generic v)
+{
+	fy_emit_mapping_epilog(emit, sc);
+	fy_emit_generic_collection_comment_epilog(emit, sc, v);
+}
+
+static void fy_analyze_generic_scalar_content(fy_generic v, struct fy_text_analysis *ta)
+{
+	enum fy_scalar_style sstyle;
+	fy_generic cv;
+	fy_generic_sized_string szstr;
+
+	assert(fy_generic_is_scalar(v));
+
+	if (!ta || (ta->flags & FYTTAF_ANALYZED))
+		return;
+
+	sstyle = fy_generic_get_scalar_style(v);
+
+	cv = fy_convert(v, FYGT_STRING);
+	szstr = fy_castp(&cv, fy_szstr_empty);
+
+	fy_analyze_scalar_content(szstr.data, szstr.size, sstyle, fylb_cr_nl, ta);
+}
+
+static void fy_emit_generic_mapping_key_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					       fy_generic vkey, bool simple_key,
+					       struct fy_text_analysis *ta)
+{
+	bool do_indent, key_over, has_comment;
+	struct fy_text_analysis ta_local;
+
+	sc->flags = DDNF_MAP | (sc->flags & DDNF_FLOW);
+
+	if (!fy_emit_sc_oneline(emit, sc) ||
+	    ((fy_emit_is_compact(emit) || sc->flow) && emit->column >= fy_emit_width(emit)))
+		fy_emit_write_indent(emit, sc->indent);
+
+	/* emit top comment on key token (interstitial mapping comment) */
+	if (!sc->flow && fy_emit_generic_has_comment(emit, vkey, fycp_top)) {
+		fy_emit_generic_comment(emit, vkey, sc->flags, sc->indent, fycp_top);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+
+	/* if we have a right comment then it's by a definition not a simple key */
+	has_comment = fy_emit_generic_has_comment(emit, vkey, fycp_right);
+
+	if (simple_key /* && !has_comment */ ) {
+		sc->flags |= DDNF_SIMPLE;
+		if (fy_generic_is_scalar(vkey))
+			sc->flags |= DDNF_SIMPLE_SCALAR_KEY;
+	} else {
+		/* do not emit the ? in flow modes at all */
+		if (fy_emit_is_flow_mode(emit))
+			sc->flags |= DDNF_SIMPLE;
+	}
+
+	do_indent = false;
+	if (!has_comment && !fy_emit_sc_oneline(emit, sc) && !fy_emit_is_width_infinite(emit)) {
+
+		if (fy_generic_is_collection(vkey))
+			/* always indent on non scalar keys */
+			key_over = true;
+		else {
+			if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+				fy_analyze_generic_scalar_content(vkey, &ta_local);
+				ta = &ta_local;
+			}
+			key_over = (emit->column + ta->maxspan + 2 + (!simple_key ? 2 : 0)) >= fy_emit_width(emit);
+		}
+
+		do_indent = key_over;
+		if (!do_indent && !fy_emit_is_compact(emit))
+			do_indent = !sc->flow || (sc->flags & DDNF_HANGING_INDENT);
+	} else
+		do_indent = false;
+
+	if (do_indent)
+		fy_emit_write_indent(emit, sc->indent);
+
+	/* complex? */
+	if (!(sc->flags & DDNF_SIMPLE))
+		fy_emit_write_indicator(emit, di_question_mark, sc->flags, sc->indent, fyewt_indicator);
+}
+
+static void fy_emit_generic_mapping_key_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+					       fy_generic vkey)
+{
+	/* if the key is an alias, always output an extra whitespace */
+	if (fy_generic_is_alias(vkey))
+		fy_emit_write_ws(emit);
+
+	sc->flags &= ~DDNF_MAP;
+
+	if (!(sc->flags & DDNF_SIMPLE)) {
+
+		if (fy_emit_generic_has_comment(emit, vkey, fycp_right)) {
+			fy_emit_generic_comment(emit, vkey, sc->flags, sc->indent, fycp_right);
+			sc->flags |= DDNF_HANGING_INDENT;
+		}
+
+		if (!emit->flow_level && !fy_emit_is_oneline_or_compact(emit))
+			fy_emit_write_indent(emit, sc->indent);
+		if (!fy_emit_whitespace(emit))
+			fy_emit_write_ws(emit);
+	} else {
+	}
+
+	fy_emit_write_indicator(emit, di_colon, sc->flags, sc->indent, fyewt_indicator);
+
+	sc->flags &= ~DDNF_HANGING_INDENT;
+
+	if ((sc->flags & DDNF_SIMPLE) && fy_emit_generic_has_comment(emit, vkey, fycp_right)) {
+		fy_emit_generic_comment(emit, vkey, sc->flags, sc->indent, fycp_right);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+
+	sc->flags = DDNF_MAP | (sc->flags & (DDNF_FLOW | DDNF_HANGING_INDENT));
+}
+
+static void fy_emit_generic_mapping_value_prolog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						 fy_generic vvalue, struct fy_text_analysis *ta)
+{
+	struct fy_text_analysis ta_local;
+	bool value_over;
+
+	if (sc->flags & DDNF_HANGING_INDENT)
+		fy_emit_write_indent(emit, sc->indent);
+
+	if (!sc->flow || fy_emit_sc_oneline(emit, sc))
+		return;
+
+	/* don't do anything for those cases */
+	if (fy_generic_is_scalar(vvalue) && !fy_emit_is_width_infinite(emit)) {
+		if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+			fy_analyze_generic_scalar_content(vvalue, &ta_local);
+			ta = &ta_local;
+		}
+		value_over = (emit->column + ta->maxspan) >= fy_emit_width(emit);
+		if (value_over) {
+			sc->indent = fy_emit_increase_indent(emit, sc->flags, sc->indent);
+			fy_emit_write_indent(emit, sc->indent);
+		}
+	}
+}
+
+static void fy_emit_generic_mapping_value_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
+						 bool last, fy_generic vvalue)
+{
+	bool needs_hanging_indent;
+
+	if ((sc->flow || fy_emit_is_json_mode(emit)) && !last)
+		fy_emit_write_indicator(emit, di_comma, sc->flags, sc->indent, fyewt_indicator);
+
+	if (fy_emit_generic_has_comment(emit, vvalue, fycp_right)) {
+		fy_emit_generic_comment(emit, vvalue, sc->flags, sc->indent, fycp_right);
+		sc->flags |= DDNF_HANGING_INDENT;
+	}
+
+	needs_hanging_indent = sc->flow && !fy_emit_sc_oneline(emit, sc) && !sc->empty;
+
+	if (last && needs_hanging_indent && (sc->flags & DDNF_HANGING_INDENT))
+		fy_emit_write_indent(emit, sc->old_indent);
+	else if (needs_hanging_indent)
+		sc->flags |= DDNF_HANGING_INDENT;
+
+	sc->flags &= ~DDNF_MAP;
+}
+
+void fy_emit_generic_mapping(struct fy_emitter *emit, fy_generic v, int flags, int indent)
+{
+	fy_generic_mapping_handle maph;
+	fy_generic vkey, vvalue;
+	bool last, simple_key;
+	struct fy_text_analysis tak, tav;
+	size_t i;
+	struct fy_emit_save_ctx sct, *sc = &sct;
+
+	maph = fy_cast(v, fy_map_handle_null);
+
+	memset(sc, 0, sizeof(*sc));
+
+	sc->flags = flags;
+	sc->indent = indent;
+	sc->flow = !!(flags & DDNF_FLOW);
+	sc->old_indent = sc->indent;
+
+	sc->xstyle = fy_generic_get_node_style(v);
+	sc->flow_token = sc->xstyle == FYNS_FLOW;
+	sc->empty = !maph || maph->count == 0;
+	sc->oneline_flow = false;	/* yeah, we don't do that */
+
+	fy_emit_generic_mapping_prolog(emit, sc, v);
+
+	/* XXX emit->xcfg.cfg.flags & (FYECF_SORT_KEYS | FYECF_STRIP_EMPTY_KV)) */
+
+	if (maph) {
+		for (i = 0; i < maph->count; i++) {
+
+			last = i == maph->count - 1;
+			vkey = maph->pairs[i].key;
+			vvalue = maph->pairs[i].value;
+
+			/* just the flags */
+			tak.flags = 0;
+			tav.flags = 0;
+
+			simple_key = false;
+			if (fy_generic_is_scalar(vkey)) {
+
+				fy_analyze_generic_scalar_content(vkey, &tak);
+
+				simple_key = fy_emit_is_json_mode(emit) ||
+					     (tak.flags & FYTTAF_CAN_BE_SIMPLE_KEY);
+
+			} else
+				simple_key = fy_len(vkey) == 0;	/* simple when no items */
+
+			/* special handling for compact mode simple key + scalar value*/
+			if (!fy_emit_is_width_infinite(emit) &&
+					fy_emit_is_compact(emit) && simple_key &&
+					fy_generic_is_scalar(vvalue)) {
+
+				fy_analyze_generic_scalar_content(vvalue, &tav);
+
+				/* for plain key + value if we go over the width */
+				if ((tav.flags & FYTTAF_CAN_BE_PLAIN) &&
+				   (emit->column + tak.maxspan + 2 + tav.maxspan + 1) >= fy_emit_width(emit))
+					fy_emit_write_indent(emit, sc->indent);
+			}
+
+			fy_emit_generic_mapping_key_prolog(emit, sc, vkey, simple_key, &tak);
+			fy_emit_generic_internal(emit, vkey, (sc->flags & ~DDNF_ROOT), sc->indent,
+						 true, NULL, &tak);
+			fy_emit_generic_mapping_key_epilog(emit, sc, vkey);
+
+			fy_emit_generic_mapping_value_prolog(emit, sc, vvalue, &tav);
+			fy_emit_generic_internal(emit, vvalue, (sc->flags & ~DDNF_ROOT), sc->indent,
+						 false, NULL, &tav);
+			fy_emit_generic_mapping_value_epilog(emit, sc, last, vvalue);
+		}
+	}
+
+	fy_emit_generic_mapping_epilog(emit, sc, v);
+}
+
+static int
+fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int indent, bool is_key,
+			 fy_generic_sized_string *scalar_szstr, struct fy_text_analysis *scalar_ta)
+{
+	struct fy_token *fyt_td;
+	enum fy_node_type type;
+	fy_generic vtag, vanchor;
+	fy_generic_sized_string szstr_anchor, szstr_tag, szstr_td_handle, szstr_td_prefix;
+	struct fy_tag_scan_info info;
+	char *tag_data = NULL;
+	size_t tag_size;
+	enum fy_node_style style;
+	int rc;
+
+	style = FYNS_ANY;
+	switch (fy_generic_get_type(v)) {
+	case FYGT_INVALID:
+		return -1;
+	case FYGT_ALIAS:
+		style = FYNS_ALIAS;
+		/* fall-through */
+	case FYGT_NULL:
+	case FYGT_BOOL:
+	case FYGT_INT:
+	case FYGT_FLOAT:
+	case FYGT_STRING:
+		type = FYNT_SCALAR;
+		break;
+	case FYGT_SEQUENCE:
+		type = FYNT_SEQUENCE;
+		break;
+	case FYGT_MAPPING:
+		type = FYNT_MAPPING;
+		break;
+	default:
+		FY_IMPOSSIBLE_ABORT();
+	}
+
+	if (style != FYNS_ALIAS) {
+		vanchor = fy_generic_get_anchor(v);
+	} else {
+		vanchor = fy_invalid;
+	}
+	vtag = fy_generic_get_tag(v);
+
+	szstr_anchor = fy_cast(vanchor, fy_szstr_empty);
+	szstr_tag = fy_cast(vtag, fy_szstr_empty);
+
+	if (szstr_tag.data) {
+		tag_data = fy_document_state_format_tag_alloc(emit->fyds, szstr_tag.data, szstr_tag.size, &tag_size);
+		if (!tag_data)
+			goto err_out;
+
+		memset(&info, 0, sizeof(info));
+
+		rc = fy_tag_scan(tag_data, tag_size, &info);
+		if (rc)
+			goto err_out;
+
+		fyt_td = fy_document_state_lookup_tag_directive(emit->fyds,
+				tag_data + info.prefix_length, info.handle_length);
+		if (!fyt_td)
+			goto err_out;
+
+		szstr_td_handle.data = fy_tag_directive_token_handle(fyt_td, &szstr_td_handle.size);
+		szstr_td_prefix.data = fy_tag_directive_token_prefix(fyt_td, &szstr_td_prefix.size);
+
+	} else {
+		tag_data = NULL;
+		tag_size = 0;
+		szstr_td_handle = szstr_td_prefix = fy_szstr_empty;
+	}
+
+	fy_emit_common_text_preamble(emit,
+			szstr_anchor.data, szstr_anchor.size,
+			szstr_tag.data, szstr_tag.size,
+			szstr_td_handle.data, szstr_td_handle.size,
+			szstr_td_prefix.data, szstr_td_prefix.size,
+			flags, indent, type);
+
+	if (tag_data)
+		free(tag_data);
+	tag_data = NULL;
+
+	switch (type) {
+	case FYNT_SCALAR:
+
+		if (style == FYNS_ANY) {
+			style = (fy_emit_is_json_mode(emit) && is_key) ? FYNS_DOUBLE_QUOTED : FYNS_ANY;
+			if (style == FYNS_ANY)
+				style = fy_generic_get_node_style(v);
+		}
+
+		fy_emit_generic_scalar(emit, v, flags, indent, style, szstr_tag,
+				       scalar_szstr, scalar_ta);
+
+		break;
+	case FYNT_SEQUENCE:
+	case FYNT_MAPPING:
+		if (type == FYNT_SEQUENCE)
+			fy_emit_generic_sequence(emit, v, flags, indent);
+		else
+			fy_emit_generic_mapping(emit, v, flags, indent);
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+
+err_out:
+	if (tag_data)
+		free(tag_data);
+	return -1;
+}
+
+int
+fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
+{
+	struct fy_document_state *fyds;
+	fy_generic vds, vroot;
+	int i, count, rc;
+
+	if (!emit || fy_generic_is_invalid(vdir))
+		return -1;
+
+	/* FYET_STREAM_START */
+	if (emit->state != FYES_STREAM_START) {
+		if (emit->column != 0)
+			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+		if (emit->state != FYES_NONE) {
+			fy_emit_puts_simple(emit, fyewt_document_indicator, "...");
+			fy_emit_putc_simple(emit, fyewt_linebreak, '\n');
+		}
+		fy_emit_goto_state(emit, FYES_STREAM_START);
+	}
+
+	count = fy_generic_dir_get_document_count(vdir);
+	if (count < 0)
+		goto err_out;
+
+	for (i = 0; i < count; i++) {
+
+		vds = fy_generic_dir_get_document_vds(vdir, (size_t)i);
+		if (!fy_generic_is_valid(vds))
+			goto err_out;
+
+		fyds = fy_generic_vds_get_document_state(vds);
+		if (!fyds)
+			goto err_out;
+
+		/* FYET_DOCUMENT_START */
+		fy_emit_prepare_document_state(emit, fyds);
+		fy_emit_common_document_start(emit, fyds, false);
+		fy_emit_goto_state(emit, FYES_DOCUMENT_CONTENT);
+
+		vroot = fy_generic_vds_get_root(vds);
+
+		rc = fy_emit_generic_internal(emit, vroot, DDNF_ROOT, -1, false, NULL, NULL);
+		if (rc)
+			goto err_out;
+
+		/* FYET_DOCUMENT_END */
+		fy_emit_common_document_end(emit, true, fyds->end_implicit);
+		fy_emit_reset(emit, false);
+		fy_emit_goto_state(emit, FYES_DOCUMENT_START);
+		emit->flags |= FYEF_HAD_DOCUMENT_END_OUTPUT;
+
+		fy_document_state_unref(fyds);
+	}
+
+	/* FYET_STREAM_END */
+	fy_emit_goto_state(emit, FYES_END);
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+#endif

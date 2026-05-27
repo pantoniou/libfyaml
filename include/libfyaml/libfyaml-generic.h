@@ -10966,6 +10966,21 @@ fy_parser_set_generic_iterator(struct fy_parser *fyp, enum fy_parser_event_gener
 				struct fy_generic_iterator *fygi)
 	FY_EXPORT;
 
+/**
+ * fy_emit_generic_vdir() - Emit the generic directory
+ *
+ * Emits a directory generic using the emitter.
+ *
+ * @emit: The emitter
+ * @vdir: The directory generic
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int
+fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
+	FY_EXPORT;
+
 #ifdef __cplusplus
 }
 #endif
