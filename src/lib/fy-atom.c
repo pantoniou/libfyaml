@@ -2069,7 +2069,7 @@ fy_atom_text_analyze_final(struct fy_text_analysis *analysis)
 	analysis->flags |= FYTTAF_ANALYZED;
 }
 
-int
+void
 fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 		enum fy_atom_style style, enum fy_lb_mode lb_mode,
 		struct fy_text_analysis *analysis)
@@ -2077,8 +2077,8 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 	uint64_t flags;
 	int c, cn, cp, col;
 	uint8_t col0si, col0ei;	/* mask for --- ... at indent 0 */
-	int span, maxspan, maxcol, lbs, break_run;
-	bool ws_run_has_tab;
+	int span, maxspan, maxcol, lbs, break_run, first_nws_col, second_nws_col;
+	bool ws_run_has_tab, wait_nws;
 
 	flags = FYTTAF_TEXT_TOKEN |
 		FYTTAF_SIZE0 |
@@ -2106,6 +2106,8 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 	break_run = 0;
 	ws_run_has_tab = false;
 	col0si = col0ei = 0;
+	first_nws_col = second_nws_col = -1;
+	wait_nws = true;
 
 	/* previous, current and next characters */
 	cp = FYUG_UNKNOWN;
@@ -2224,6 +2226,8 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 				flags |= FYTTAF_HAS_NON_NL_LB;
 			break_run++;
 
+			wait_nws = true;
+
 		} else {
 			flags &= ~FYTTAF_EMPTY;
 			flags &= ~FYTTAF_ALL_WS_LB;
@@ -2232,6 +2236,14 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 				flags &= ~FYTTAF_ALL_PRINT_ASCII;
 			ws_run_has_tab = false;
 			break_run = 0;
+
+			if (wait_nws && second_nws_col < 0) {
+				wait_nws = false;
+				if (first_nws_col < 0)
+					first_nws_col = col;
+				else
+					second_nws_col = col;
+			}
 
 			/* check valid anchor content */
 			if ((flags & FYTTAF_VALID_ANCHOR) && !fy_is_valid_anchor(c))
@@ -2270,11 +2282,8 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 			flags |= FYTTAF_HAS_NON_PRINT;
 		}
 
-		/* if there's an escape, it can't be direct */
-		if ((flags & FYTTAF_DIRECT_OUTPUT) &&
-		    ((style == FYAS_URI && c == '%') ||
-		     (style == FYAS_SINGLE_QUOTED && c == '\'') ||
-		     (style == FYAS_DOUBLE_QUOTED && c == '\\')))
+		/* if there's an escape or any kind of quote, it can't be direct */
+		if (c == '%' || c == '\'' || c == '\\' || c == '"')
 			flags &= ~FYTTAF_DIRECT_OUTPUT;
 
 		if (cn < 0 || !c || fy_is_generic_lb_m(c, lb_mode) || fy_is_ws(c)) {
@@ -2350,9 +2359,24 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 		}
 	}
 
-	/* error mid-stream (invalid/partial UTF-8) */
-	if (c < FYUG_EOF)
-		return cn;
+	/* error mid-stream (invalid/partial UTF-8) or an iterator error */
+	if (c < FYUG_EOF) {
+		switch (c) {
+		case FYUG_INV:
+			flags |= FYTTAF_HAS_INVALID_UTF8;
+			break;
+		case FYUG_PARTIAL:
+			flags |= FYTTAF_HAS_PARTIAL_UTF8;
+			break;
+		default:
+			flags |= FYTTAF_ITERATOR_ERROR;
+			break;
+		}
+	}
+
+	/* if we have a starting whitespace or non indented block content */
+	if ((flags & FYTTAF_HAS_START_WS) || (second_nws_col >= 0 && first_nws_col > second_nws_col))
+		flags |= FYTTAF_NEEDS_EXPLICIT_CHOMP;
 
 out:
 	analysis->maxspan = maxspan;
@@ -2372,8 +2396,6 @@ out:
 	flags |= FYTTAF_ANALYZED;
 
 	analysis->flags = flags;
-
-	return 0;
 }
 
 static int fy_atom_text_analyze_iter_read_block(void *user, int *buf, int count)
@@ -2390,19 +2412,22 @@ static int fy_atom_text_analyze_iter_read_block(void *user, int *buf, int count)
 	return rdn > 0 ? rdn : FYUG_EOF;
 }
 
-int
+void
 fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 		     struct fy_text_analysis *analysis)
 {
 	struct fy_atom_iter iter;
 	struct fy_utf8_buf ubuf;
 	int buf[32];
-	int rc;
 
-	if (!handle || !analysis)
-		return -1;
+	if (!analysis)
+		return;
 
 	memset(analysis, 0, sizeof(*analysis));
+
+	if (!handle)
+		return;
+
 	analysis->preferred_style = FYSS_DOUBLE_QUOTED;
 
 	/* hardwired and fast for regular plain scalars */
@@ -2425,7 +2450,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 		analysis->lbs = 0;
 
 		fy_atom_text_analyze_final(analysis);
-		return 0;
+		return;
 	}
 
 	fy_atom_iter_start(handle, &iter);
@@ -2435,9 +2460,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 			&iter,
 			buf, (int)ARRAY_SIZE(buf));
 
-	rc = fy_atom_text_analyze_internal(&ubuf, style, fy_atom_lb_mode(handle), analysis);
+	fy_atom_text_analyze_internal(&ubuf, style, fy_atom_lb_mode(handle), analysis);
 
 	fy_atom_iter_finish(&iter);
-
-	return rc;
 }

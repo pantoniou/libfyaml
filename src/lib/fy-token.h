@@ -421,9 +421,9 @@ static inline bool fy_token_is_flow_ws(struct fy_token *fyt, int c)
 
 const struct fy_text_analysis *fy_token_text_analyze(struct fy_token *fyt);
 
-int fy_analyze_scalar_content(const char *data, size_t size,
-		enum fy_scalar_style sstyle,
-		enum fy_lb_mode lb_mode, struct fy_text_analysis *analysis);
+void fy_analyze_scalar_content(const char *data, size_t size,
+			       enum fy_scalar_style sstyle,
+			       enum fy_lb_mode lb_mode, struct fy_text_analysis *analysis);
 
 /* must be freed */
 char *fy_token_debug_text(struct fy_token *fyt);

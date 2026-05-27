@@ -100,8 +100,14 @@ enum fy_atom_chomp {
 #define FYTTAF_VALID_ANCHOR		FYTTAF_BIT(33)	/* valid anchor content (without & prefix) */
 #define FYTTAF_JSON_ESCAPE		FYTTAF_BIT(34)	/* contains a character that JSON escapes */
 #define FYTTAF_HIGH_ASCII		FYTTAF_BIT(35) 	/* contains a least one utf8 code >= 0x80 */
+#define FYTTAF_NEEDS_EXPLICIT_CHOMP	FYTTAF_BIT(36)	/* needs explicit indent chomp for block scalar */
+#define FYTTAF_HAS_INVALID_UTF8		FYTTAF_BIT(37)	/* has invalid utf8 */
+#define FYTTAF_HAS_PARTIAL_UTF8		FYTTAF_BIT(38)	/* has partial utf8 (ends prematurely) */
+#define FYTTAF_ITERATOR_ERROR		FYTTAF_BIT(39)	/* some kind of iterator error */
 
 #define FYTTAF_ANALYZED			FYTTAF_BIT(63)	/* analyzed mark */
+
+#define FYTTAF_USER_BIT_START		56
 
 struct fy_text_analysis {
 	uint64_t flags;
@@ -373,13 +379,13 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter);
 const char *
 fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp);
 
-int
+void
 fy_atom_text_analyze_internal(
 		struct fy_utf8_buf *ubuf,
 		enum fy_atom_style style, enum fy_lb_mode lb_mode,
 		struct fy_text_analysis *analysis);
 
-int
+void
 fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 		     struct fy_text_analysis *analysis);
 

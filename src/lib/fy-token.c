@@ -687,7 +687,6 @@ fy_token_text_analyze(struct fy_token *fyt)
 		.preferred_style = FYSS_DOUBLE_QUOTED,
 	};
 	struct fy_atom *handle;
-	int rc;
 
 	if (!fyt)
 		return &null_analysis;
@@ -698,14 +697,11 @@ fy_token_text_analyze(struct fy_token *fyt)
 		return &fyt->handle.analysis;
 
 	/* only tokens that can generate text */
-	if (fy_token_type_is_text(fyt->type)) {
-		rc = fy_atom_text_analyze(handle, handle->style, &handle->analysis);
-		if (!rc)
-			return &handle->analysis;
-	}
+	if (fy_token_type_is_text(fyt->type))
+		fy_atom_text_analyze(handle, handle->style, &handle->analysis);
+	else /* non text fall-through */
+		memcpy(&handle->analysis, &non_text_analysis, sizeof(handle->analysis));
 
-	/* non text fall-through */
-	memcpy(&handle->analysis, &non_text_analysis, sizeof(handle->analysis));
 	return &handle->analysis;
 }
 
@@ -1473,17 +1469,15 @@ static int fy_scalar_content_iter_read_block(void *user, int *buf, int count)
 	return rdn > 0 ? rdn : iter->eofc;
 }
 
-int fy_analyze_scalar_content(const char *data, size_t size,
-			      enum fy_scalar_style sstyle,
-			      enum fy_lb_mode lb_mode,
-			      struct fy_text_analysis *analysis)
+void fy_analyze_scalar_content(const char *data, size_t size,
+			       enum fy_scalar_style sstyle,
+			       enum fy_lb_mode lb_mode,
+			       struct fy_text_analysis *analysis)
 {
 	struct fy_scalar_content_iter iter;
 	enum fy_atom_style style;
 	struct fy_utf8_buf ubuf;
 	int buf[32];
-
-	assert(analysis);
 
 	memset(analysis, 0, sizeof(*analysis));
 
@@ -1517,7 +1511,7 @@ int fy_analyze_scalar_content(const char *data, size_t size,
 		break;
 	}
 
-	return fy_atom_text_analyze_internal(&ubuf, style, lb_mode, analysis);
+	fy_atom_text_analyze_internal(&ubuf, style, lb_mode, analysis);
 }
 
 char *fy_token_debug_text(struct fy_token *fyt)

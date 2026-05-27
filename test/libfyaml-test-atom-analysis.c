@@ -147,11 +147,9 @@ static void check_atom_analysis_case(const struct atom_analysis_case *tc)
 {
 	struct fy_text_analysis ta;
 	char got_buf[1024], want_set_buf[1024], want_clear_buf[1024];
-	int rc;
 
 	memset(&ta, 0, sizeof(ta));
-	rc = fy_analyze_scalar_content(tc->data, tc->size, tc->style, tc->lb_mode, &ta);
-	ck_assert_msg(rc == 0, "%s: fy_analyze_scalar_content() rc=%d", tc->name, rc);
+	fy_analyze_scalar_content(tc->data, tc->size, tc->style, tc->lb_mode, &ta);
 
 	format_flags(ta.flags, got_buf, sizeof(got_buf));
 	format_flags(tc->set_flags, want_set_buf, sizeof(want_set_buf));
@@ -174,12 +172,9 @@ static void check_atom_analysis_flag_case(const struct atom_analysis_case *tc,
 {
 	struct fy_text_analysis ta;
 	char got_buf[1024];
-	int rc;
 
 	memset(&ta, 0, sizeof(ta));
-	rc = fy_analyze_scalar_content(tc->data, tc->size, tc->style, tc->lb_mode, &ta);
-	ck_assert_msg(rc == 0, "%s/%s: fy_analyze_scalar_content() rc=%d",
-		      flag_name, tc->name, rc);
+	fy_analyze_scalar_content(tc->data, tc->size, tc->style, tc->lb_mode, &ta);
 
 	format_flags(ta.flags, got_buf, sizeof(got_buf));
 	ck_assert_msg(ta.flags & flag,

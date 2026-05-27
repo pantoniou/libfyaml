@@ -110,7 +110,6 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 	const char *data;
 	size_t size;
 	uint64_t aflags;
-	int rc;
 
 	/* this is an internal method, you'd better to pass garbage */
 	data = fy_input_start(fyi);
@@ -127,16 +126,21 @@ fy_input_from_data_setup_styled(struct fy_input *fyi,
 		goto out;
 
 	memset(handle, 0, sizeof(*handle));
-
-	rc = fy_analyze_scalar_content(data, size, sstyle, fylb_cr_nl, &handle->analysis);
-	if (rc)
-		return -1;
+	fy_analyze_scalar_content(data, size, sstyle, fylb_cr_nl, &handle->analysis);
 
 	aflags = handle->analysis.flags;
+
+	if (aflags & FYTTAF_ITERATOR_ERROR)
+		return -1;
 
 	/* if any would do, just select the preferred one */
 	if (sstyle == FYSS_ANY)
 		sstyle = handle->analysis.preferred_style;
+
+	/* invalid/partial UTF8 means it must be double quoted */
+	if (sstyle != FYSS_DOUBLE_QUOTED &&
+		(aflags & (FYTTAF_HAS_INVALID_UTF8 | FYTTAF_HAS_PARTIAL_UTF8)))
+		sstyle = FYSS_DOUBLE_QUOTED;
 
 	handle->start_mark.input_pos = 0;
 	handle->start_mark.line = 0;
@@ -204,7 +208,6 @@ out:
 
 	return 0;
 }
-
 
 static int fy_input_from_data_setup(struct fy_input *fyi,
 				     struct fy_atom *handle, bool simple)
