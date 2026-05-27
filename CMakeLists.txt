@@ -1565,6 +1565,10 @@ if(CAN_TEST)
             SUITE_NAME testemitter
             EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --keep-style --schema yaml1.2-failsafe"
         )
+        add_testemitter_tests(testemitter-generic-failsafe-events ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --keep-style --schema yaml1.2-failsafe --emit-events"
+        )
     endif()
 
     # Network-dependent tests using FetchContent
