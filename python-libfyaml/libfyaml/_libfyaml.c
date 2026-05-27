@@ -1257,14 +1257,24 @@ FyGeneric_has_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 FyGeneric_get_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    return fy_generic_metadata_to_pystr(fy_generic_get_comment(self->fyg), "comment");
+    PyObject *pyobj;
+    char *comments;
+
+    comments = fy_generic_get_comments(self->fyg);
+    if (!comments)
+        Py_RETURN_NONE;
+
+    pyobj = PyUnicode_FromString(comments);
+
+    free(comments);
+
+    return pyobj;
 }
 
 static PyObject *
 FyGeneric_has_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
-    fy_generic comment = fy_generic_get_comment(self->fyg);
-    return PyBool_FromLong(!fy_generic_is_null(comment) && !fy_generic_is_invalid(comment));
+    return PyBool_FromLong(fy_generic_has_comments(self->fyg));
 }
 
 /* Comparison helper functions */
@@ -4015,17 +4025,13 @@ libfyaml_from_python(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
             flags |= FYGIF_STYLE;
         }
 
-        fy_generic_indirect gi = {
-            .flags = flags,
-            .value = g,
-            .anchor = fy_null,
-            .tag = tag_generic,
-            .diag = fy_null,
-            .marker = fy_null,
-            .comment = fy_null,
-            .style = style_generic,
-            .failsafe_str = fy_null
-        };
+        fy_generic_indirect gi;
+        fy_generic_indirect_reset(&gi);
+        gi.flags = flags;
+        gi.value = g;
+        gi.tag = tag_generic;
+        gi.style = style_generic;
+
         g = fy_gb_indirect_create(gb, &gi);
         if (!fy_generic_is_valid(g)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create tagged generic");

@@ -90,14 +90,18 @@ fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_
 	void *end = start + size;
 	const void *p;
 	const struct fy_arena_reloc *arena;
-	fy_generic_indirect *gi;
-	fy_generic_value flags, *gvp;
+	uint64_t flags;
+	fy_generic *gp, iv;
 	enum fy_generic_type type;
 	fy_generic *items;
 	size_t i, count;
 
 	if (!arenas || !num_arenas)
 		return fy_invalid;
+
+	/* all in place values stay as is */
+	if (fy_generic_is_in_place(v))
+		return v;
 
 	if (fy_generic_is_indirect(v)) {
 		p = fy_generic_resolve_ptr(v);
@@ -111,39 +115,19 @@ fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_
 							   FY_INPLACE_TYPE_MASK);
 		if (fy_generic_is_invalid(v))
 			return fy_invalid;
-		gi = (fy_generic_indirect *)fy_generic_resolve_ptr(v);
-		gvp = (fy_generic_value *)gi;
-		flags = *gvp++;
-		if (flags & FYGIF_VALUE) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
+
+		gp = (fy_generic *)fy_generic_resolve_ptr(v);
+
+		flags = (uint64_t)(gp->v & FYGIF_CONTENT_MASK);
+		gp++;
+		while (flags) {
+			i = fy_bit64_lowest(flags);
+			flags &= ~FY_BIT64(i);
+			iv = *gp++;
+			if (!fy_generic_is_in_place(iv))
+				gp[-1] = fy_generic_arena_relocate(arenas, num_arenas, start, size, iv);
 		}
-		if (flags & FYGIF_ANCHOR) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_TAG) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_DIAG) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_MARKER) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_COMMENT) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_STYLE) {
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
-			gvp++;
-		}
-		if (flags & FYGIF_FAILSAFE_STR)
-			*(fy_generic *)gvp = fy_generic_arena_relocate(arenas, num_arenas, start, size, *(fy_generic *)gvp);
+
 		return v;
 	}
 
@@ -228,33 +212,26 @@ enum fy_generic_type fy_generic_get_type_indirect(fy_generic v)
 void fy_generic_indirect_get(fy_generic v, fy_generic_indirect *gi)
 {
 	const fy_generic_value *p;
+	uint64_t flags;
+	unsigned int i;
 
-	memset(gi, 0, sizeof(*gi));
+	fy_generic_indirect_reset(gi);
 
 	if (!fy_generic_is_indirect(v)) {
 		gi->flags = FYGIF_VALUE;
 		gi->value = v;
-		gi->anchor = fy_invalid;
-		gi->tag = fy_invalid;
-		gi->diag = fy_invalid;
-		gi->marker = fy_invalid;
-		gi->comment = fy_invalid;
-		gi->style = fy_invalid;
-		gi->failsafe_str = fy_invalid;
 		return;
 	}
 
 	p = fy_generic_resolve_collection_ptr(v);
 
 	gi->flags = *p++;
-	gi->value.v = (gi->flags & FYGIF_VALUE) ? *p++ : fy_invalid_value;
-	gi->anchor.v = (gi->flags & FYGIF_ANCHOR) ? *p++ : fy_invalid_value;
-	gi->tag.v = (gi->flags & FYGIF_TAG) ? *p++ : fy_invalid_value;
-	gi->diag.v = (gi->flags & FYGIF_DIAG) ? *p++ : fy_invalid_value;
-	gi->marker.v = (gi->flags & FYGIF_MARKER) ? *p++ : fy_invalid_value;
-	gi->comment.v = (gi->flags & FYGIF_COMMENT) ? *p++ : fy_invalid_value;
-	gi->style.v = (gi->flags & FYGIF_STYLE) ? *p++ : fy_invalid_value;
-	gi->failsafe_str.v = (gi->flags & FYGIF_FAILSAFE_STR) ? *p++ : fy_invalid_value;
+	flags = (uint64_t)(gi->flags & FYGIF_CONTENT_MASK);
+	while (flags) {
+		i = fy_bit64_lowest(flags);
+		flags &= ~FY_BIT64(i);
+		gi->vindirect[i].v = *p++;
+	}
 }
 
 const fy_generic *fy_genericp_indirect_get_valuep_nocheck(const fy_generic *vp)
@@ -334,12 +311,22 @@ fy_generic fy_generic_indirect_get_marker(fy_generic v)
 	return (gi.flags & FYGIF_MARKER) ? gi.marker : fy_invalid;
 }
 
-fy_generic fy_generic_indirect_get_comment(fy_generic v)
+fy_generic fy_generic_indirect_get_comment(fy_generic v, enum fy_comment_placement placement)
 {
 	fy_generic_indirect gi;
 
 	fy_generic_indirect_get(v, &gi);
-	return (gi.flags & FYGIF_COMMENT) ? gi.comment : fy_invalid;
+	switch (placement) {
+	case fycp_top:
+		return (gi.flags & FYGIF_TOP_COMMENT) ? gi.top_comment : fy_invalid;
+	case fycp_right:
+		return (gi.flags & FYGIF_RIGHT_COMMENT) ? gi.right_comment : fy_invalid;
+	case fycp_bottom:
+		return (gi.flags & FYGIF_BOTTOM_COMMENT) ? gi.bottom_comment : fy_invalid;
+	default:
+		break;
+	}
+	return fy_invalid;
 }
 
 fy_generic fy_generic_indirect_get_style(fy_generic v)
@@ -404,14 +391,14 @@ fy_generic fy_generic_get_marker(fy_generic v)
 	return vd;
 }
 
-fy_generic fy_generic_get_comment(fy_generic v)
+fy_generic fy_generic_get_comment(fy_generic v, enum fy_comment_placement placement)
 {
 	fy_generic vd;
 
 	if (!fy_generic_is_indirect(v))
 		return fy_invalid;
 
-	vd = fy_generic_indirect_get_comment(v);
+	vd = fy_generic_indirect_get_comment(v, placement);
 	return vd;
 }
 
@@ -424,6 +411,77 @@ fy_generic fy_generic_get_style(fy_generic v)
 
 	vd = fy_generic_indirect_get_style(v);
 	return vd;
+}
+
+static int fy_generic_get_style_idx(fy_generic v)
+{
+	fy_generic vstyle;
+	int idx;
+
+	vstyle = fy_generic_get_style(v);
+	idx = fy_cast(vstyle, -1);
+	if (idx < 0)
+		return -1;
+
+	if (fy_generic_is_collection(v)) {
+		if (idx >= FYCS_MAX)
+			return -1;
+	} else {
+		if (idx >= FYSS_MAX)
+			return -1;
+	}
+	return idx;
+}
+
+enum fy_node_style
+fy_generic_get_node_style(fy_generic v)
+{
+	enum fy_node_style style;
+	int idx;
+
+	idx = fy_generic_get_style_idx(v);
+	if (idx < 0)
+		return FYNS_ANY;
+	if (fy_generic_is_collection(v))
+		style = FYNS_BLOCK - idx;	// XXX unfortunate we have it backwards
+	else
+		style = FYNS_PLAIN + idx;
+	assert(style >= FYNS_FLOW && style < FYNS_ALIAS);
+	return style;
+}
+
+enum fy_scalar_style
+fy_generic_get_scalar_style(fy_generic v)
+{
+	enum fy_scalar_style sstyle;
+	int idx;
+
+	if (fy_generic_is_collection(v))
+		return FYSS_ANY;
+
+	idx = fy_generic_get_style_idx(v);
+	if (idx < 0)
+		return FYSS_ANY;
+	sstyle = FYSS_PLAIN + idx;
+	assert(sstyle < FYSS_MAX);
+	return sstyle;
+}
+
+enum fy_collection_style
+fy_generic_get_collection_style(fy_generic v)
+{
+	enum fy_collection_style cstyle;
+	int idx;
+
+	if (!fy_generic_is_collection(v))
+		return FYCS_ANY;
+
+	idx = fy_generic_get_style_idx(v);
+	if (idx < 0)
+		return FYCS_ANY;
+	cstyle = FYCS_BLOCK + idx;
+	assert(cstyle < FYCS_MAX);
+	return cstyle;
 }
 
 FY_GENERIC_IS_TEMPLATE_NON_INLINE(null_type);
@@ -1005,6 +1063,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	const fy_generic_collection *colp;
 	struct iovec iov[2];
 	enum fy_generic_type type;
+	uint64_t flags;
 	size_t size, i, count;
 	const void *valp;
 	const uint8_t *str, *p;
@@ -1029,28 +1088,14 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 		fy_generic_indirect gi;
 
 		fy_generic_indirect_get(v, &gi);
-		if (fy_generic_is_valid(gi.value)) {
-			gi.value = fy_gb_internalize(gb, gi.value);
-			if (fy_generic_is_invalid(gi.value))
+		flags = (uint64_t)(gi.flags & FYGIF_CONTENT_MASK);
+		while (flags) {
+			i = fy_bit64_lowest(flags);
+			flags &= ~FY_BIT64(i);
+			vi = fy_gb_internalize(gb, gi.vindirect[i]);
+			if (fy_generic_is_invalid(vi))
 				return fy_invalid;
-		}
-
-		if (fy_generic_is_valid(gi.anchor)) {
-			gi.anchor = fy_gb_internalize(gb, gi.anchor);
-			if (fy_generic_is_invalid(gi.anchor))
-				return fy_invalid;
-		}
-
-		if (fy_generic_is_valid(gi.tag)) {
-			gi.tag = fy_gb_internalize(gb, gi.tag);
-			if (fy_generic_is_invalid(gi.tag))
-				return fy_invalid;
-		}
-
-		if (fy_generic_is_valid(gi.comment)) {
-			gi.comment = fy_gb_internalize(gb, gi.comment);
-			if (fy_generic_is_invalid(gi.comment))
-				return fy_invalid;
+			gi.vindirect[i] = vi;
 		}
 
 		return fy_gb_indirect_create(gb, &gi);
@@ -1174,8 +1219,10 @@ fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic
 	fy_generic vi;
 	const fy_generic_collection *colp;
 	enum fy_generic_type type;
+	uint64_t flags;
 	size_t i, count;
 	const fy_generic *itemss;
+	fy_generic_indirect gi;
 
 	if (fy_generic_is_invalid(v))
 		return fy_invalid;
@@ -1190,21 +1237,16 @@ fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic
 
 	/* indirects are handled here (note, aliases are indirect too) */
 	if (fy_generic_is_indirect(v)) {
-		fy_generic_indirect gi;
 
 		fy_generic_indirect_get(v, &gi);
-
-		gi.value = fy_gb_validate(gb, gi.value);
-		if (fy_generic_is_invalid(gi.value))
-			return fy_invalid;
-
-		gi.anchor = fy_gb_validate(gb, gi.anchor);
-		if (fy_generic_is_invalid(gi.anchor))
-			return fy_invalid;
-
-		gi.tag = fy_gb_validate(gb, gi.tag);
-		if (fy_generic_is_invalid(gi.tag))
-			return fy_invalid;
+		flags = (uint64_t)(gi.flags & FYGIF_CONTENT_MASK);
+		while (flags) {
+			i = fy_bit64_lowest(flags);
+			flags &= ~FY_BIT64(i);
+			vi = fy_gb_validate(gb, gi.vindirect[i]);
+			if (fy_generic_is_invalid(vi))
+				return fy_invalid;
+		}
 
 		return v;
 	}
@@ -1231,47 +1273,23 @@ fy_generic fy_validate_out_of_place(fy_generic v)
 
 fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic_indirect *gi)
 {
+	fy_generic vbuf[1 + FYGIIDX_MAX];	/* flag + maximum content */
+	fy_generic *vp;
+	uint64_t flags;
+	size_t i, total;
 	const void *p;
-	struct iovec iov[9];
-	int cnt;
 
-	cnt = 0;
-	iov[cnt].iov_base = (void *)&gi->flags;
-	iov[cnt++].iov_len = sizeof(gi->flags);
-	if (gi->flags & FYGIF_VALUE) {
-		iov[cnt].iov_base = (void *)&gi->value;
-		iov[cnt++].iov_len = sizeof(gi->value);
+	flags = (uint64_t)(gi->flags & FYGIF_CONTENT_MASK);
+	vp = vbuf;
+	(vp++)->v = gi->flags;
+	while (flags) {
+		i = fy_bit64_lowest(flags);
+		flags &= ~FY_BIT64(i);
+		*vp++ = gi->vindirect[i];
 	}
-	if (gi->flags & FYGIF_ANCHOR) {
-		iov[cnt].iov_base = (void *)&gi->anchor;
-		iov[cnt++].iov_len = sizeof(gi->anchor);
-	}
-	if (gi->flags & FYGIF_TAG) {
-		iov[cnt].iov_base = (void *)&gi->tag;
-		iov[cnt++].iov_len = sizeof(gi->tag);
-	}
-	if (gi->flags & FYGIF_DIAG) {
-		iov[cnt].iov_base = (void *)&gi->diag;
-		iov[cnt++].iov_len = sizeof(gi->diag);
-	}
-	if (gi->flags & FYGIF_MARKER) {
-		iov[cnt].iov_base = (void *)&gi->marker;
-		iov[cnt++].iov_len = sizeof(gi->marker);
-	}
-	if (gi->flags & FYGIF_COMMENT) {
-		iov[cnt].iov_base = (void *)&gi->comment;
-		iov[cnt++].iov_len = sizeof(gi->comment);
-	}
-	if (gi->flags & FYGIF_STYLE) {
-		iov[cnt].iov_base = (void *)&gi->style;
-		iov[cnt++].iov_len = sizeof(gi->style);
-	}
-	if (gi->flags & FYGIF_FAILSAFE_STR) {
-		iov[cnt].iov_base = (void *)&gi->failsafe_str;
-		iov[cnt++].iov_len = sizeof(gi->failsafe_str);
-	}
+	total = vp - vbuf;
 
-	p = fy_gb_storev(gb, iov, cnt, FY_CONTAINER_ALIGNOF(fy_generic));	/* must be at least 16 */
+	p = fy_gb_store(gb, vbuf, total * sizeof(vbuf[0]), FY_CONTAINER_ALIGNOF(fy_generic));	/* must be at least 16 */
 	if (!p)
 		return fy_invalid;
 
@@ -1280,17 +1298,12 @@ fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
 {
-	fy_generic_indirect gi = {
-		.flags = FYGIF_VALUE | FYGIF_ANCHOR | FYGIF_ALIAS,
-		.value = fy_null,
-		.anchor = anchor,
-		.tag = fy_invalid,
-		.diag = fy_invalid,
-		.marker = fy_invalid,
-		.comment = fy_invalid,
-		.style = fy_invalid,
-		.failsafe_str = fy_invalid,
-	};
+	fy_generic_indirect gi;
+
+	fy_generic_indirect_reset(&gi);
+	gi.flags = FYGIF_VALUE | FYGIF_ANCHOR | FYGIF_ALIAS;
+	gi.value = fy_null;
+	gi.anchor = anchor;
 
 	return fy_gb_indirect_create(gb, &gi);
 }
@@ -2225,9 +2238,10 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
 {
 	const void *p;
-	fy_generic_indirect *gi;
+	fy_generic *vp;
 	enum fy_generic_type type;
 	fy_generic *items;
+	uint64_t flags;
 	size_t i, count;
 
 	/* the delta can't have those bits */
@@ -2246,10 +2260,17 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 			return v;
 
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_INDIRECT_V;
-		gi = (fy_generic_indirect *)fy_generic_resolve_ptr(v);
-		gi->value = fy_generic_relocate(start, end, gi->value, d);
-		gi->anchor = fy_generic_relocate(start, end, gi->anchor, d);
-		gi->tag = fy_generic_relocate(start, end, gi->tag, d);
+		vp = (fy_generic *)fy_generic_resolve_ptr(v);
+
+		flags = (uint64_t)(vp->v & FYGIF_CONTENT_MASK);
+		vp++;
+		while (flags) {
+			i = fy_bit64_lowest(flags);
+			flags &= ~FY_BIT64(i);
+			*vp = fy_generic_relocate(start, end, *vp, d);
+			vp++;
+		}
+
 		return v;
 	}
 
@@ -2503,7 +2524,8 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	const char *style_txt;
 	enum fy_generic_type type;
 	fy_generic vtag, vanchor, v, iv, key, value;
-	fy_generic vdiag, vmark, vcomm, vstyle;
+	fy_generic vdiag, vmark, vstyle;
+	fy_generic vtopc, vrightc, vbottomc;
 	const char *tag = NULL, *anchor = NULL;
 	const fy_generic *items;
 	const fy_generic_map_pair *pairs;
@@ -2515,8 +2537,12 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	vtag = fy_generic_get_tag(vv);
 	vdiag = fy_generic_get_diag(vv);
 	vmark = fy_generic_get_marker(vv);
-	vcomm = fy_generic_get_comment(vv);
 	vstyle = fy_generic_get_style(vv);
+
+	vtopc = fy_generic_get_comment(vv, fycp_top);
+	vrightc = fy_generic_get_comment(vv, fycp_right);
+	vbottomc = fy_generic_get_comment(vv, fycp_bottom);
+
 	anchor = fy_castp(&vanchor, (const char *)NULL);
 	tag = fy_castp(&vtag, (const char *)NULL);
 	v = fy_generic_is_indirect(vv) ? fy_generic_indirect_get_value(vv) : vv;
@@ -2546,8 +2572,12 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		if (style_txt)
 			fprintf(fp, "style=%s ", style_txt);
 	}
-	if (fy_generic_is_valid(vcomm))
-		fprintf(fp, "comm: %s ", fygstra(vcomm));
+	if (fy_generic_is_valid(vtopc))
+		fprintf(fp, "top#: %s ", fygstra(vtopc));
+	if (fy_generic_is_valid(vrightc))
+		fprintf(fp, "right#: %s ", fygstra(vrightc));
+	if (fy_generic_is_valid(vbottomc))
+		fprintf(fp, "bottom#: %s ", fygstra(vbottomc));
 
 	fprintf(fp, "%016llx ", (unsigned long long)v.v);
 
@@ -2611,6 +2641,55 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
+}
+
+bool fy_generic_has_comments(fy_generic v)
+{
+	fy_generic_indirect gi;
+
+	fy_generic_indirect_get(v, &gi);
+	return !!(gi.flags & (FYGIF_TOP_COMMENT | FYGIF_RIGHT_COMMENT | FYGIF_BOTTOM_COMMENT));
+}
+
+char *fy_generic_get_comments(fy_generic v)
+{
+	fy_generic vc;
+	enum fy_comment_placement placement;
+	const char *str;
+	char *accum, *new_accum;
+	size_t size, accum_size, new_accum_size;
+	bool has_nl;
+
+	if (!fy_generic_has_comments(v))
+		return NULL;
+
+	str = NULL;
+	accum = NULL;
+	accum_size = 0;
+	for (placement = fycp_top; placement < fycp_max; placement++) {
+
+		vc = fy_generic_get_comment(v, placement);
+		if (!fy_generic_is_string(vc))
+			continue;
+		str = fy_cast(vc, "");
+		size = strlen(str);
+		has_nl = size > 0 && str[size-1] == '\n';
+		new_accum_size = accum_size + size + !has_nl + 1;
+		new_accum = realloc(accum, new_accum_size);
+		if (!new_accum) {
+			if (accum)
+				free(accum);
+			return NULL;
+		}
+		accum = new_accum;
+		memcpy(accum + accum_size, str, size);
+		accum_size += size;
+		if (!has_nl)
+			accum[accum_size++] = '\n';
+		accum[accum_size] = '\0';
+	}
+
+	return accum;
 }
 
 int fy_generic_dir_get_document_count(fy_generic vdir)

@@ -238,15 +238,8 @@ fygdb_object_cleanup(struct fy_generic_decoder_obj *gdo)
 	gdo->alloc = 0;
 	gdo->count = 0;
 	gdo->items = NULL;
+	fy_generic_indirect_reset(&gdo->gi);
 	gdo->v = fy_invalid;
-	gdo->anchor = fy_invalid;
-	gdo->tag = fy_invalid;
-	gdo->marker = fy_invalid;
-	gdo->comment = fy_invalid;
-	gdo->style = fy_invalid;
-	gdo->failsafe_str = fy_invalid;
-	gdo->marker_start = fy_invalid;
-	gdo->marker_end = fy_invalid;
 	gdo->fyds = NULL;
 	gdo->vds = fy_invalid;
 	gdo->supports_merge_key = false;
@@ -271,15 +264,8 @@ fygdb_object_alloc(struct fy_generic_document_builder *fygdb)
 	}
 
 	gdo->type = FYGDOT_INVALID;
-	gdo->anchor = fy_invalid;
-	gdo->tag = fy_invalid;
-	gdo->marker = fy_invalid;
-	gdo->comment = fy_invalid;
-	gdo->style = fy_invalid;
-	gdo->failsafe_str = fy_invalid;
-	gdo->marker_start = fy_invalid;
-	gdo->marker_end = fy_invalid;
 	gdo->v = fy_invalid;
+	fy_generic_indirect_reset(&gdo->gi);
 	gdo->vds = fy_invalid;
 
 	return gdo;
@@ -312,7 +298,6 @@ static fy_generic
 fygdb_object_finalize(struct fy_generic_document_builder *fygdb, struct fy_generic_decoder_obj *gdo)
 {
 	fy_generic v, vi;
-	uintptr_t gi_flags;
 	bool needs_indirect;
 
 	v = fy_invalid;
@@ -340,20 +325,6 @@ fygdb_object_finalize(struct fy_generic_document_builder *fygdb, struct fy_gener
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
 				  "unable to create collection");
 
-		if (fy_generic_is_valid(gdo->marker_start) &&
-		    fy_generic_is_valid(gdo->marker_end)) {
-			fy_generic_sequence_handle starth = fy_cast(gdo->marker_start, fy_seq_handle_null);
-			fy_generic_sequence_handle endh = fy_cast(gdo->marker_end, fy_seq_handle_null);
-
-			assert(starth);
-			assert(endh);
-			assert(starth->count == 6);
-			assert(endh->count == 6);
-
-			gdo->marker = fy_gb_sequence(fygdb->cfg.gb,
-						     starth->items[0], starth->items[1], starth->items[2],
-						     endh->items[3], endh->items[4], endh->items[5]);
-		}
 		break;
 	}
 
@@ -361,34 +332,12 @@ fygdb_object_finalize(struct fy_generic_document_builder *fygdb, struct fy_gener
 		FY_IMPOSSIBLE_ABORT();
 	}
 
-	gi_flags = 0;
-	if (fy_generic_is_valid(gdo->anchor))
-		gi_flags |= FYGIF_ANCHOR;
-	if (fy_generic_is_valid(gdo->tag))
-		gi_flags |= FYGIF_TAG;
-	if (fy_generic_is_valid(gdo->marker))
-		gi_flags |= FYGIF_MARKER;
-	if (fy_generic_is_valid(gdo->comment))
-		gi_flags |= FYGIF_COMMENT;
-	if (fy_generic_is_valid(gdo->style))
-		gi_flags |= FYGIF_STYLE;
-	if (fy_generic_is_valid(gdo->failsafe_str))
-		gi_flags |= FYGIF_FAILSAFE_STR;
-
-	needs_indirect = gi_flags != 0;
+	needs_indirect = !!(gdo->gi.flags & ~FYGIF_VALUE);
 	if (needs_indirect) {
-		fy_generic_indirect gi = {
-			.flags = FYGIF_VALUE | gi_flags,
-			.value = v,
-			.anchor = gdo->anchor,
-			.tag = gdo->tag,
-			.marker = gdo->marker,
-			.comment = gdo->comment,
-			.style = gdo->style,
-			.failsafe_str = gdo->failsafe_str,
-		};
+		gdo->gi.value = v;
+		gdo->gi.flags |= FYGIF_VALUE;
 
-		vi = fy_gb_indirect_create(fygdb->cfg.gb, &gi);
+		vi = fy_gb_indirect_create(fygdb->cfg.gb, &gdo->gi);
 		fygdb_error_check(fygdb, fy_generic_is_valid(vi), err_out,
 				  "fy_gb_indirect_create() failed");
 		v = vi;
@@ -550,18 +499,15 @@ fygdb_object_add_item(struct fy_generic_decoder_obj *gdo, fy_generic item)
 
 static fy_generic
 fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *fye,
-		    fy_generic va, fy_generic vt, fy_generic vcomment,
-		    fy_generic vstyle, fy_generic vfailsafe_str,
-		    fy_generic vmarker,
-		    bool *is_empty_plain_scalarp)
+		    fy_generic_indirect *gi, bool *is_empty_plain_scalarp)
 {
 	const char *tag, *p, *sfx;
 	const char *yaml_tag_pfx = "tag:yaml.org,2002";
 	const size_t yaml_tag_pfx_size = strlen(yaml_tag_pfx);
 	enum fy_generic_type force_type = FYGT_INVALID;
 	struct fy_token *fyt;
+	fy_generic vt;
 	enum fy_scalar_style style;
-	uintptr_t gi_flags;
 	bool needs_indirect;
 	const char *text;
 	size_t len;
@@ -579,6 +525,8 @@ fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *
 
 	v = fy_invalid;
 	style = fy_token_scalar_style(fyt);
+
+	vt = gi ? gi->tag : fy_invalid;
 
 	if (fy_generic_is_invalid(vt)) {
 		if (style != FYSS_PLAIN) {
@@ -634,34 +582,13 @@ create_scalar:
 					"failed to create scalar with tag %s", tag);
 	}
 
-	gi_flags = 0;
-	if (fy_generic_is_valid(va))
-		gi_flags |= FYGIF_ANCHOR;
-	if (fy_generic_is_valid(vt))
-		gi_flags |= FYGIF_TAG;
-	if (fy_generic_is_valid(vmarker))
-		gi_flags |= FYGIF_MARKER;
-	if (fy_generic_is_valid(vcomment))
-		gi_flags |= FYGIF_COMMENT;
-	if (fy_generic_is_valid(vstyle))
-		gi_flags |= FYGIF_STYLE;
-	if (fy_generic_is_valid(vfailsafe_str))
-		gi_flags |= FYGIF_FAILSAFE_STR;
+	needs_indirect = gi && (gi->flags & ~FYGIF_VALUE);
 
-	needs_indirect = gi_flags != 0;
 	if (needs_indirect) {
-		fy_generic_indirect gi = {
-			.flags = FYGIF_VALUE | gi_flags,
-			.value = v,
-			.anchor = va,
-			.tag = vt,
-			.marker = vmarker,
-			.comment = vcomment,
-			.style = vstyle,
-			.failsafe_str = vfailsafe_str,
-		};
+		gi->flags |= FYGIF_VALUE;
+		gi->value = v;
 
-		vi = fy_gb_indirect_create(fygdb->cfg.gb, &gi);
+		vi = fy_gb_indirect_create(fygdb->cfg.gb, gi);
 		fygdb_error_check(fygdb, fy_generic_is_valid(vi), err_out,
 				  "invalid indirect scalar created");
 		v = vi;
@@ -718,25 +645,26 @@ static fy_generic
 fygdb_strip_non_content(struct fy_generic_document_builder *fygdb, fy_generic v)
 {
 	fy_generic_indirect gi;
+	fy_generic_value keep_flags;
+	fy_generic vv;
 
 	if (fy_generic_is_direct(v))
 		return v;
 
 	fy_generic_indirect_get(v, &gi);
-	if (fy_generic_is_invalid(gi.anchor) &&
-	    fy_generic_is_invalid(gi.marker) &&
-	    fy_generic_is_invalid(gi.comment) &&
-	    fy_generic_is_invalid(gi.style) &&
-	    fy_generic_is_invalid(gi.failsafe_str))
+
+	/* only keep value */
+	keep_flags = gi.flags & FYGIF_VALUE;
+
+	/* no other bits, just return */
+	if ((gi.flags & ~keep_flags) == 0)
 		return v;
 
-	gi.flags &= ~(FYGIF_ANCHOR | FYGIF_MARKER | FYGIF_COMMENT |
-		      FYGIF_STYLE | FYGIF_FAILSAFE_STR);
-	gi.anchor = fy_invalid;
-	gi.marker = fy_invalid;
-	gi.comment = fy_invalid;
-	gi.style = fy_invalid;
-	gi.failsafe_str = fy_invalid;
+	/* clean content */
+	vv = gi.value;
+	fy_generic_indirect_reset(&gi);
+	gi.flags = keep_flags;
+	gi.value = vv;
 
 	return fy_gb_indirect_create(fygdb->cfg.gb, &gi);
 }
@@ -1168,9 +1096,12 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 	size_t anchor_size, tag_size;
 	enum fy_scalar_style ss;
 	enum fy_collection_style cs;
-	fy_generic v, va, vt, vcomment, vstyle, vfailsafe_str, vmarker;
+	fy_generic v, va, vt, vstyle, vfailsafe_str, vmarker;
+	fy_generic vtop_comment, vright_comment, vbottom_comment;
+	fy_generic_indirect gi;
+	fy_generic_sequence_handle starth, endh;
 	const struct fy_mark *start_mark, *end_mark;
-	bool is_empty_plain_scalar = false;
+	bool is_empty_plain_scalar = false, allow_anchors;
 	int rc;
 
 	if (!fygdb || !fye)
@@ -1183,6 +1114,8 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		fprintf(stderr, "%s depth=%u doc=%u\n",
 			fy_event_type_get_text(fye->type), fygdb->stack_top,
 			fygdb->gdo_root ? 1U : 0U);
+
+	allow_anchors = !fygdb->resolve || fygdb->keep_anchors;
 
 	fyt_anchor = fy_event_get_anchor_token(fye);
 	if (fyt_anchor) {
@@ -1211,14 +1144,37 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 	}
 
 	if ((fygdb->cfg.flags & FYGDBF_KEEP_COMMENTS) && fyt && fy_token_has_any_comment(fyt)) {
-		comment = fy_token_get_comments(fyt);
-		fygdb_error_check(fygdb, comment, err_out, "fy_token_get_comments() failed");
-		vcomment = fy_gb_string_create(gb, comment);
-		fygdb_error_check(fygdb, fy_generic_is_valid(vcomment), err_out,
-				  "fy_generic_string_create() failed");
+		comment = fy_token_get_comment(fyt, fycp_top);
+		if (comment) {
+			fygdb_error_check(fygdb, comment, err_out, "fy_token_get_comment() failed");
+			vtop_comment = fy_gb_string_create(gb, comment);
+			fygdb_error_check(fygdb, fy_generic_is_valid(vtop_comment), err_out,
+					  "fy_generic_string_create() failed");
+		} else
+			vtop_comment = fy_invalid;
+
+		comment = fy_token_get_comment(fyt, fycp_right);
+		if (comment) {
+			fygdb_error_check(fygdb, comment, err_out, "fy_token_get_comment() failed");
+			vright_comment = fy_gb_string_create(gb, comment);
+			fygdb_error_check(fygdb, fy_generic_is_valid(vright_comment), err_out,
+					  "fy_generic_string_create() failed");
+		} else
+			vright_comment = fy_invalid;
+
+		comment = fy_token_get_comment(fyt, fycp_bottom);
+		if (comment) {
+			fygdb_error_check(fygdb, comment, err_out, "fy_token_get_comment() failed");
+			vbottom_comment = fy_gb_string_create(gb, comment);
+			fygdb_error_check(fygdb, fy_generic_is_valid(vbottom_comment), err_out,
+					  "fy_generic_string_create() failed");
+		} else
+			vbottom_comment = fy_invalid;
 	} else {
 		comment = NULL;
-		vcomment = fy_invalid;
+		vtop_comment = fy_invalid;
+		vright_comment = fy_invalid;
+		vbottom_comment = fy_invalid;
 	}
 
 	vstyle = fy_invalid;
@@ -1245,6 +1201,41 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		vmarker = fy_gb_sequence(gb,
 					 start_mark->input_pos, start_mark->line, start_mark->column,
 					 end_mark->input_pos, end_mark->line, end_mark->column);
+	}
+
+	/* update the indirect, note no value */
+	fy_generic_indirect_reset(&gi);
+	if (fy_generic_is_valid(va) && allow_anchors) {
+		gi.flags |= FYGIF_ANCHOR;
+		gi.anchor = va;
+	}
+	if (fy_generic_is_valid(vt)) {
+		gi.flags |= FYGIF_TAG;
+		gi.tag = vt;
+	}
+	if (fy_generic_is_valid(vstyle)) {
+		gi.flags |= FYGIF_STYLE;
+		gi.style = vstyle;
+	}
+	if (fy_generic_is_valid(vfailsafe_str)) {
+		gi.flags |= FYGIF_FAILSAFE_STR;
+		gi.style = vfailsafe_str;
+	}
+	if (fy_generic_is_valid(vmarker)) {
+		gi.flags |= FYGIF_MARKER;
+		gi.marker = vmarker;
+	}
+	if (fy_generic_is_valid(vtop_comment)) {
+		gi.flags |= FYGIF_TOP_COMMENT;
+		gi.top_comment = vtop_comment;
+	}
+	if (fy_generic_is_valid(vright_comment)) {
+		gi.flags |= FYGIF_RIGHT_COMMENT;
+		gi.right_comment = vright_comment;
+	}
+	if (fy_generic_is_valid(vbottom_comment)) {
+		gi.flags |= FYGIF_BOTTOM_COMMENT;
+		gi.bottom_comment = vbottom_comment;
 	}
 
 	switch (fye->type) {
@@ -1337,10 +1328,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 			return 0;
 		}
 
-		v = fygdb_create_scalar(fygdb, fye,
-					(fygdb->resolve && !fygdb->keep_anchors) ? fy_invalid : va,
-					vt, vcomment, vstyle,
-					vfailsafe_str, vmarker, &is_empty_plain_scalar);
+		v = fygdb_create_scalar(fygdb, fye, &gi, &is_empty_plain_scalar);
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,
 				  "fy_generic_document_builder scalar create failed");
 		break;
@@ -1362,12 +1350,9 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		fygdb_error_check(fygdb, gdo, err_out, "fy_generic_decoder_object_alloc() failed");
 
 		gdo->type = fye->type == FYET_SEQUENCE_START ? FYGDOT_SEQUENCE : FYGDOT_MAPPING;
-		gdo->anchor = (fygdb->resolve && !fygdb->keep_anchors) ? fy_invalid : va;
-		gdo->tag = vt;
-		gdo->comment = vcomment;
-		gdo->style = vstyle;
-		gdo->failsafe_str = vfailsafe_str;
-		gdo->marker_start = vmarker;
+
+		/* copy the indirect */
+		gdo->gi = gi;
 
 		rc = fygdb_stack_push(fygdb, gdo, fyt);
 		fygdb_error_check(fygdb, !rc, err_out, "fygdb_stack_push() failed");
@@ -1389,7 +1374,32 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		FYGDB_TOKEN_ERROR_CHECK(fygdb, fyt, FYEM_BUILD, parent, err_out,
 					"missing parent container");
 
-		gdo->marker_end = vmarker;
+		if (fy_generic_is_valid(gdo->gi.marker) && fy_generic_is_valid(vmarker)) {
+
+			starth = fy_cast(gdo->gi.marker, fy_seq_handle_null);
+			endh = fy_cast(vmarker, fy_seq_handle_null);
+
+			fygdb_error_check(fygdb, starth && endh &&
+					starth->count >= 6 && endh->count >= 6, err_out,
+					"bad markers");
+
+			/* update marker */
+			gdo->gi.marker = fy_gb_sequence(fygdb->cfg.gb,
+						     starth->items[0], starth->items[1], starth->items[2],
+						     endh->items[3], endh->items[4], endh->items[5]);
+			fygdb_error_check(fygdb, fy_generic_is_valid(gdo->gi.marker),
+					err_out, "fy_gb_sequence() failed");
+
+			gdo->gi.flags |= FYGIF_MARKER;
+		}
+
+		/* transfer the top/right comment of the end token as bottom comment of the collection */
+		if (gi.flags & (FYGIF_TOP_COMMENT | FYGIF_RIGHT_COMMENT)) {
+			gdo->gi.flags |= FYGIF_BOTTOM_COMMENT;
+			gdo->gi.bottom_comment = (gi.flags & FYGIF_TOP_COMMENT) ?
+							gi.top_comment : gi.right_comment;
+		}
+
 		v = fygdb_object_finalize_and_destroy(fygdb, gdo);
 		gdo = NULL;
 		fygdb_error_check(fygdb, fy_generic_is_valid(v), err_out,

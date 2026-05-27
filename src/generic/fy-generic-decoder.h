@@ -44,14 +44,7 @@ struct fy_generic_decoder_obj {
 	size_t count;
 	fy_generic *items;
 	fy_generic v;
-	fy_generic anchor;
-	fy_generic tag;
-	fy_generic marker;
-	fy_generic comment;
-	fy_generic style;
-	fy_generic failsafe_str;
-	fy_generic marker_start;	/* for collections */
-	fy_generic marker_end;
+	fy_generic_indirect gi;
 	/* for the root */
 	struct fy_document_state *fyds;
 	fy_generic vds;

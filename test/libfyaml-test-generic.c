@@ -4548,7 +4548,7 @@ START_TEST(generic_document_builder_push_mode_metadata)
 	value = fy_get(actual, "foo", fy_invalid);
 	ck_assert(fy_generic_is_valid(value));
 
-	comment = fy_generic_get_comment(value);
+	comment = fy_generic_get_comment(value, fycp_right);
 	style = fy_generic_get_style(value);
 	marker = fy_generic_get_marker(value);
 	ck_assert(fy_generic_is_string(comment));

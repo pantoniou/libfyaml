@@ -171,7 +171,9 @@ struct fygi_fast_event_data {
 	fy_generic v;
 	const char *anchor;
 	const char *tag;
-	const char *comment;
+	const char *top_comment;
+	const char *right_comment;
+	const char *bottom_comment;
 	int style;
 	char tag_buf_local[128];
 	char *tag_buf_alloc;
@@ -182,6 +184,10 @@ fygi_fast_event_get_data(struct fy_generic_iterator *fygi, struct fy_emitter *em
 			 fy_generic v,
 			 struct fygi_fast_event_data *gd)
 {
+	const char *tag;
+	struct fy_document_state *fyds;
+	size_t formatted_tag_size;
+
 	memset(gd, 0, sizeof(*gd));
 	gd->style = -1;
 	gd->v = v;
@@ -197,32 +203,34 @@ fygi_fast_event_get_data(struct fy_generic_iterator *fygi, struct fy_emitter *em
 		gd->gi.anchor = fy_invalid;
 	if (fygi->cfg.flags & FYGICF_STRIP_TAGS)
 		gd->gi.tag = fy_invalid;
-	if (fygi->cfg.flags & FYGICF_STRIP_COMMENTS)
-		gd->gi.comment = fy_invalid;
+	if (fygi->cfg.flags & FYGICF_STRIP_COMMENTS) {
+		gd->gi.top_comment = fy_invalid;
+		gd->gi.right_comment = fy_invalid;
+		gd->gi.bottom_comment = fy_invalid;
+	}
 	if (fygi->cfg.flags & FYGICF_STRIP_STYLE)
 		gd->gi.style = fy_invalid;
 	if (fygi->cfg.flags & FYGICF_STRIP_FAILSAFE_STR)
 		gd->gi.failsafe_str = fy_invalid;
 
 	gd->anchor = fy_castp(&gd->gi.anchor, (const char *)NULL);
-	gd->tag = fy_castp(&gd->gi.tag, (const char *)NULL);
-	gd->comment = fy_castp(&gd->gi.comment, (const char *)NULL);
 	gd->style = fy_cast(gd->gi.style, -1);
+	gd->top_comment = fy_castp(&gd->gi.top_comment, (const char *)NULL);
+	gd->right_comment = fy_castp(&gd->gi.right_comment, (const char *)NULL);
+	gd->bottom_comment = fy_castp(&gd->gi.bottom_comment, (const char *)NULL);
 
-	if (gd->tag) {
-		struct fy_document_state *fyds;
-		size_t formatted_tag_size;
-
+	tag = fy_castp(&gd->gi.tag, (const char *)NULL);
+	if (tag) {
 		fyds = fy_emitter_get_document_state(emit);
 		formatted_tag_size = fy_document_state_format_tag(
-				fyds, gd->tag, FY_NT,
+				fyds, tag, FY_NT,
 				gd->tag_buf_local, sizeof(gd->tag_buf_local));
 		if (formatted_tag_size < sizeof(gd->tag_buf_local))
 			gd->tag = gd->tag_buf_local;
 		else {
 			gd->tag_buf_alloc =
 				fy_document_state_format_tag_alloc(
-					fyds, gd->tag, FY_NT, NULL);
+					fyds, tag, FY_NT, NULL);
 			if (gd->tag_buf_alloc)
 				gd->tag = gd->tag_buf_alloc;
 		}
@@ -243,18 +251,86 @@ fygi_fast_event_attach_comments(struct fygi_fast_event_data *gd,
 				struct fy_event *fye)
 {
 	struct fy_token *fyt;
+	int rc;
 
 	if (!fye)
 		return -1;
 
-	if (!gd->comment)
+	if (!gd->top_comment && !gd->right_comment && !gd->bottom_comment)
 		return 0;
 
 	fyt = fy_event_get_token(fye);
 	if (!fyt)
 		return -1;
 
-	return fy_token_set_comment(fyt, fycp_top, gd->comment, FY_NT);
+	if (gd->top_comment) {
+		rc = fy_token_set_comment(fyt, fycp_top, gd->top_comment, FY_NT);
+		if (rc)
+			return -1;
+	}
+	if (gd->right_comment) {
+		rc = fy_token_set_comment(fyt, fycp_right, gd->right_comment, FY_NT);
+		if (rc)
+			return -1;
+	}
+	if (gd->bottom_comment) {
+		rc = fy_token_set_comment(fyt, fycp_bottom, gd->bottom_comment, FY_NT);
+		if (rc)
+			return -1;
+	}
+	return 0;
+}
+
+static int
+fygi_fast_event_attach_collection_end_comment(struct fygi_fast_event_data *gd,
+					      struct fy_event *fye, fy_generic v)
+{
+	struct fy_token *fyt;
+	fy_generic vcomm;
+	enum fy_token_type ttype;
+	enum fy_node_style ns;
+	enum fy_collection_style cs;
+	int rc;
+
+	/* attach the bottom comment as top comment of the end sequence */
+	vcomm = fy_generic_get_comment(v, fycp_bottom);
+	if (fy_generic_is_invalid(vcomm))
+		return 0;
+
+	fyt = fy_event_get_token(fye);
+	if (!fyt) {
+		/* no sequence/mapping end token, must create */
+		ns = FYNS_ANY;
+		if (gd->style >= 0 && gd->style < FYCS_MAX) {
+			cs = (enum fy_collection_style)gd->style;
+			if (cs == FYCS_FLOW)
+				ns = FYNS_FLOW;
+			else if (cs == FYCS_BLOCK)
+				ns = FYNS_BLOCK;
+		}
+		if (ns == FYNS_FLOW)
+			ttype = fye->type == FYET_MAPPING_END ?
+						FYTT_FLOW_MAPPING_END :
+						FYTT_FLOW_SEQUENCE_END;
+		else
+			ttype = FYTT_BLOCK_END;
+
+		fyt = fy_token_create(ttype, NULL);
+		if (!fyt)
+			return -1;
+	}
+	rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&vcomm, (const char *)NULL), FY_NT);
+	if (rc) {
+		fy_token_unref(fyt);
+		return -1;
+	}
+
+	if (fye->type == FYET_MAPPING_END)
+		fye->mapping_end.mapping_end = fyt;
+	else
+		fye->sequence_end.sequence_end = fyt;
+
+	return 0;
 }
 
 static enum fy_generic_schema
@@ -384,9 +460,17 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 
 	type = fy_generic_get_type(v);
 
-	if (fy_generic_type_is_collection(type) && !start)
-		return fy_emit_event_create(emit, type == FYGT_SEQUENCE ?
+	if (fy_generic_type_is_collection(type) && !start) {
+		fye = fy_emit_event_create(emit, type == FYGT_SEQUENCE ?
 				FYET_SEQUENCE_END : FYET_MAPPING_END);
+		if (!fye)
+			return NULL;
+
+		/* attach any comments */
+		(void)fygi_fast_event_attach_collection_end_comment(gd, fye, v);
+
+		return fye;
+	}
 
 	fygi_fast_event_get_data(fygi, emit, v, gd);
 	v = gd->v;
@@ -476,16 +560,20 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 		gi.anchor = fy_invalid;
 	if (fygi->cfg.flags & FYGICF_STRIP_TAGS)
 		gi.tag = fy_invalid;
-	if (fygi->cfg.flags & FYGICF_STRIP_COMMENTS)
-		gi.comment = fy_invalid;
+	if (fygi->cfg.flags & FYGICF_STRIP_COMMENTS) {
+		gi.top_comment = fy_invalid;
+		gi.right_comment = fy_invalid;
+		gi.bottom_comment = fy_invalid;
+	}
 	if (fygi->cfg.flags & FYGICF_STRIP_STYLE)
 		gi.style = fy_invalid;
 	if (fygi->cfg.flags & FYGICF_STRIP_FAILSAFE_STR)
 		gi.failsafe_str = fy_invalid;
 
-
 	has_style = fy_generic_is_int_type(gi.style);
-	has_comment = fy_generic_is_string(gi.comment);
+	has_comment = fy_generic_is_string(gi.top_comment) ||
+		      fy_generic_is_string(gi.right_comment) ||
+		      fy_generic_is_string(gi.bottom_comment);
 
 	cstyle = FYCS_ANY;
 	sstyle = FYSS_ANY;
@@ -525,9 +613,21 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 	}
 
 	if (has_comment && fyt) {
-		rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&gi.comment, ""), FY_NT);
-		if (rc)
-			goto err_out;
+		if (fy_generic_is_string(gi.top_comment)) {
+			rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&gi.top_comment, ""), FY_NT);
+			if (rc)
+				goto err_out;
+		}
+		if (fy_generic_is_string(gi.right_comment)) {
+			rc = fy_token_set_comment(fyt, fycp_right, fy_castp(&gi.right_comment, ""), FY_NT);
+			if (rc)
+				goto err_out;
+		}
+		if (fy_generic_is_string(gi.bottom_comment)) {
+			rc = fy_token_set_comment(fyt, fycp_bottom, fy_castp(&gi.bottom_comment, ""), FY_NT);
+			if (rc)
+				goto err_out;
+		}
 	}
 
 	switch (type) {

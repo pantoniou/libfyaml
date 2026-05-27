@@ -517,6 +517,23 @@ typedef struct fy_generic {
  * > end: delta column <vlencoded>
  */
 
+/* fy_generic_indirect indices */
+#define FYGIIDX_VALUE		0
+#define FYGIIDX_ANCHOR		1
+#define FYGIIDX_TAG		2
+#define FYGIIDX_DIAG		3
+#define FYGIIDX_MARKER		4
+#define FYGIIDX_STYLE		5
+#define FYGIIDX_FAILSAFE_STR	6
+#define FYGIIDX_TOP_COMMENT	7
+#define FYGIIDX_RIGHT_COMMENT	8
+#define FYGIIDX_BOTTOM_COMMENT	9
+
+#define FYGIIDX_MAX		(FYGIIDX_BOTTOM_COMMENT + 1)
+
+/* this is synthetic - when present it means the anchor is an alias */
+#define FYGIIDX_ALIAS		31
+
 /**
  * DOC: fy_generic_indirect - Wrapper attaching YAML metadata to a generic value
  *
@@ -530,27 +547,54 @@ typedef struct fy_generic {
  * is set in @flags.
  */
 typedef struct fy_generic_indirect {
-	uintptr_t flags;		/* styling and existence flags */
-	fy_generic value;		/* the actual value */
-	fy_generic anchor;		/* string anchor or null */
-	fy_generic tag;			/* string tag or null */
-	fy_generic diag;		/* the diagnostics */
-	fy_generic marker;		/* the marker (file, start, end) */
-	fy_generic comment;		/* the comments */
-	fy_generic style;		/* the original source style */
-	fy_generic failsafe_str;	/* the original source failsafe string */
+	fy_generic_value flags;				/* styling and existence flags */
+	union {
+		fy_generic vindirect[FYGIIDX_MAX];	/* an array for ease of use */
+		struct {
+			fy_generic value;		/* the actual value */
+			fy_generic anchor;		/* string anchor or null (is alias when ALIAS bit is set) */
+			fy_generic tag;			/* string tag or null */
+			fy_generic diag;		/* the diagnostics */
+			fy_generic marker;		/* the marker (file, start, end) */
+			fy_generic style;		/* the original source style */
+			fy_generic failsafe_str;	/* the original source failsafe string */
+			fy_generic top_comment;		/* the top comment */
+			fy_generic right_comment;	/* the right comment */
+			fy_generic bottom_comment;	/* the bottom comment */
+		};
+	};
 } fy_generic_indirect FY_GENERIC_CONTAINER_ALIGNMENT;
 
 /* fy_generic_indirect flags — indicate which optional metadata fields are present */
-#define FYGIF_VALUE		FY_BIT(0)  /* @value field is present */
-#define FYGIF_ANCHOR		FY_BIT(1)  /* @anchor field is present */
-#define FYGIF_TAG		FY_BIT(2)  /* @tag field is present */
-#define FYGIF_ALIAS		FY_BIT(3)  /* this indirect encodes a YAML alias */
-#define FYGIF_DIAG		FY_BIT(4)  /* @diag field is present */
-#define FYGIF_MARKER		FY_BIT(5)  /* @marker field is present */
-#define FYGIF_COMMENT		FY_BIT(6)  /* @comment field is present */
-#define FYGIF_STYLE		FY_BIT(7)  /* @style field is present */
-#define FYGIF_FAILSAFE_STR	FY_BIT(8)  /* @failsafe_str field is present */
+#define FYGIF_VALUE		FY_BIT(FYGIIDX_VALUE)		/* @value field is present */
+#define FYGIF_ANCHOR		FY_BIT(FYGIIDX_ANCHOR)		/* @anchor field is present */
+#define FYGIF_TAG		FY_BIT(FYGIIDX_TAG)		/* @tag field is present */
+#define FYGIF_DIAG		FY_BIT(FYGIIDX_DIAG)		/* @diag field is present */
+#define FYGIF_MARKER		FY_BIT(FYGIIDX_MARKER)		/* @marker field is present */
+#define FYGIF_STYLE		FY_BIT(FYGIIDX_STYLE)		/* @style field is present */
+#define FYGIF_FAILSAFE_STR	FY_BIT(FYGIIDX_FAILSAFE_STR)	/* @failsafe_str field is present */
+#define FYGIF_TOP_COMMENT	FY_BIT(FYGIIDX_TOP_COMMENT)	/* @top_comment is present */
+#define FYGIF_RIGHT_COMMENT	FY_BIT(FYGIIDX_RIGHT_COMMENT)	/* @right_comment is present */
+#define FYGIF_BOTTOM_COMMENT	FY_BIT(FYGIIDX_BOTTOM_COMMENT)	/* @bottom_comment is present */
+
+#define FYGIF_ALIAS		FY_BIT(FYGIIDX_ALIAS)		/* this indirect encodes a YAML alias on the anchor slot */
+
+#define FYGIF_CONTENT_MASK	((fy_generic_value)(FY_BIT(FYGIIDX_MAX) - 1))
+
+/**
+ * fy_generic_indirect_reset() - Reset a generic indirect
+ *
+ * Reset the contents of a generic indirect
+ *
+ * @gi: The generic indirect
+ */
+static inline FY_ALWAYS_INLINE
+void fy_generic_indirect_reset(fy_generic_indirect *gi)
+{
+	gi->flags = 0;
+	/* invalid bit pattern is all 1s, so this is the fastest way */
+	memset(gi->vindirect, -1, sizeof(gi->vindirect));
+}
 
 /**
  * fy_generic_is_direct() - Test whether a generic value is encoded directly.
@@ -1052,12 +1096,13 @@ fy_generic_indirect_get_style(fy_generic v)
  * fy_generic_indirect_get_comment() - Get the attached comment from an indirect.
  *
  * @v: An indirect generic value.
+ * @placement: The place of the comment
  *
  * Returns:
- * The comment as a &fy_generic, or %fy_null if %FYGIF_COMMENT is not set.
+ * The comment as a &fy_generic, or %fy_null if no such comment exists
  */
 fy_generic
-fy_generic_indirect_get_comment(fy_generic v)
+fy_generic_indirect_get_comment(fy_generic v, enum fy_comment_placement placement)
 	FY_EXPORT;
 
 /**
@@ -1124,15 +1169,52 @@ fy_generic_get_style(fy_generic v)
 	FY_EXPORT;
 
 /**
- * fy_generic_get_comment() - Get the attached comment from any generic value.
+ * fy_generic_get_node_style() - Get the node style of a generic
  *
  * @v: Any generic value.
  *
  * Returns:
- * The comment &fy_generic, or %fy_null if none.
+ * The node style of @v, or %FYNS_ANY if none.
+ */
+enum fy_node_style
+fy_generic_get_node_style(fy_generic v)
+	FY_EXPORT;
+
+/**
+ * fy_generic_get_scalar_style() - Get the scalar style of a generic scalar
+ *
+ * @v: Any generic scalar value.
+ *
+ * Returns:
+ * The scalar style of @v, or %FYSS_ANY if none (or generic is a collection)
+ */
+enum fy_scalar_style
+fy_generic_get_scalar_style(fy_generic v)
+	FY_EXPORT;
+
+/**
+ * fy_generic_get_collection_style() - Get the collection style of a generic scalar
+ *
+ * @v: Any generic scalar value.
+ *
+ * Returns:
+ * The collection style of @v, or %FYCS_ANY if none (or generic is a scalar)
+ */
+enum fy_collection_style
+fy_generic_get_collection_style(fy_generic v)
+	FY_EXPORT;
+
+/**
+ * fy_generic_get_comment() - Get the attached comment from any generic value.
+ *
+ * @v: Any generic value.
+ * @placement: The place of the comment
+ *
+ * Returns:
+ * The comment &fy_generic, or %fy_invalid if none.
  */
 fy_generic
-fy_generic_get_comment(fy_generic v)
+fy_generic_get_comment(fy_generic v, enum fy_comment_placement placement)
 	FY_EXPORT;
 
 /**
@@ -8455,6 +8537,7 @@ enum fy_op_emit_flags {
 	FYOPEF_STYLE_PRETTY		= FYOPEF_STYLE(3),
 	FYOPEF_STYLE_COMPACT		= FYOPEF_STYLE(4),
 	FYOPEF_STYLE_ONELINE		= FYOPEF_STYLE(5),
+	FYOPEF_XXX			= FY_BIT(25),
 };
 
 /* FYOPEF_DEFAULT - Recommended default emit flags (disables directory) */
@@ -10563,6 +10646,34 @@ fy_generic_vds_get_document_state(fy_generic vds)
  */
 fy_generic
 fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_generic vroot, struct fy_document_state *fyds)
+	FY_EXPORT;
+
+/**
+ * fy_generic_get_comments() - Get all the concatenated comments
+ *
+ * Get all the comments of a generic, concatenated and returned
+ * in a malloc'ed buffer. Free after use.
+ *
+ * @v: Any generic value.
+ *
+ * Returns:
+ * The concatenated comments of &fy_generic, or %NULL if none.
+ */
+char *
+fy_generic_get_comments(fy_generic v)
+	FY_EXPORT;
+
+/**
+ * fy_generic_has_comments() - Test whether the generic has comments
+ *
+ * @v: Any generic value.
+ *
+ * Returns:
+ * true if generic has attached comments, false otherwise
+ *
+ */
+bool
+fy_generic_has_comments(fy_generic v)
 	FY_EXPORT;
 
 ////////////////////////

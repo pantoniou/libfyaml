@@ -3392,7 +3392,7 @@ out:
 
 	if (fy_generic_is_valid(vdiag)) {
 		if (!fy_generic_is_indirect(out)) {
-			memset(&gi, 0, sizeof(gi));
+			fy_generic_indirect_reset(&gi);
 			gi.flags = FYGIF_VALUE | FYGIF_DIAG;
 			gi.value = out;
 			gi.diag = vdiag;
