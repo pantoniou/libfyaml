@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include <check.h>
 
@@ -1137,6 +1138,204 @@ START_TEST(emit_bug_literal_indent_indicator_required)
 }
 END_TEST
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 20: manually created scalars may contain invalid UTF-8
+ *
+ * The parser rejects invalid UTF-8 in input streams, but callers can
+ * construct scalar nodes directly from arbitrary byte buffers. The
+ * emitter must not write those invalid bytes into the output stream.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+static void assert_no_raw_invalid_bytes(const char *emitted, size_t emitted_len,
+					const uint8_t *data, size_t size,
+					const char *name)
+{
+	size_t i, j;
+
+	for (i = 0; i < emitted_len; i++) {
+		for (j = 0; j < size; j++) {
+			if (data[j] < 0x80)
+				continue;
+			if (emitted[i] == (char)data[j]) {
+				ck_abort_msg("%s: emitted raw invalid byte 0x%02X in:\n%s",
+					     name, data[j], emitted);
+			}
+		}
+	}
+}
+
+static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
+						     const uint8_t *data,
+						     size_t size)
+{
+	struct fy_document *fyd, *parsed;
+	struct fy_node *fyn;
+	char *emitted, *expected;
+	size_t emitted_len, expected_len, off, i;
+	char esc[5];
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_create_scalar_copy(fyd, (const char *)data, size);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	fy_document_set_root(fyd, fyn);
+
+	emitted = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_msg(emitted != NULL, "%s: failed to emit document", name);
+	emitted_len = strlen(emitted);
+
+	expected_len = 2 + (size * 4) + 2;
+	expected = malloc(expected_len + 1);
+	ck_assert_ptr_ne(expected, NULL);
+
+	off = 0;
+	expected[off++] = '"';
+	for (i = 0; i < size; i++) {
+		if (data[i] < 0x80)
+			expected[off++] = (char)data[i];
+		else {
+			snprintf(expected + off, expected_len + 1 - off,
+				 "\\x%02X", data[i]);
+			off += 4;
+		}
+	}
+	expected[off++] = '"';
+	expected[off++] = '\n';
+	expected[off] = '\0';
+
+	fprintf(stderr, "%s:\nexpected:\n%sactual:\n%s",
+		name, expected, emitted);
+
+	for (i = 0; i < size; i++) {
+		if (data[i] < 0x80)
+			continue;
+		snprintf(esc, sizeof(esc), "\\x%02X", data[i]);
+		ck_assert_msg(strstr(emitted, esc) != NULL,
+			      "%s: expected %s in emitted output:\n%s",
+			      name, esc, emitted);
+	}
+
+	assert_no_raw_invalid_bytes(emitted, emitted_len, data, size, name);
+
+	parsed = fy_document_build_from_string(NULL, emitted, FY_NT);
+	ck_assert_msg(parsed != NULL,
+		      "%s: emitted invalid YAML:\n%s", name, emitted);
+
+	fy_document_destroy(parsed);
+	free(expected);
+	free(emitted);
+	fy_document_destroy(fyd);
+}
+
+#define ASSERT_INVALID_UTF8_SCALAR(_name, _data) \
+	assert_invalid_utf8_scalar_emits_escaped((_name), (_data), sizeof(_data))
+
+START_TEST(emit_bug_invalid_utf8_first_byte_c0)
+{
+	static const uint8_t data[] = { 0xc0 };
+
+	ASSERT_INVALID_UTF8_SCALAR("invalid first byte 0xc0", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_first_byte_c1)
+{
+	static const uint8_t data[] = { 0xc1 };
+
+	ASSERT_INVALID_UTF8_SCALAR("invalid first byte 0xc1", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_missing_cont_2byte)
+{
+	static const uint8_t data[] = { 0xc2 };
+
+	ASSERT_INVALID_UTF8_SCALAR("missing continuation 2-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_missing_cont_3byte)
+{
+	static const uint8_t data[] = { 0xe2, 0x80 };
+
+	ASSERT_INVALID_UTF8_SCALAR("missing continuation 3-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_missing_cont_4byte)
+{
+	static const uint8_t data[] = { 0xf0, 0x9f, 0x98 };
+
+	ASSERT_INVALID_UTF8_SCALAR("missing continuation 4-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_lone_cont)
+{
+	static const uint8_t data[] = { 0x80 };
+
+	ASSERT_INVALID_UTF8_SCALAR("lone continuation", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_unexpected_cont)
+{
+	static const uint8_t data[] = { 'a', 0x80, 'b' };
+
+	ASSERT_INVALID_UTF8_SCALAR("unexpected continuation", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_overlong_2byte)
+{
+	static const uint8_t data[] = { 0xc0, 0xaf };
+
+	ASSERT_INVALID_UTF8_SCALAR("overlong 2-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_overlong_3byte)
+{
+	static const uint8_t data[] = { 0xe0, 0x80, 0xaf };
+
+	ASSERT_INVALID_UTF8_SCALAR("overlong 3-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_overlong_4byte)
+{
+	static const uint8_t data[] = { 0xf0, 0x80, 0x80, 0xaf };
+
+	ASSERT_INVALID_UTF8_SCALAR("overlong 4-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_out_of_range)
+{
+	static const uint8_t data[] = { 0xf4, 0x90, 0x80, 0x80 };
+
+	ASSERT_INVALID_UTF8_SCALAR("out of range code point", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_surrogate_d800)
+{
+	static const uint8_t data[] = { 0xed, 0xa0, 0x80 };
+
+	ASSERT_INVALID_UTF8_SCALAR("surrogate U+D800", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_surrogate_dfff)
+{
+	static const uint8_t data[] = { 0xed, 0xbf, 0xbf };
+
+	ASSERT_INVALID_UTF8_SCALAR("surrogate U+DFFF", data);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1238,4 +1437,19 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* Bug 19: literal block indent indicator required for leading-newline values */
 	fy_check_testcase_add_test(ctc, emit_bug_literal_indent_indicator_required);
+
+	/* Bug 20: invalid UTF-8 in manually created scalars */
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_first_byte_c0);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_first_byte_c1);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_missing_cont_2byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_missing_cont_3byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_missing_cont_4byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_lone_cont);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_unexpected_cont);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_overlong_2byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_overlong_3byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_overlong_4byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_out_of_range);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_surrogate_d800);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_surrogate_dfff);
 }
