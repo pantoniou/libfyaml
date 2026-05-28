@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-GENERICS" "3" "Mar 18, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-GENERICS" "3" "May 28, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-generics \- libfyaml generic API
 .SH INTRODUCTION
@@ -124,7 +124,7 @@ stack\-based sub\-values passed to it.
 .sp
 \fBImmutability and thread safety\fP: generics are immutable — all operations
 produce new values.  Multiple threads may safely read the same generic
-concurrently without locking; only the builder’s allocator requires
+concurrently without locking; only the builder\(aqs allocator requires
 synchronisation for writes.
 .sp
 \fBConversion\fP: \fBfy_document_to_generic()\fP and \fBfy_generic_to_document()\fP
@@ -204,7 +204,7 @@ Test whether a type is a scalar type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (const enum fy_generic_type) – The type to test.
+\fBtype\fP (const enum fy_generic_type) \-\- The type to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -222,7 +222,7 @@ Test whether a type is a collection type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (const enum fy_generic_type) – The type to test.
+\fBtype\fP (const enum fy_generic_type) \-\- The type to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -336,19 +336,19 @@ Build a 7\-byte inplace string encoding word (64\-bit).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v0\fP – First character byte (or 0 for padding).
+\fB_v0\fP \-\- First character byte (or 0 for padding).
 .IP \(bu 2
-\fB_v1\fP – Second character byte.
+\fB_v1\fP \-\- Second character byte.
 .IP \(bu 2
-\fB_v2\fP – Third character byte.
+\fB_v2\fP \-\- Third character byte.
 .IP \(bu 2
-\fB_v3\fP – Fourth character byte.
+\fB_v3\fP \-\- Fourth character byte.
 .IP \(bu 2
-\fB_v4\fP – Fifth character byte.
+\fB_v4\fP \-\- Fifth character byte.
 .IP \(bu 2
-\fB_v5\fP – Sixth character byte.
+\fB_v5\fP \-\- Sixth character byte.
 .IP \(bu 2
-\fB_v6\fP – Seventh character byte.
+\fB_v6\fP \-\- Seventh character byte.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -373,11 +373,11 @@ Build a 3\-byte inplace string encoding word (32\-bit).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v0\fP – First character byte (or 0 for padding).
+\fB_v0\fP \-\- First character byte (or 0 for padding).
 .IP \(bu 2
-\fB_v1\fP – Second character byte.
+\fB_v1\fP \-\- Second character byte.
 .IP \(bu 2
-\fB_v2\fP – Third character byte.
+\fB_v2\fP \-\- Third character byte.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -399,9 +399,9 @@ Return the larger of _Alignof(@_v) and \fB_min\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Expression whose alignment is queried.
+\fB_v\fP \-\- Expression whose alignment is queried.
 .IP \(bu 2
-\fB_min\fP – Minimum alignment to enforce.
+\fB_min\fP \-\- Minimum alignment to enforce.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -427,6 +427,23 @@ low 3 bits used as a type tag.
 .sp
 Access the raw word via .v (unsigned) or .vs (signed).  Always use
 the provided accessor functions rather than reading the raw fields.
+.SS fy_generic_indirect_reset
+.INDENT 0.0
+.TP
+.B void fy_generic_indirect_reset(fy_generic_indirect *gi) 
+Reset a generic indirect
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBgi\fP (fy_generic_indirect*) \-\- The generic indirect
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Reset the contents of a generic indirect
 .SS fy_generic_is_direct
 .INDENT 0.0
 .TP
@@ -437,7 +454,7 @@ Test whether a generic value is encoded directly.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to test.
+\fBv\fP (fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -459,7 +476,7 @@ Test whether a generic value is an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to test.
+\fBv\fP (fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -480,7 +497,7 @@ Test whether a direct generic value is not invalid.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – The generic value to test.
+\fBv\fP (const fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -500,7 +517,7 @@ Test whether a direct generic value is invalid.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – The generic value to test.
+\fBv\fP (const fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -520,7 +537,7 @@ Extract the raw pointer from a non\-collection generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBptr\fP (fy_generic) – An out\-of\-place non\-collection generic value.
+\fBptr\fP (fy_generic) \-\- An out\-of\-place non\-collection generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -542,7 +559,7 @@ Extract the raw pointer from a collection generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBptr\fP (fy_generic) – An out\-of\-place sequence or mapping generic value.
+\fBptr\fP (fy_generic) \-\- An out\-of\-place sequence or mapping generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -563,9 +580,9 @@ Adjust an out\-of\-place scalar pointer by a byte delta.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An out\-of\-place non\-collection generic value.
+\fBv\fP (fy_generic) \-\- An out\-of\-place non\-collection generic value.
 .IP \(bu 2
-\fBd\fP (ptrdiff_t) – Byte delta to add to the embedded pointer.
+\fBd\fP (ptrdiff_t) \-\- Byte delta to add to the embedded pointer.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -587,9 +604,9 @@ Adjust a collection pointer by a byte delta.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An out\-of\-place sequence or mapping generic value.
+\fBv\fP (fy_generic) \-\- An out\-of\-place sequence or mapping generic value.
 .IP \(bu 2
-\fBd\fP (ptrdiff_t) – Byte delta to add to the embedded pointer.
+\fBd\fP (ptrdiff_t) \-\- Byte delta to add to the embedded pointer.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -610,7 +627,7 @@ Determine the type of a direct generic (table lookup).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A direct (non\-indirect) generic value.
+\fBv\fP (fy_generic) \-\- A direct (non\-indirect) generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -632,7 +649,7 @@ Determine the type of a direct generic (bithack).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A direct (non\-indirect) generic value.
+\fBv\fP (fy_generic) \-\- A direct (non\-indirect) generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -656,7 +673,7 @@ Test whether a generic value is stored inplace (switch impl).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to test.
+\fBv\fP (fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -678,7 +695,7 @@ Test whether a generic value is stored inplace (bithack).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to test.
+\fBv\fP (fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -701,7 +718,7 @@ Test whether a generic value is stored inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to test.
+\fBv\fP (fy_generic) \-\- The generic value to test.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -721,7 +738,7 @@ Get the type of an indirect generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -742,9 +759,9 @@ Populate a fy_generic_indirect from an indirect value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .IP \(bu 2
-\fBgi\fP (fy_generic_indirect*) – Pointer to a caller\-allocated \fBstruct fy_generic_indirect\fP to receive the data.
+\fBgi\fP (fy_generic_indirect*) \-\- Pointer to a caller\-allocated \fBstruct fy_generic_indirect\fP to receive the data.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -761,13 +778,13 @@ Get a pointer to the value inside an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to an indirect generic value.
+\fBvp\fP (const fy_generic*) \-\- Pointer to an indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns a pointer into the \fBstruct fy_generic_indirect\fP‘s \fBvalue\fP field without
+Returns a pointer into the \fBstruct fy_generic_indirect\fP\(aqs \fBvalue\fP field without
 validating that \fBFYGIF_VALUE\fP is set.  Only use when the flag is known to be set.
 .SS Return
 .sp
@@ -782,7 +799,7 @@ Get a pointer to the value inside an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to an indirect generic value.
+\fBvp\fP (const fy_generic*) \-\- Pointer to an indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -803,7 +820,7 @@ Get the value wrapped by an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – An indirect generic value.
+\fBv\fP (const fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -824,7 +841,7 @@ Get the value wrapped by an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – An indirect generic value.
+\fBv\fP (const fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -844,7 +861,7 @@ Get the anchor from an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -861,7 +878,7 @@ Get the tag from an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -878,7 +895,7 @@ Get the diagnostics from an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -895,7 +912,7 @@ Get the source\-position marker from an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -912,7 +929,7 @@ Get the source style from an indirect.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -922,20 +939,22 @@ The style as a \fBstruct fy_generic\fP, or \fBfy_null\fP if \fBFYGIF_STYLE\fP is
 .SS fy_generic_indirect_get_comment
 .INDENT 0.0
 .TP
-.B fy_generic fy_generic_indirect_get_comment(fy_generic v) 
+.B fy_generic fy_generic_indirect_get_comment(fy_generic v, enum fy_comment_placement \%<#\:c\:.fy_comment_placement> placement) 
 Get the attached comment from an indirect.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – An indirect generic value.
+\fBv\fP (fy_generic) \-\- An indirect generic value.
+.IP \(bu 2
+\fBplacement\fP (enum fy_comment_placement \%<#\:c\:.fy_comment_placement>) \-\- The place of the comment
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-The comment as a \fBstruct fy_generic\fP, or \fBfy_null\fP if \fBFYGIF_COMMENT\fP is not set.
+The comment as a \fBstruct fy_generic\fP, or \fBfy_null\fP if no such comment exists
 .SS fy_generic_get_anchor
 .INDENT 0.0
 .TP
@@ -946,7 +965,7 @@ Get the anchor from any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -967,7 +986,7 @@ Get the tag from any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -984,7 +1003,7 @@ Get the diagnostics from any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1001,7 +1020,7 @@ Get the source\-position marker from any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1018,30 +1037,83 @@ Get the source style from any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
 The style \fBstruct fy_generic\fP, or \fBfy_null\fP if none.
+.SS fy_generic_get_node_style
+.INDENT 0.0
+.TP
+.B enum fy_node_style \%<#\:c\:.fy_node_style> fy_generic_get_node_style(fy_generic v) 
+Get the node style of a generic
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) \-\- Any generic value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The node style of \fBv\fP, or \fBFYNS_ANY\fP if none.
+.SS fy_generic_get_scalar_style
+.INDENT 0.0
+.TP
+.B enum fy_scalar_style \%<#\:c\:.fy_scalar_style> fy_generic_get_scalar_style(fy_generic v) 
+Get the scalar style of a generic scalar
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) \-\- Any generic scalar value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The scalar style of \fBv\fP, or \fBFYSS_ANY\fP if none (or generic is a collection)
+.SS fy_generic_get_collection_style
+.INDENT 0.0
+.TP
+.B enum fy_collection_style \%<#\:c\:.fy_collection_style> fy_generic_get_collection_style(fy_generic v) 
+Get the collection style of a generic scalar
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) \-\- Any generic scalar value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The collection style of \fBv\fP, or \fBFYCS_ANY\fP if none (or generic is a scalar)
 .SS fy_generic_get_comment
 .INDENT 0.0
 .TP
-.B fy_generic fy_generic_get_comment(fy_generic v) 
+.B fy_generic fy_generic_get_comment(fy_generic v, enum fy_comment_placement \%<#\:c\:.fy_comment_placement> placement) 
 Get the attached comment from any generic value.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value.
+\fBv\fP (fy_generic) \-\- Any generic value.
+.IP \(bu 2
+\fBplacement\fP (enum fy_comment_placement \%<#\:c\:.fy_comment_placement>) \-\- The place of the comment
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-The comment \fBstruct fy_generic\fP, or \fBfy_null\fP if none.
+The comment \fBstruct fy_generic\fP, or \fBfy_invalid\fP if none.
 .SS fy_generic_get_type
 .INDENT 0.0
 .TP
@@ -1052,7 +1124,7 @@ Get the type of any generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Any generic value (direct or indirect).
+\fBv\fP (fy_generic) \-\- Any generic value (direct or indirect).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1101,14 +1173,14 @@ for correct ABI — do not reorder.
 .SS fy_sequence_storage_size
 .INDENT 0.0
 .TP
-.B size_t fy_sequence_storage_size(const size_t count) 
+.B size_t fy_sequence_storage_size(size_t count) 
 Compute bytes needed for a sequence of \fBcount\fP items.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcount\fP (const size_t) – Number of items.
+\fBcount\fP (size_t) \-\- Number of items.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1122,14 +1194,14 @@ The required byte count, or \fBSIZE_MAX\fP on integer overflow.
 .SS fy_mapping_storage_size
 .INDENT 0.0
 .TP
-.B size_t fy_mapping_storage_size(const size_t count) 
+.B size_t fy_mapping_storage_size(size_t count) 
 Compute bytes needed for a mapping of \fBcount\fP pairs.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcount\fP (const size_t) – Number of key/value pairs.
+\fBcount\fP (size_t) \-\- Number of key/value pairs.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1143,16 +1215,16 @@ The required byte count, or \fBSIZE_MAX\fP on integer overflow.
 .SS fy_collection_storage_size
 .INDENT 0.0
 .TP
-.B size_t fy_collection_storage_size(bool is_map, const size_t count) 
+.B size_t fy_collection_storage_size(bool is_map, size_t count) 
 Compute bytes for a sequence or mapping.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBis_map\fP (bool) – true for a mapping, false for a sequence.
+\fBis_map\fP (bool) \-\- true for a mapping, false for a sequence.
 .IP \(bu 2
-\fBcount\fP (const size_t) – Number of items (pairs for mappings).
+\fBcount\fP (size_t) \-\- Number of items (pairs for mappings).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1173,7 +1245,7 @@ Yield the canonical C type for a generic\-compatible expression.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – An expression whose type is to be normalised.
+\fB_v\fP \-\- An expression whose type is to be normalised.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1196,7 +1268,7 @@ Test whether any generic value is not invalid.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – Any generic value.
+\fBv\fP (const fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1217,7 +1289,7 @@ Test whether any generic value is invalid.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – Any generic value.
+\fBv\fP (const fy_generic) \-\- Any generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1238,7 +1310,7 @@ Generate inline type\-check functions for a generic type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gtype\fP – Type suffix (e.g. null_type, bool_type, int_type, string, sequence, …).
+\fB_gtype\fP \-\- Type suffix (e.g. null_type, bool_type, int_type, string, sequence, …).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1248,7 +1320,7 @@ Generate inline type\-check functions for a generic type.
 .B Instantiates three functions for the type suffix \fB_gtype\fP:
 .INDENT 7.0
 .IP \(bu 2
-fy_generic_is_indirect_##_gtype##_nocheck(): checks the type of an indirect’s wrapped
+fy_generic_is_indirect_##_gtype##_nocheck(): checks the type of an indirect\(aqs wrapped
 value without validating that the indirect flag is set.
 .IP \(bu 2
 fy_generic_is_indirect_##_gtype(): safe version with validation.
@@ -1266,7 +1338,7 @@ Generate out\-of\-line type\-check function bodies.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gtype\fP – Type suffix matching a previous \fBFY_GENERIC_IS_TEMPLATE_INLINE()\fP call.
+\fB_gtype\fP \-\- Type suffix matching a previous \fBFY_GENERIC_IS_TEMPLATE_INLINE()\fP call.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1285,7 +1357,7 @@ Test whether a direct generic is null.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1302,7 +1374,7 @@ Test whether a direct generic is a boolean.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1319,7 +1391,7 @@ Test whether a direct generic is a signed integer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1340,7 +1412,7 @@ Test whether a direct generic is an unsigned integer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1361,7 +1433,7 @@ Test whether a direct generic is a float.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1382,7 +1454,7 @@ Test whether a direct generic is a string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1403,7 +1475,7 @@ Alias for \fBfy_generic_is_direct_string()\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1420,7 +1492,7 @@ Test whether a direct generic is a sequence.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1440,7 +1512,7 @@ Alias for \fBfy_generic_is_direct_sequence()\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1457,7 +1529,7 @@ Test whether a direct generic is a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1477,7 +1549,7 @@ Alias for \fBfy_generic_is_direct_mapping()\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1494,7 +1566,7 @@ Test whether a direct generic is a sequence or mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1504,6 +1576,23 @@ Both sequences and mappings have the low 3 bits of the type tag equal to zero.
 .SS Return
 .sp
 true if \fBv\fP is either a sequence or a mapping.
+.SS fy_generic_is_direct_scalar
+.INDENT 0.0
+.TP
+.B bool fy_generic_is_direct_scalar(const fy_generic v) 
+Test whether a direct generic is a scalar
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (const fy_generic) \-\- A direct generic value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if \fBv\fP is a scalar (but not invalid)
 .SS fy_generic_collectionp_get_items
 .INDENT 0.0
 .TP
@@ -1514,11 +1603,11 @@ Get the items array from a collection pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBtype\fP (const enum fy_generic_type) – Either \fBFYGT_SEQUENCE\fP or \fBFYGT_MAPPING\fP\&.
+\fBtype\fP (const enum fy_generic_type) \-\- Either \fBFYGT_SEQUENCE\fP or \fBFYGT_MAPPING\fP\&.
 .IP \(bu 2
-\fBcolp\fP (const fy_generic_collection*) – Pointer to the \fBstruct fy_generic_collection\fP storage block (may be NULL).
+\fBcolp\fP (const fy_generic_collection*) \-\- Pointer to the \fBstruct fy_generic_collection\fP storage block (may be NULL).
 .IP \(bu 2
-\fBcountp\fP (size_t*) – Receives the number of \fBstruct fy_generic\fP items in the returned array.
+\fBcountp\fP (size_t*) \-\- Receives the number of \fBstruct fy_generic\fP items in the returned array.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1540,9 +1629,9 @@ Resolve a direct collection generic to its storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A direct generic value.
+\fBv\fP (fy_generic) \-\- A direct generic value.
 .IP \(bu 2
-\fBtypep\fP (enum fy_generic_type*) – Receives \fBFYGT_SEQUENCE\fP, \fBFYGT_MAPPING\fP, or \fBFYGT_INVALID\fP if not a collection.
+\fBtypep\fP (enum fy_generic_type*) \-\- Receives \fBFYGT_SEQUENCE\fP, \fBFYGT_MAPPING\fP, or \fBFYGT_INVALID\fP if not a collection.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1563,7 +1652,7 @@ Test whether a direct generic is an alias.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A direct generic value.
+\fBv\fP (const fy_generic) \-\- A direct generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1580,7 +1669,7 @@ Decode a null generic (always returns NULL).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A generic value known to be null.
+\fBv\fP (fy_generic) \-\- A generic value known to be null.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1597,7 +1686,7 @@ Encode a null pointer as an inplace null generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (void*) – Must be NULL; any non\-NULL pointer yields \fBfy_invalid_value\fP\&.
+\fBp\fP (void*) \-\- Must be NULL; any non\-NULL pointer yields \fBfy_invalid_value\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1614,7 +1703,7 @@ Out\-of\-place allocation size for null (always 0).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (void*) – Ignored.
+\fBv\fP (void*) \-\- Ignored.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1631,9 +1720,9 @@ Encode null into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Ignored (null has no out\-of\-place representation).
+\fBbuf\fP (void*) \-\- Ignored (null has no out\-of\-place representation).
 .IP \(bu 2
-\fBv\fP (void*) – Ignored.
+\fBv\fP (void*) \-\- Ignored.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1650,7 +1739,7 @@ Decode a boolean generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A generic value known to be a boolean.
+\fBv\fP (fy_generic) \-\- A generic value known to be a boolean.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1667,7 +1756,7 @@ Encode a boolean as an inplace generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (_Bool) – The boolean value to encode.
+\fBv\fP (_Bool) \-\- The boolean value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1684,7 +1773,7 @@ Out\-of\-place allocation size for a boolean (0).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (bool) – Ignored.
+\fBv\fP (bool) \-\- Ignored.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1701,9 +1790,9 @@ Encode a boolean into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Ignored.
+\fBbuf\fP (void*) \-\- Ignored.
 .IP \(bu 2
-\fBv\fP (bool) – The boolean value.
+\fBv\fP (bool) \-\- The boolean value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1720,7 +1809,7 @@ Try to encode a signed integer inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const long long) – The signed 64\-bit integer to encode.
+\fBv\fP (const long long) \-\- The signed 64\-bit integer to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1741,9 +1830,9 @@ Encode a signed integer into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Caller\-allocated, suitably aligned buffer of at least sizeof(fy_generic_decorated_int).
+\fBbuf\fP (void*) \-\- Caller\-allocated, suitably aligned buffer of at least sizeof(fy_generic_decorated_int).
 .IP \(bu 2
-\fBv\fP (const long long) – The signed 64\-bit integer value.
+\fBv\fP (const long long) \-\- The signed 64\-bit integer value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1764,7 +1853,7 @@ Try to encode an unsigned integer inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const unsigned long long) – The unsigned 64\-bit integer to encode.
+\fBv\fP (const unsigned long long) \-\- The unsigned 64\-bit integer to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1785,9 +1874,9 @@ Encode an unsigned integer into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Caller\-allocated, suitably aligned buffer.
+\fBbuf\fP (void*) \-\- Caller\-allocated, suitably aligned buffer.
 .IP \(bu 2
-\fBv\fP (const unsigned long long) – The unsigned 64\-bit integer value.
+\fBv\fP (const unsigned long long) \-\- The unsigned 64\-bit integer value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1808,7 +1897,7 @@ Try to encode a double as an inplace float (64\-bit).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const double) – The double value to encode.
+\fBv\fP (const double) \-\- The double value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1832,9 +1921,9 @@ Encode a double into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Caller\-allocated, suitably aligned buffer of at least sizeof(double).
+\fBbuf\fP (void*) \-\- Caller\-allocated, suitably aligned buffer of at least sizeof(double).
 .IP \(bu 2
-\fBv\fP (const double) – The double value to store.
+\fBv\fP (const double) \-\- The double value to store.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1855,7 +1944,7 @@ Decode a signed integer generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A generic value known to be an integer.
+\fBv\fP (fy_generic) \-\- A generic value known to be an integer.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1876,7 +1965,7 @@ Out\-of\-place allocation size for a signed integer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const long long) – The integer value to be encoded.
+\fBv\fP (const long long) \-\- The integer value to be encoded.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1893,7 +1982,7 @@ Decode an unsigned integer generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A generic value known to be an integer.
+\fBv\fP (fy_generic) \-\- A generic value known to be an integer.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1914,7 +2003,7 @@ Out\-of\-place allocation size for an unsigned integer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const unsigned long long) – The unsigned integer value to be encoded.
+\fBv\fP (const unsigned long long) \-\- The unsigned integer value to be encoded.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1931,7 +2020,7 @@ Decode a float generic (64\-bit).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A generic value known to be a float.
+\fBv\fP (fy_generic) \-\- A generic value known to be a float.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -1951,33 +2040,13 @@ Out\-of\-place allocation size for a float (64\-bit).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const double) – The double value to be encoded.
+\fBv\fP (const double) \-\- The double value to be encoded.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
 0 if \fBv\fP can be stored inplace (as float32 without loss), sizeof(double) otherwise.
-.SS fy_generic_out_of_place_size_double
-.INDENT 0.0
-.TP
-.B size_t fy_generic_out_of_place_size_double(const double v) 
-Out\-of\-place allocation size for a double (32\-bit).
-.INDENT 7.0
-.TP
-.B Parameters
-.INDENT 7.0
-.IP \(bu 2
-\fBv\fP (const double) – Ignored.
-.UNINDENT
-.UNINDENT
-.UNINDENT
-.SS Description
-.sp
-On 32\-bit platforms all floats are stored out\-of\-place as doubles.
-.SS Return
-.sp
-sizeof(double).
 .SS fy_generic_sequence_resolve_outofplace
 .INDENT 0.0
 .TP
@@ -1988,7 +2057,7 @@ Resolve a non\-direct sequence to its storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (fy_generic) – A sequence generic value.
+\fBseq\fP (fy_generic) \-\- A sequence generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2009,7 +2078,7 @@ Resolve any sequence generic to its storage pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (const fy_generic) – A sequence generic value.
+\fBseq\fP (const fy_generic) \-\- A sequence generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2029,7 +2098,7 @@ Convert a sequence generic to an opaque handle.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (const fy_generic) – A sequence generic value.
+\fBseq\fP (const fy_generic) \-\- A sequence generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2046,7 +2115,7 @@ Get the items array from a sequence pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseqp\fP (const fy_generic_sequence*) – Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
+\fBseqp\fP (const fy_generic_sequence*) \-\- Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2063,7 +2132,7 @@ Get the item count from a sequence pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseqp\fP (const fy_generic_sequence*) – Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
+\fBseqp\fP (const fy_generic_sequence*) \-\- Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2080,7 +2149,7 @@ Get the number of items in a sequence.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (fy_generic) – A sequence generic value.
+\fBseq\fP (fy_generic) \-\- A sequence generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2097,9 +2166,9 @@ Get the items array and count from a sequence.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (fy_generic) – A sequence generic value.
+\fBseq\fP (fy_generic) \-\- A sequence generic value.
 .IP \(bu 2
-\fBcountp\fP (size_t*) – Receives the number of items.
+\fBcountp\fP (size_t*) \-\- Receives the number of items.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2116,9 +2185,9 @@ Get a pointer to a specific item in a sequence pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseqp\fP (const fy_generic_sequence*) – Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
+\fBseqp\fP (const fy_generic_sequence*) \-\- Pointer to a \fBstruct fy_generic_sequence\fP (may be NULL).
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based item index.
+\fBidx\fP (const size_t) \-\- Zero\-based item index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2135,9 +2204,9 @@ Get a pointer to a specific item in a sequence.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (fy_generic) – A sequence generic value.
+\fBseq\fP (fy_generic) \-\- A sequence generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based item index.
+\fBidx\fP (const size_t) \-\- Zero\-based item index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2154,9 +2223,9 @@ Get a specific item from a sequence as a value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseq\fP (fy_generic) – A sequence generic value.
+\fBseq\fP (fy_generic) \-\- A sequence generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based item index.
+\fBidx\fP (const size_t) \-\- Zero\-based item index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2173,7 +2242,7 @@ Resolve a non\-direct mapping to its storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2194,7 +2263,7 @@ Resolve any mapping generic to its storage pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (const fy_generic) – A mapping generic value.
+\fBmap\fP (const fy_generic) \-\- A mapping generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2214,7 +2283,7 @@ Convert a mapping generic to an opaque handle.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (const fy_generic) – A mapping generic value.
+\fBmap\fP (const fy_generic) \-\- A mapping generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2231,7 +2300,7 @@ Get the flat interleaved items array from a mapping pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2252,7 +2321,7 @@ Get the number of key/value pairs from a mapping pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2269,9 +2338,9 @@ Get the pairs array and pair count from a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBcountp\fP (size_t*) – Receives the number of key/value pairs.
+\fBcountp\fP (size_t*) \-\- Receives the number of key/value pairs.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2288,9 +2357,9 @@ Get the flat interleaved items array and count from a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBitem_countp\fP (size_t*) – Receives the total number of items (2 x pair count).
+\fBitem_countp\fP (size_t*) \-\- Receives the total number of items (2 x pair count).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2311,9 +2380,9 @@ Compare two generics that are not word\-equal.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (fy_generic) – First generic value.
+\fBa\fP (fy_generic) \-\- First generic value.
 .IP \(bu 2
-\fBb\fP (fy_generic) – Second generic value.
+\fBb\fP (fy_generic) \-\- Second generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2335,9 +2404,9 @@ Compare two generic values for equality and ordering.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBa\fP (fy_generic) – First generic value.
+\fBa\fP (fy_generic) \-\- First generic value.
 .IP \(bu 2
-\fBb\fP (fy_generic) – Second generic value.
+\fBb\fP (fy_generic) \-\- Second generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2360,9 +2429,9 @@ Get a pointer to a key at a given index (mapping pointer).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2379,9 +2448,9 @@ Get a pointer to a key at a given index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2398,9 +2467,9 @@ Get a key at a given index as a value (mapping pointer).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2417,9 +2486,9 @@ Get a key at a given index as a value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2436,11 +2505,11 @@ Look up a value by key in a mapping pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .IP \(bu 2
-\fBidxp\fP (size_t*) – Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
+\fBidxp\fP (size_t*) \-\- Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2460,9 +2529,9 @@ Look up a value by key in a mapping pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2479,9 +2548,9 @@ Get a pointer to a value at a given index (mapping pointer).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2498,11 +2567,11 @@ Look up a value by key, returning its index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .IP \(bu 2
-\fBidxp\fP (size_t*) – Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
+\fBidxp\fP (size_t*) \-\- Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2519,9 +2588,9 @@ Look up a value by key in a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2538,9 +2607,9 @@ Get a pointer to a value at a given index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2557,11 +2626,11 @@ Look up a value by key, returning it and its index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .IP \(bu 2
-\fBidxp\fP (size_t*) – Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
+\fBidxp\fP (size_t*) \-\- Receives the found pair index, or (size_t)\-1 if not found (may be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2578,9 +2647,9 @@ Look up a value by key in a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBkey\fP (fy_generic) – The key to search for.
+\fBkey\fP (fy_generic) \-\- The key to search for.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2597,9 +2666,9 @@ Get a value at a given index as a value (mapping pointer).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmapp\fP (const fy_generic_mapping*) – Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
+\fBmapp\fP (const fy_generic_mapping*) \-\- Pointer to a \fBstruct fy_generic_mapping\fP (may be NULL).
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2616,9 +2685,9 @@ Get a value at a given index as a value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .IP \(bu 2
-\fBidx\fP (const size_t) – Zero\-based pair index.
+\fBidx\fP (const size_t) \-\- Zero\-based pair index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2635,7 +2704,7 @@ Get the number of key/value pairs in a mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmap\fP (fy_generic) – A mapping generic value.
+\fBmap\fP (fy_generic) \-\- A mapping generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2652,9 +2721,9 @@ Get the raw item array of a sequence or mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A sequence or mapping generic value.
+\fBv\fP (fy_generic) \-\- A sequence or mapping generic value.
 .IP \(bu 2
-\fBcountp\fP (size_t*) – Receives the number of items (elements for sequences,
+\fBcountp\fP (size_t*) \-\- Receives the number of items (elements for sequences,
 2 x pair\-count for mappings).
 .UNINDENT
 .UNINDENT
@@ -2677,21 +2746,21 @@ Generate typed accessor/cast functions for a C scalar type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ctype\fP – The C type (e.g. int, unsigned long).
+\fB_ctype\fP \-\- The C type (e.g. int, unsigned long).
 .IP \(bu 2
-\fB_gtype\fP – The token name used in generated identifiers (e.g. int, unsigned_long).
+\fB_gtype\fP \-\- The token name used in generated identifiers (e.g. int, unsigned_long).
 .IP \(bu 2
-\fB_gttype\fP – The generic type tag category (INT, UINT, FLOAT, BOOL, NULL).
+\fB_gttype\fP \-\- The generic type tag category (INT, UINT, FLOAT, BOOL, NULL).
 .IP \(bu 2
-\fB_xctype\fP – The underlying storage C type (long long, unsigned long long, double, etc.).
+\fB_xctype\fP \-\- The underlying storage C type (long long, unsigned long long, double, etc.).
 .IP \(bu 2
-\fB_xgtype\fP – The underlying storage type name (int_type, uint_type, float_type, etc.).
+\fB_xgtype\fP \-\- The underlying storage type name (int_type, uint_type, float_type, etc.).
 .IP \(bu 2
-\fB_xminv\fP – Minimum representable value for range\-checking.
+\fB_xminv\fP \-\- Minimum representable value for range\-checking.
 .IP \(bu 2
-\fB_xmaxv\fP – Maximum representable value for range\-checking.
+\fB_xmaxv\fP \-\- Maximum representable value for range\-checking.
 .IP \(bu 2
-\fB_default_v\fP – Default value returned when conversion fails.
+\fB_default_v\fP \-\- Default value returned when conversion fails.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2753,15 +2822,15 @@ Specialise FY_GENERIC_LVAL_TEMPLATE for signed integer types.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ctype\fP – The C type (e.g. int, short).
+\fB_ctype\fP \-\- The C type (e.g. int, short).
 .IP \(bu 2
-\fB_gtype\fP – Token name (e.g. int, short).
+\fB_gtype\fP \-\- Token name (e.g. int, short).
 .IP \(bu 2
-\fB_xminv\fP – Minimum value (e.g. INT_MIN).
+\fB_xminv\fP \-\- Minimum value (e.g. INT_MIN).
 .IP \(bu 2
-\fB_xmaxv\fP – Maximum value (e.g. INT_MAX).
+\fB_xmaxv\fP \-\- Maximum value (e.g. INT_MAX).
 .IP \(bu 2
-\fB_defaultv\fP – Default value on conversion failure.
+\fB_defaultv\fP \-\- Default value on conversion failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2779,15 +2848,15 @@ Specialise FY_GENERIC_LVAL_TEMPLATE for unsigned integer types.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ctype\fP – The C type (e.g. unsigned int, unsigned long).
+\fB_ctype\fP \-\- The C type (e.g. unsigned int, unsigned long).
 .IP \(bu 2
-\fB_gtype\fP – Token name (e.g. unsigned_int, unsigned_long).
+\fB_gtype\fP \-\- Token name (e.g. unsigned_int, unsigned_long).
 .IP \(bu 2
-\fB_xminv\fP – Minimum value (always 0 for unsigned types).
+\fB_xminv\fP \-\- Minimum value (always 0 for unsigned types).
 .IP \(bu 2
-\fB_xmaxv\fP – Maximum value (e.g. UINT_MAX).
+\fB_xmaxv\fP \-\- Maximum value (e.g. UINT_MAX).
 .IP \(bu 2
-\fB_defaultv\fP – Default value on conversion failure.
+\fB_defaultv\fP \-\- Default value on conversion failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2805,15 +2874,15 @@ Specialise FY_GENERIC_LVAL_TEMPLATE for floating\-point types.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ctype\fP – The C type (float or double).
+\fB_ctype\fP \-\- The C type (float or double).
 .IP \(bu 2
-\fB_gtype\fP – Token name (float or double).
+\fB_gtype\fP \-\- Token name (float or double).
 .IP \(bu 2
-\fB_xminv\fP – Minimum normal value (e.g. \-FLT_MAX).
+\fB_xminv\fP \-\- Minimum normal value (e.g. \-FLT_MAX).
 .IP \(bu 2
-\fB_xmaxv\fP – Maximum normal value (e.g. FLT_MAX).
+\fB_xmaxv\fP \-\- Maximum normal value (e.g. FLT_MAX).
 .IP \(bu 2
-\fB_defaultv\fP – Default value on conversion failure.
+\fB_defaultv\fP \-\- Default value on conversion failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2832,13 +2901,13 @@ Extract the length of an inplace string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (const fy_generic) – A generic value with tag FY_STRING_INPLACE_V. Behaviour is undefined otherwise.
+\fBv\fP (const fy_generic) \-\- A generic value with tag FY_STRING_INPLACE_V. Behaviour is undefined otherwise.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-Length of the inplace string in bytes (0–7 on 64\-bit, 0–3 on 32\-bit).
+Length of the inplace string in bytes (0–6 on 64\-bit, 0–2 on 32\-bit).
 .SS fy_genericp_get_string_inplace
 .INDENT 0.0
 .TP
@@ -2849,7 +2918,7 @@ Return a pointer to the inplace string bytes.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a generic with tag FY_STRING_INPLACE_V.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a generic with tag FY_STRING_INPLACE_V.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2870,9 +2939,9 @@ Get string pointer and length without type check.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a generic known to hold a string (inplace or outplace).
+\fBvp\fP (const fy_generic*) \-\- Pointer to a generic known to hold a string (inplace or outplace).
 .IP \(bu 2
-\fBlenp\fP (size_t*) – Receives the length of the string in bytes.
+\fBlenp\fP (size_t*) \-\- Receives the length of the string in bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2893,7 +2962,7 @@ Get string pointer without type check or length.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a generic known to hold a string (inplace or outplace).
+\fBvp\fP (const fy_generic*) \-\- Pointer to a generic known to hold a string (inplace or outplace).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2910,16 +2979,16 @@ Get string pointer and length from a generic pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_vp\fP – Pointer to a generic value (may be indirect).  May be NULL.
+\fB_vp\fP \-\- Pointer to a generic value (may be indirect).  May be NULL.
 .IP \(bu 2
-\fB_lenp\fP – Receives the string length.  Set to 0 on failure.
+\fB_lenp\fP \-\- Receives the string length.  Set to 0 on failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Handles all string variants (inplace, outplace, indirect).  When the underlying
-value is an inplace string a temporary aligned copy is alloca’d so that a stable
+value is an inplace string a temporary aligned copy is alloca\(aqd so that a stable
 pointer can be returned.
 .SS Return
 .sp
@@ -2934,9 +3003,9 @@ Get string pointer from a generic pointer, with a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_vp\fP – Pointer to a generic value.  May be NULL.
+\fB_vp\fP \-\- Pointer to a generic value.  May be NULL.
 .IP \(bu 2
-\fB_default_v\fP – Returned when \fB_vp\fP is NULL or not a string.
+\fB_default_v\fP \-\- Returned when \fB_vp\fP is NULL or not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2953,9 +3022,9 @@ Get string pointer and length from a generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A generic value (may be indirect).
+\fB_v\fP \-\- A generic value (may be indirect).
 .IP \(bu 2
-\fB_lenp\fP – Receives the string length.  Set to 0 on failure.
+\fB_lenp\fP \-\- Receives the string length.  Set to 0 on failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2977,9 +3046,9 @@ Get string from a generic value with a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A generic value.
+\fB_v\fP \-\- A generic value.
 .IP \(bu 2
-\fB_default_v\fP – Returned when \fB_v\fP is not a string.
+\fB_default_v\fP \-\- Returned when \fB_v\fP is not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -2996,9 +3065,9 @@ Get a const char pointer from a generic pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a generic value (indirect is resolved).  May be NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a generic value (indirect is resolved).  May be NULL.
 .IP \(bu 2
-\fBdefault_value\fP (const char*) – Returned when \fBvp\fP is NULL or not an out\-of\-place string.
+\fBdefault_value\fP (const char*) \-\- Returned when \fBvp\fP is NULL or not an out\-of\-place string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3019,16 +3088,16 @@ Get a const char pointer from a generic pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a generic value.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns “” when \fBvp\fP is NULL or not an out\-of\-place string.
+Returns \(dq\(dq when \fBvp\fP is NULL or not an out\-of\-place string.
 .SS Return
 .sp
-Pointer to the string, or “” on failure.
+Pointer to the string, or \(dq\(dq on failure.
 .SS fy_genericp_get_char_ptr_default
 .INDENT 0.0
 .TP
@@ -3039,9 +3108,9 @@ Get a mutable char pointer from a generic pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (fy_generic*) – Pointer to a generic value.
+\fBvp\fP (fy_generic*) \-\- Pointer to a generic value.
 .IP \(bu 2
-\fBdefault_value\fP (const char*) – Returned on failure.
+\fBdefault_value\fP (const char*) \-\- Returned on failure.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3061,16 +3130,16 @@ Get a mutable char pointer from a generic pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (fy_generic*) – Pointer to a generic value.
+\fBvp\fP (fy_generic*) \-\- Pointer to a generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns “” when \fBvp\fP is NULL or not an out\-of\-place string.
+Returns \(dq\(dq when \fBvp\fP is NULL or not an out\-of\-place string.
 .SS Return
 .sp
-Mutable pointer to the string, or “” on failure.
+Mutable pointer to the string, or \(dq\(dq on failure.
 .SS macro fy_generic_get_alias_alloca
 .INDENT 0.0
 .TP
@@ -3081,7 +3150,7 @@ Get the anchor name string from an alias generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – An alias generic value.
+\fB_v\fP \-\- An alias generic value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3090,7 +3159,7 @@ Get the anchor name string from an alias generic.
 Extracts the anchor (string) from an alias value using alloca for inplace storage.
 .SS Return
 .sp
-Pointer to the NUL\-terminated anchor name, or “” if \fB_v\fP is not an alias.
+Pointer to the NUL\-terminated anchor name, or \(dq\(dq if \fB_v\fP is not an alias.
 .SS macro fy_bool
 .INDENT 0.0
 .TP
@@ -3101,7 +3170,7 @@ Create a bool generic from a C boolean expression.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Boolean expression.
+\fB_v\fP \-\- Boolean expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3118,7 +3187,7 @@ Detect whether an integer constant exceeds LLONG_MAX.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – An integer expression.
+\fB_v\fP \-\- An integer expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3139,7 +3208,7 @@ Create an integer generic using alloca for out\-of\-place values.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Any integer expression.
+\fB_v\fP \-\- Any integer expression.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3161,7 +3230,7 @@ Create an integer generic from any integer expression.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – An integer expression of any width.
+\fB_v\fP \-\- An integer expression of any width.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3182,15 +3251,15 @@ Attempt to encode a string inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const char*) – String data (need not be NUL\-terminated).
+\fBp\fP (const char*) \-\- String data (need not be NUL\-terminated).
 .IP \(bu 2
-\fBlen\fP (const size_t) – Length of \fBp\fP in bytes.
+\fBlen\fP (const size_t) \-\- Length of \fBp\fP in bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Packs up to 7 bytes (64\-bit) or 3 bytes (32\-bit) of \fBp\fP directly into the
+Packs up to 6 bytes (64\-bit) or 2 bytes (32\-bit) of \fBp\fP directly into the
 generic word.  Returns fy_invalid_value when the string is too long for
 inplace storage.
 .SS Return
@@ -3206,7 +3275,7 @@ Attempt to encode a NUL\-terminated string inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const char*) – NUL\-terminated string.  May be NULL (returns fy_invalid_value).
+\fBp\fP (const char*) \-\- NUL\-terminated string.  May be NULL (returns fy_invalid_value).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3223,7 +3292,7 @@ Attempt to encode a sized string inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBszstrp\fP (const fy_generic_sized_string*) – Pointer to a sized string.  May be NULL (returns fy_invalid_value).
+\fBszstrp\fP (const fy_generic_sized_string*) \-\- Pointer to a sized string.  May be NULL (returns fy_invalid_value).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3240,7 +3309,7 @@ Attempt to encode a sized string value inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBszstr\fP (const fy_generic_sized_string) – A sized string by value.
+\fBszstr\fP (const fy_generic_sized_string) \-\- A sized string by value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3257,7 +3326,7 @@ Attempt to encode a decorated int inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBdintp\fP (const fy_generic_decorated_int*) – Pointer to the decorated int.  May be NULL (returns fy_invalid_value).
+\fBdintp\fP (const fy_generic_decorated_int*) \-\- Pointer to the decorated int.  May be NULL (returns fy_invalid_value).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3278,7 +3347,7 @@ Attempt to encode a decorated int by value inplace.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBdint\fP (const fy_generic_decorated_int) – A decorated int value.
+\fBdint\fP (const fy_generic_decorated_int) \-\- A decorated int value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3295,7 +3364,7 @@ Encode a sequence handle as a generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBseqh\fP (fy_generic_sequence_handle) – A sequence handle.
+\fBseqh\fP (fy_generic_sequence_handle) \-\- A sequence handle.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3316,7 +3385,7 @@ Encode a mapping handle as a generic value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBmaph\fP (fy_generic_mapping_handle) – A mapping handle.
+\fBmaph\fP (fy_generic_mapping_handle) \-\- A mapping handle.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3337,7 +3406,7 @@ Encode a value as an inplace generic using _Generic dispatch.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Value of any supported C type.
+\fB_v\fP \-\- Value of any supported C type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3359,7 +3428,7 @@ Byte count needed for out\-of\-place storage of a C string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const char*) – Null\-terminated C string, or NULL.
+\fBp\fP (const char*) \-\- Null\-terminated C string, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3380,7 +3449,7 @@ Byte count for out\-of\-place storage of a sized string pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBszstrp\fP (const fy_generic_sized_string*) – Pointer to a sized string descriptor, or NULL.
+\fBszstrp\fP (const fy_generic_sized_string*) \-\- Pointer to a sized string descriptor, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3397,7 +3466,7 @@ Byte count for out\-of\-place storage of a decorated int pointer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBdintp\fP (const fy_generic_decorated_int*) – Pointer to a decorated int descriptor, or NULL.
+\fBdintp\fP (const fy_generic_decorated_int*) \-\- Pointer to a decorated int descriptor, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3417,7 +3486,7 @@ Compute buffer size needed for out\-of\-place encoding of a value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Value of any supported C type.
+\fB_v\fP \-\- Value of any supported C type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3434,9 +3503,9 @@ Write a C string into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Pre\-allocated buffer of at least \fBfy_generic_out_of_place_size_char_ptr()\fP bytes.
+\fBbuf\fP (void*) \-\- Pre\-allocated buffer of at least \fBfy_generic_out_of_place_size_char_ptr()\fP bytes.
 .IP \(bu 2
-\fBp\fP (const char*) – Null\-terminated C string (must not be NULL).
+\fBp\fP (const char*) \-\- Null\-terminated C string (must not be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3458,9 +3527,9 @@ Write a sized string into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Pre\-allocated aligned buffer.
+\fBbuf\fP (void*) \-\- Pre\-allocated aligned buffer.
 .IP \(bu 2
-\fBszstrp\fP (const fy_generic_sized_string*) – Sized string descriptor (must not be NULL).
+\fBszstrp\fP (const fy_generic_sized_string*) \-\- Sized string descriptor (must not be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3477,9 +3546,9 @@ Write a decorated int into an out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBbuf\fP (void*) – Pre\-allocated aligned buffer.
+\fBbuf\fP (void*) \-\- Pre\-allocated aligned buffer.
 .IP \(bu 2
-\fBdintp\fP (const fy_generic_decorated_int*) – Decorated int descriptor (must not be NULL).
+\fBdintp\fP (const fy_generic_decorated_int*) \-\- Decorated int descriptor (must not be NULL).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3500,9 +3569,9 @@ Write a value into a pre\-allocated out\-of\-place buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_vp\fP – Destination buffer pointer.
+\fB_vp\fP \-\- Destination buffer pointer.
 .IP \(bu 2
-\fB_v\fP – Value to encode.
+\fB_v\fP \-\- Value to encode.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3524,7 +3593,7 @@ Encode any value as a fy_generic_value using alloca for out\-of\-place storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Value of any supported C type.
+\fB_v\fP \-\- Value of any supported C type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3547,14 +3616,14 @@ Encode any value as a fy_generic using alloca for out\-of\-place storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Value of any supported C type.
+\fB_v\fP \-\- Value of any supported C type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Wrapper around \fBfy_local_to_generic_value()\fP that returns a full fy_generic struct.
-The result is only valid within the enclosing function’s scope.
+The result is only valid within the enclosing function\(aqs scope.
 .SS Return
 .sp
 fy_generic value (stack lifetime for out\-of\-place types).
@@ -3568,7 +3637,7 @@ Encode a double as a generic float value using alloca for out\-of\-place storage
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A double value.
+\fB_v\fP \-\- A double value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3589,7 +3658,7 @@ Construct a fy_generic float value, choosing alloca or static storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A double (constant or runtime).
+\fB_v\fP \-\- A double (constant or runtime).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3610,7 +3679,7 @@ High\-level float generic constructor.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A double value.
+\fB_v\fP \-\- A double value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3624,26 +3693,26 @@ fy_generic wrapping the encoded float.
 .INDENT 0.0
 .TP
 .B FY_CONST_P_INIT(_v) 
-Detect a C string literal and return its value, or “” for non\-literal char*.
+Detect a C string literal and return its value, or \(dq\(dq for non\-literal char*.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – A C expression (typically a string literal or char* variable).
+\fB_v\fP \-\- A C expression (typically a string literal or char* variable).
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-C string literals decay to \fIchar *\fP, but \fI&”literal”\fP has type \fIchar (*)[N]\fP,
+C string literals decay to \fIchar *\fP, but \fI&\(dqliteral\(dq\fP has type \fIchar (*)[N]\fP,
 not \fIchar **\fP\&.  This macro exploits that to distinguish literals from variables:
-literals are returned as\-is; non\-literal char* expressions yield “”.
+literals are returned as\-is; non\-literal char* expressions yield \(dq\(dq.
 .sp
 Used internally by \fBfy_string_size_const()\fP to initialize static string buffers.
 .SS Return
 .sp
-\fB_v\fP itself for string literals; “” for other char* values; “” for all other types.
+\fB_v\fP itself for string literals; \(dq\(dq for other char* values; \(dq\(dq for all other types.
 .SS macro fy_string_size_alloca
 .INDENT 0.0
 .TP
@@ -3654,9 +3723,9 @@ Encode a string with explicit length using alloca for out\-of\-place storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Pointer to the string data (need not be NUL\-terminated).
+\fB_v\fP \-\- Pointer to the string data (need not be NUL\-terminated).
 .IP \(bu 2
-\fB_len\fP – Length in bytes.
+\fB_len\fP \-\- Length in bytes.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3678,9 +3747,9 @@ Encode a compile\-time constant string with explicit length using static storage
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Pointer to the string data (must be a string literal for static init).
+\fB_v\fP \-\- Pointer to the string data (must be a string literal for static init).
 .IP \(bu 2
-\fB_len\fP – Byte length of the string (excluding any NUL terminator).
+\fB_len\fP \-\- Byte length of the string (excluding any NUL terminator).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3706,7 +3775,7 @@ Encode a NUL\-terminated string using alloca for out\-of\-place storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Null\-terminated C string.
+\fB_v\fP \-\- Null\-terminated C string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3726,9 +3795,9 @@ Construct a fy_generic string with explicit length, choosing static or alloca st
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – String pointer (literal for static path, any pointer for alloca path).
+\fB_v\fP \-\- String pointer (literal for static path, any pointer for alloca path).
 .IP \(bu 2
-\fB_len\fP – Byte length.
+\fB_len\fP \-\- Byte length.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3745,7 +3814,7 @@ Construct a fy_generic string, choosing static or alloca storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – String pointer (literal uses static storage; variable pointer uses alloca).
+\fB_v\fP \-\- String pointer (literal uses static storage; variable pointer uses alloca).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3762,9 +3831,9 @@ High\-level string generic constructor with explicit byte length.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – String data pointer.
+\fB_v\fP \-\- String data pointer.
 .IP \(bu 2
-\fB_len\fP – Byte length.
+\fB_len\fP \-\- Byte length.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3781,7 +3850,7 @@ High\-level string generic constructor from a NUL\-terminated C string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Null\-terminated C string.
+\fB_v\fP \-\- Null\-terminated C string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3798,9 +3867,9 @@ Format a string using \fBfy_sprintfa()\fP \%<#\:c\:.fy_sprintfa> and encode it a
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_fmt\fP – printf\-compatible format string.
+\fB_fmt\fP \-\- printf\-compatible format string.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Format arguments.
+\fBellipsis\fP (ellipsis) \-\- Format arguments.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3817,9 +3886,9 @@ Format a string and return it as a fy_generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_fmt\fP – printf\-compatible format string.
+\fB_fmt\fP \-\- printf\-compatible format string.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Format arguments.
+\fBellipsis\fP (ellipsis) \-\- Format arguments.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3836,9 +3905,9 @@ Allocate a sequence on the stack and copy items into it.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of elements.
+\fB_count\fP \-\- Number of elements.
 .IP \(bu 2
-\fB_items\fP – Pointer to an array of \fB_count\fP fy_generic values to copy.
+\fB_items\fP \-\- Pointer to an array of \fB_count\fP fy_generic values to copy.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3855,9 +3924,9 @@ Create a fy_generic_value for a sequence, handling the empty case.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of elements.
+\fB_count\fP \-\- Number of elements.
 .IP \(bu 2
-\fB_items\fP – Array of elements to copy.
+\fB_items\fP \-\- Array of elements to copy.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3877,9 +3946,9 @@ Create a fy_generic sequence from a count and item array.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of elements.
+\fB_count\fP \-\- Number of elements.
 .IP \(bu 2
-\fB_items\fP – Array of fy_generic values to copy.
+\fB_items\fP \-\- Array of fy_generic values to copy.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3896,9 +3965,9 @@ Build a compound\-literal fy_generic array from variadic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of elements (must equal the number of variadic arguments).
+\fB_count\fP \-\- Number of elements (must equal the number of variadic arguments).
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Values to convert.
+\fBellipsis\fP (ellipsis) \-\- Values to convert.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3918,11 +3987,11 @@ Build a compound\-literal fy_generic array from variadic arguments via a builder
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of elements.
+\fB_count\fP \-\- Number of elements.
 .IP \(bu 2
-\fB_gb\fP – Builder to internalize values into.
+\fB_gb\fP \-\- Builder to internalize values into.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Values to convert.
+\fBellipsis\fP (ellipsis) \-\- Values to convert.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3943,7 +4012,7 @@ Build a sequence fy_generic_value from variadic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Values to include in the sequence.
+\fBellipsis\fP (ellipsis) \-\- Values to include in the sequence.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3964,7 +4033,7 @@ Build a fy_generic sequence from variadic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Values to include in the sequence.
+\fBellipsis\fP (ellipsis) \-\- Values to include in the sequence.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3981,9 +4050,9 @@ Allocate a mapping on the stack and copy key\-value pairs into it.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of key\-value pairs.
+\fB_count\fP \-\- Number of key\-value pairs.
 .IP \(bu 2
-\fB_pairs\fP – Pointer to an array of 2 x \fB_count\fP fy_generic values (interleaved key, value).
+\fB_pairs\fP \-\- Pointer to an array of 2 x \fB_count\fP fy_generic values (interleaved key, value).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4000,9 +4069,9 @@ Create a fy_generic_value for a mapping, handling the empty case.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of key\-value pairs.
+\fB_count\fP \-\- Number of key\-value pairs.
 .IP \(bu 2
-\fB_pairs\fP – Array of interleaved key/value pairs.
+\fB_pairs\fP \-\- Array of interleaved key/value pairs.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4019,9 +4088,9 @@ Create a fy_generic mapping from a count and pairs array.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_count\fP – Number of key\-value pairs.
+\fB_count\fP \-\- Number of key\-value pairs.
 .IP \(bu 2
-\fB_items\fP – Array of interleaved fy_generic key/value pairs.
+\fB_items\fP \-\- Array of interleaved fy_generic key/value pairs.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4038,7 +4107,7 @@ Build a mapping fy_generic_value from variadic key\-value arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Alternating key/value arguments (even count required).
+\fBellipsis\fP (ellipsis) \-\- Alternating key/value arguments (even count required).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4059,7 +4128,7 @@ Build a fy_generic mapping from variadic key\-value arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Alternating key/value arguments.
+\fBellipsis\fP (ellipsis) \-\- Alternating key/value arguments.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4076,11 +4145,11 @@ Build an indirect wrapper value on the stack.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Wrapped value (fy_generic_value), or fy_invalid_value to omit.
+\fB_v\fP \-\- Wrapped value (fy_generic_value), or fy_invalid_value to omit.
 .IP \(bu 2
-\fB_anchor\fP – Anchor string generic value (fy_string), or fy_invalid_value to omit.
+\fB_anchor\fP \-\- Anchor string generic value (fy_string), or fy_invalid_value to omit.
 .IP \(bu 2
-\fB_tag\fP – Tag string generic value (fy_string), or fy_invalid_value to omit.
+\fB_tag\fP \-\- Tag string generic value (fy_string), or fy_invalid_value to omit.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4101,11 +4170,11 @@ Build an indirect\-wrapper fy_generic from fy_generic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – The wrapped value as fy_generic, or fy_invalid for none.
+\fB_v\fP \-\- The wrapped value as fy_generic, or fy_invalid for none.
 .IP \(bu 2
-\fB_anchor\fP – Anchor string as fy_generic, or fy_invalid for none.
+\fB_anchor\fP \-\- Anchor string as fy_generic, or fy_invalid for none.
 .IP \(bu 2
-\fB_tag\fP – Tag string as fy_generic, or fy_invalid for none.
+\fB_tag\fP \-\- Tag string as fy_generic, or fy_invalid for none.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4122,9 +4191,9 @@ Return \fBv\fP if it is valid, otherwise return \fBdefault_value\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value to check.
+\fBv\fP (fy_generic) \-\- Generic value to check.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic) – Fallback fy_generic.
+\fBdefault_value\fP (fy_generic) \-\- Fallback fy_generic.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4141,9 +4210,9 @@ Dereference a generic pointer and return its value, or a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic) – Fallback when \fBvp\fP is NULL or the value is invalid.
+\fBdefault_value\fP (fy_generic) \-\- Fallback when \fBvp\fP is NULL or the value is invalid.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4160,9 +4229,9 @@ Extract a sequence handle from a generic, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value.
+\fBv\fP (fy_generic) \-\- Generic value.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_sequence_handle) – Fallback handle when \fBv\fP does not hold a sequence.
+\fBdefault_value\fP (fy_generic_sequence_handle) \-\- Fallback handle when \fBv\fP does not hold a sequence.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4179,9 +4248,9 @@ Extract a sequence handle via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_sequence_handle) – Fallback when \fBvp\fP is NULL or not a sequence.
+\fBdefault_value\fP (fy_generic_sequence_handle) \-\- Fallback when \fBvp\fP is NULL or not a sequence.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4198,9 +4267,9 @@ Extract a mapping handle from a generic, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value.
+\fBv\fP (fy_generic) \-\- Generic value.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_mapping_handle) – Fallback when \fBv\fP does not hold a mapping.
+\fBdefault_value\fP (fy_generic_mapping_handle) \-\- Fallback when \fBv\fP does not hold a mapping.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4217,9 +4286,9 @@ Extract a mapping handle via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_mapping_handle) – Fallback when \fBvp\fP is NULL or not a mapping.
+\fBdefault_value\fP (fy_generic_mapping_handle) \-\- Fallback when \fBvp\fP is NULL or not a mapping.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4236,9 +4305,9 @@ Extract a const char* pointer from a string generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic string value.
+\fBv\fP (fy_generic) \-\- Generic string value.
 .IP \(bu 2
-\fBdefault_value\fP (const char*) – Fallback when \fBv\fP is not a string.
+\fBdefault_value\fP (const char*) \-\- Fallback when \fBv\fP is not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4259,9 +4328,9 @@ Extract a sized string from a generic string value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic string value.
+\fBv\fP (fy_generic) \-\- Generic string value.
 .IP \(bu 2
-\fBdefault_value\fP (const fy_generic_sized_string) – Fallback when \fBv\fP is not a string.
+\fBdefault_value\fP (const fy_generic_sized_string) \-\- Fallback when \fBv\fP is not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4283,9 +4352,9 @@ Extract a const char* via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (const char*) – Fallback when \fBvp\fP is NULL or not a string.
+\fBdefault_value\fP (const char*) \-\- Fallback when \fBvp\fP is NULL or not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4302,9 +4371,9 @@ Extract a sized string via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (const fy_generic_sized_string) – Fallback when \fBvp\fP is NULL or not a string.
+\fBdefault_value\fP (const fy_generic_sized_string) \-\- Fallback when \fBvp\fP is NULL or not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4321,9 +4390,9 @@ Extract a decorated int from a generic, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value.
+\fBv\fP (fy_generic) \-\- Generic value.
 .IP \(bu 2
-\fBdefault_value\fP (const fy_generic_decorated_int) – Fallback when \fBv\fP does not hold an integer.
+\fBdefault_value\fP (const fy_generic_decorated_int) \-\- Fallback when \fBv\fP does not hold an integer.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4344,7 +4413,7 @@ Return alloca size needed for inplace string cast.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value to examine.
+\fBv\fP (fy_generic) \-\- Generic value to examine.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4365,15 +4434,15 @@ Copy an inplace string to a stack buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Inplace string generic value.
+\fBv\fP (fy_generic) \-\- Inplace string generic value.
 .IP \(bu 2
-\fBp\fP (void*) – Stack buffer of at least \fBsize\fP bytes.
+\fBp\fP (void*) \-\- Stack buffer of at least \fBsize\fP bytes.
 .IP \(bu 2
-\fBsize\fP (size_t) – Buffer size in bytes.
+\fBsize\fP (size_t) \-\- Buffer size in bytes.
 .IP \(bu 2
-\fBdefault_value\fP (const char*) – Unused; present for _Generic dispatch uniformity.
+\fBdefault_value\fP (const char*) \-\- Unused; present for _Generic dispatch uniformity.
 .IP \(bu 2
-\fBstore_value\fP (const char**) – Receives a pointer to the NUL\-terminated copy in \fBp\fP\&.
+\fBstore_value\fP (const char**) \-\- Receives a pointer to the NUL\-terminated copy in \fBp\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4391,15 +4460,15 @@ Copy an inplace string to a stack buffer as a sized_string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Inplace string generic value.
+\fBv\fP (fy_generic) \-\- Inplace string generic value.
 .IP \(bu 2
-\fBp\fP (void*) – Stack buffer.
+\fBp\fP (void*) \-\- Stack buffer.
 .IP \(bu 2
-\fBsize\fP (size_t) – Buffer size in bytes.
+\fBsize\fP (size_t) \-\- Buffer size in bytes.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_sized_string) – Unused.
+\fBdefault_value\fP (fy_generic_sized_string) \-\- Unused.
 .IP \(bu 2
-\fBstore_value\fP (fy_generic_sized_string*) – Receives data/size pointing into \fBp\fP\&.
+\fBstore_value\fP (fy_generic_sized_string*) \-\- Receives data/size pointing into \fBp\fP\&.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4413,9 +4482,9 @@ Cast a generic value to a C type using _Generic dispatch.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Source value (any type; converted via \fBfy_to_generic()\fP).
+\fB_v\fP \-\- Source value (any type; converted via \fBfy_to_generic()\fP).
 .IP \(bu 2
-\fB_dv\fP – Default value whose C type determines the target type.
+\fB_dv\fP \-\- Default value whose C type determines the target type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4437,7 +4506,7 @@ Produce the zero/NULL default for a C type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_type\fP – A C type name.
+\fB_type\fP \-\- A C type name.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4458,9 +4527,9 @@ Cast a generic value to a specific C type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Source value (any type).
+\fB_v\fP \-\- Source value (any type).
 .IP \(bu 2
-\fB_type\fP – Target C type name.
+\fB_type\fP \-\- Target C type name.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4475,15 +4544,15 @@ Converted value of type \fB_type\fP\&.
 .INDENT 0.0
 .TP
 .B fy_genericp_cast_default(_vp, _dv) 
-Cast a generic pointer’s value to a C type using _Generic dispatch.
+Cast a generic pointer\(aqs value to a C type using _Generic dispatch.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_vp\fP – Pointer to a fy_generic, or NULL.
+\fB_vp\fP \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fB_dv\fP – Default value whose type determines the target.
+\fB_dv\fP \-\- Default value whose type determines the target.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4494,15 +4563,15 @@ Converted value, or \fB_dv\fP when \fB_vp\fP is NULL or type mismatch.
 .INDENT 0.0
 .TP
 .B fy_genericp_cast_typed(_vp, _type) 
-Cast a generic pointer’s value to a specific C type.
+Cast a generic pointer\(aqs value to a specific C type.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_vp\fP – Pointer to a fy_generic, or NULL.
+\fB_vp\fP \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fB_type\fP – Target C type name.
+\fB_type\fP \-\- Target C type name.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4519,9 +4588,9 @@ Extract a sequence handle via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_sequence_handle) – Fallback when \fBvp\fP is NULL or not a sequence.
+\fBdefault_value\fP (fy_generic_sequence_handle) \-\- Fallback when \fBvp\fP is NULL or not a sequence.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4538,9 +4607,9 @@ Extract a mapping handle via a pointer, or return a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_mapping_handle) – Fallback when \fBvp\fP is NULL or not a mapping.
+\fBdefault_value\fP (fy_generic_mapping_handle) \-\- Fallback when \fBvp\fP is NULL or not a mapping.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4557,9 +4626,9 @@ Dereference a generic pointer, returning a default for NULL.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic) – Value returned when \fBvp\fP is NULL.
+\fBdefault_value\fP (fy_generic) \-\- Value returned when \fBvp\fP is NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4576,7 +4645,7 @@ Return \fBvp\fP itself if it points to a direct string, or NULL.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4593,9 +4662,9 @@ Extract a sized string via a pointer, resolving indirects.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvp\fP (const fy_generic*) – Pointer to a fy_generic, or NULL.
+\fBvp\fP (const fy_generic*) \-\- Pointer to a fy_generic, or NULL.
 .IP \(bu 2
-\fBdefault_value\fP (fy_generic_sized_string) – Fallback when \fBvp\fP is NULL or not a string.
+\fBdefault_value\fP (fy_generic_sized_string) \-\- Fallback when \fBvp\fP is NULL or not a string.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4612,9 +4681,9 @@ Convert a value to fy_generic first, then cast with a default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Value to convert (any supported type).
+\fB_v\fP \-\- Value to convert (any supported type).
 .IP \(bu 2
-\fB_dv\fP – Default value (determines output type).
+\fB_dv\fP \-\- Default value (determines output type).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4635,11 +4704,11 @@ Retrieve a typed element from a sequence by index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_seq\fP – fy_generic sequence value.
+\fB_seq\fP \-\- fy_generic sequence value.
 .IP \(bu 2
-\fB_idx\fP – Element index.
+\fB_idx\fP \-\- Element index.
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the output type).
+\fB_dv\fP \-\- Default value (type determines the output type).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4656,11 +4725,11 @@ Retrieve a typed element from a sequence by index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_seq\fP – fy_generic sequence value.
+\fB_seq\fP \-\- fy_generic sequence value.
 .IP \(bu 2
-\fB_idx\fP – Element index.
+\fB_idx\fP \-\- Element index.
 .IP \(bu 2
-\fB_type\fP – C type name of the desired output type.
+\fB_type\fP \-\- C type name of the desired output type.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4680,11 +4749,11 @@ Retrieve an element from a sequence using a generic index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_seq\fP – Sequence.
+\fB_seq\fP \-\- Sequence.
 .IP \(bu 2
-\fB_idxv\fP – Index as any type convertible to fy_generic (e.g. an integer).
+\fB_idxv\fP \-\- Index as any type convertible to fy_generic (e.g. an integer).
 .IP \(bu 2
-\fB_dv\fP – Default value.
+\fB_dv\fP \-\- Default value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4701,11 +4770,11 @@ Retrieve a typed element from a sequence pointer by index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_seqp\fP – Pointer to a fy_generic_sequence.
+\fB_seqp\fP \-\- Pointer to a fy_generic_sequence.
 .IP \(bu 2
-\fB_idx\fP – Element index.
+\fB_idx\fP \-\- Element index.
 .IP \(bu 2
-\fB_dv\fP – Default value.
+\fB_dv\fP \-\- Default value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4722,11 +4791,11 @@ Look up a key in a mapping and return the typed value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_map\fP – fy_generic mapping value.
+\fB_map\fP \-\- fy_generic mapping value.
 .IP \(bu 2
-\fB_key\fP – Key (any type; converted via \fBfy_to_generic()\fP).
+\fB_key\fP \-\- Key (any type; converted via \fBfy_to_generic()\fP).
 .IP \(bu 2
-\fB_dv\fP – Default value (its C type determines the output type).
+\fB_dv\fP \-\- Default value (its C type determines the output type).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4743,11 +4812,11 @@ Look up a key in a mapping and return the value as a specific type.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_map\fP – fy_generic mapping value.
+\fB_map\fP \-\- fy_generic mapping value.
 .IP \(bu 2
-\fB_key\fP – Key (any type).
+\fB_key\fP \-\- Key (any type).
 .IP \(bu 2
-\fB_type\fP – C type name of the desired output.
+\fB_type\fP \-\- C type name of the desired output.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4764,11 +4833,11 @@ Look up a key in a mapping pointer and return the typed value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_mapp\fP – Pointer to a fy_generic_mapping.
+\fB_mapp\fP \-\- Pointer to a fy_generic_mapping.
 .IP \(bu 2
-\fB_key\fP – Key (any type).
+\fB_key\fP \-\- Key (any type).
 .IP \(bu 2
-\fB_dv\fP – Default value.
+\fB_dv\fP \-\- Default value.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4785,11 +4854,11 @@ Get the value at index \fB_idx\fP in a mapping, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_map\fP – fy_generic mapping value
+\fB_map\fP \-\- fy_generic mapping value
 .IP \(bu 2
-\fB_idx\fP – Zero\-based pair index
+\fB_idx\fP \-\- Zero\-based pair index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4806,11 +4875,11 @@ Get the value at index \fB_idx\fP in a mapping pointer, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_mapp\fP – Pointer to fy_generic_mapping
+\fB_mapp\fP \-\- Pointer to fy_generic_mapping
 .IP \(bu 2
-\fB_idx\fP – Zero\-based pair index
+\fB_idx\fP \-\- Zero\-based pair index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4827,11 +4896,11 @@ Get the key at index \fB_idx\fP in a mapping, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_map\fP – fy_generic mapping value
+\fB_map\fP \-\- fy_generic mapping value
 .IP \(bu 2
-\fB_idx\fP – Zero\-based pair index
+\fB_idx\fP \-\- Zero\-based pair index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4848,11 +4917,11 @@ Get the key at index \fB_idx\fP in a mapping pointer, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_mapp\fP – Pointer to fy_generic_mapping
+\fB_mapp\fP \-\- Pointer to fy_generic_mapping
 .IP \(bu 2
-\fB_idx\fP – Zero\-based pair index
+\fB_idx\fP \-\- Zero\-based pair index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4869,7 +4938,7 @@ Determine whether a direct generic value is a sequence or mapping.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – A direct fy_generic value (no indirection)
+\fBv\fP (fy_generic) \-\- A direct fy_generic value (no indirection)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4886,11 +4955,11 @@ Get an element from a collection by key or index, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_colv\fP – Collection value (fy_generic, sequence handle, or mapping handle)
+\fB_colv\fP \-\- Collection value (fy_generic, sequence handle, or mapping handle)
 .IP \(bu 2
-\fB_key\fP – Key for mappings, or integer index for sequences
+\fB_key\fP \-\- Key for mappings, or integer index for sequences
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4912,11 +4981,11 @@ Get an element from a collection at a numeric index, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_colv\fP – Collection value (fy_generic, sequence handle, or mapping handle)
+\fB_colv\fP \-\- Collection value (fy_generic, sequence handle, or mapping handle)
 .IP \(bu 2
-\fB_idx\fP – Zero\-based integer index
+\fB_idx\fP \-\- Zero\-based integer index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4937,11 +5006,11 @@ Get the KEY at a numeric index from a collection, typed via default.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_colv\fP – Collection value (fy_generic, sequence handle, or mapping handle)
+\fB_colv\fP \-\- Collection value (fy_generic, sequence handle, or mapping handle)
 .IP \(bu 2
-\fB_idx\fP – Zero\-based integer index
+\fB_idx\fP \-\- Zero\-based integer index
 .IP \(bu 2
-\fB_dv\fP – Default value (type determines the return type)
+\fB_dv\fP \-\- Default value (type determines the return type)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4962,7 +5031,7 @@ Return element/character count of a fy_generic collection or string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBp\fP (const void*) – Pointer to a fy_generic value
+\fBp\fP (const void*) \-\- Pointer to a fy_generic value
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -4982,7 +5051,7 @@ Return the number of elements in a collection or characters in a string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_colv\fP – Collection or string value
+\fB_colv\fP \-\- Collection or string value
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5005,6 +5074,7 @@ YAML/JSON schema variant used during parsing and builder operations.
 .sp
 .EX
 enum fy_generic_schema {
+    FYGS_INVALID,
     FYGS_AUTO,
     FYGS_YAML1_2_FAILSAFE,
     FYGS_YAML1_2_CORE,
@@ -5020,6 +5090,9 @@ enum fy_generic_schema {
 .UNINDENT
 .SS Constants
 .INDENT 0.0
+.TP
+.B FYGS_INVALID
+Invalid schema
 .TP
 .B FYGS_AUTO
 Automatically select schema based on input
@@ -5058,13 +5131,30 @@ Return a human\-readable name for \fBschema\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBschema\fP (enum fy_generic_schema) – A fy_generic_schema value
+\fBschema\fP (enum fy_generic_schema) \-\- A fy_generic_schema value
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-A static NUL\-terminated string describing the schema, or “unknown” for invalid values.
+A static NUL\-terminated string describing the schema, or \(dqunknown\(dq for invalid values.
+.SS fy_generic_schema_from_text
+.INDENT 0.0
+.TP
+.B enum fy_generic_schema fy_generic_schema_from_text(const char *text) 
+Given text return the matching schema
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBtext\fP (const char*) \-\- The text to match to schema
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The parsed generic schema value or FYGS_INVALID in case of an error.
 .SS enum fy_gb_cfg_flags
 .INDENT 0.0
 .TP
@@ -5248,9 +5338,9 @@ Initialize a pre\-allocated generic builder structure.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Pointer to an already\-allocated fy_generic_builder to initialize
+\fBgb\fP (struct fy_generic_builder*) \-\- Pointer to an already\-allocated fy_generic_builder to initialize
 .IP \(bu 2
-\fBcfg\fP (const struct fy_generic_builder_cfg*) – Configuration; NULL uses defaults
+\fBcfg\fP (const struct fy_generic_builder_cfg*) \-\- Configuration; NULL uses defaults
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5267,7 +5357,7 @@ Release resources held by a builder initialized via \fBfy_generic_builder_setup(
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to clean up
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to clean up
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5284,7 +5374,7 @@ Heap\-allocate and initialize a generic builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct fy_generic_builder_cfg*) – Configuration; NULL uses defaults
+\fBcfg\fP (const struct fy_generic_builder_cfg*) \-\- Configuration; NULL uses defaults
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5301,7 +5391,7 @@ Destroy and free a builder created by \fBfy_generic_builder_create()\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to destroy (may be NULL)
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to destroy (may be NULL)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5315,7 +5405,7 @@ Reset a builder to its initial empty state without freeing it.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to reset
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to reset
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5326,17 +5416,17 @@ All previously built values become invalid after reset.
 .INDENT 0.0
 .TP
 .B void *fy_gb_alloc(struct fy_generic_builder *gb, size_t size, size_t align) 
-Allocate raw bytes from the builder’s arena.
+Allocate raw bytes from the builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBsize\fP (size_t) – Bytes to allocate
+\fBsize\fP (size_t) \-\- Bytes to allocate
 .IP \(bu 2
-\fBalign\fP (size_t) – Required alignment in bytes
+\fBalign\fP (size_t) \-\- Required alignment in bytes
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5353,9 +5443,9 @@ Release a previously allocated block back to the builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBptr\fP (void*) – Pointer returned by \fBfy_gb_alloc()\fP
+\fBptr\fP (void*) \-\- Pointer returned by \fBfy_gb_alloc()\fP
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5363,13 +5453,13 @@ Release a previously allocated block back to the builder.
 .INDENT 0.0
 .TP
 .B void fy_gb_trim(struct fy_generic_builder *gb) 
-Trim excess reserved capacity in the builder’s allocator.
+Trim excess reserved capacity in the builder\(aqs allocator.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5377,19 +5467,19 @@ Trim excess reserved capacity in the builder’s allocator.
 .INDENT 0.0
 .TP
 .B const void *fy_gb_store(struct fy_generic_builder *gb, const void *data, size_t size, size_t align) 
-Copy \fBsize\fP bytes of \fBdata\fP into the builder’s arena.
+Copy \fBsize\fP bytes of \fBdata\fP into the builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBdata\fP (const void*) – Source data
+\fBdata\fP (const void*) \-\- Source data
 .IP \(bu 2
-\fBsize\fP (size_t) – Bytes to copy
+\fBsize\fP (size_t) \-\- Bytes to copy
 .IP \(bu 2
-\fBalign\fP (size_t) – Required alignment
+\fBalign\fP (size_t) \-\- Required alignment
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5406,13 +5496,13 @@ Scatter\-gather store: copy multiple iovec buffers into the arena.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBiov\fP (const struct iovec*) – Array of iovec descriptors
+\fBiov\fP (const struct iovec*) \-\- Array of iovec descriptors
 .IP \(bu 2
-\fBiovcnt\fP (unsigned int) – Number of iovec entries
+\fBiovcnt\fP (unsigned int) \-\- Number of iovec entries
 .IP \(bu 2
-\fBalign\fP (size_t) – Required alignment
+\fBalign\fP (size_t) \-\- Required alignment
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5423,19 +5513,19 @@ Pointer to the contiguous stored copy, or NULL on failure.
 .INDENT 0.0
 .TP
 .B const void *fy_gb_lookupv(struct fy_generic_builder *gb, const struct iovec *iov, unsigned int iovcnt, size_t align) 
-Look up existing data in the builder’s arena by scatter\-gather comparison.
+Look up existing data in the builder\(aqs arena by scatter\-gather comparison.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBiov\fP (const struct iovec*) – Array of iovec descriptors describing the data to find
+\fBiov\fP (const struct iovec*) \-\- Array of iovec descriptors describing the data to find
 .IP \(bu 2
-\fBiovcnt\fP (unsigned int) – Number of iovec entries
+\fBiovcnt\fP (unsigned int) \-\- Number of iovec entries
 .IP \(bu 2
-\fBalign\fP (size_t) – Required alignment
+\fBalign\fP (size_t) \-\- Required alignment
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5450,19 +5540,19 @@ Pointer to existing copy, or NULL on failure.
 .INDENT 0.0
 .TP
 .B const void *fy_gb_lookup(struct fy_generic_builder *gb, const void *data, size_t size, size_t align) 
-Look up existing data in the builder’s arena (single buffer variant).
+Look up existing data in the builder\(aqs arena (single buffer variant).
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBdata\fP (const void*) – Data to find or store
+\fBdata\fP (const void*) \-\- Data to find or store
 .IP \(bu 2
-\fBsize\fP (size_t) – Byte size of \fBdata\fP
+\fBsize\fP (size_t) \-\- Byte size of \fBdata\fP
 .IP \(bu 2
-\fBalign\fP (size_t) – Required alignment
+\fBalign\fP (size_t) \-\- Required alignment
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5477,13 +5567,13 @@ Pointer to existing copy, or NULL on failure.
 .INDENT 0.0
 .TP
 .B struct fy_allocator_info *fy_gb_get_allocator_info(struct fy_generic_builder *gb) 
-Retrieve statistics about the builder’s allocator.
+Retrieve statistics about the builder\(aqs allocator.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5500,11 +5590,11 @@ Release a reference to an arena allocation.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBptr\fP (const void*) – Pointer previously returned by a store/alloc call
+\fBptr\fP (const void*) \-\- Pointer previously returned by a store/alloc call
 .IP \(bu 2
-\fBsize\fP (size_t) – Size that was allocated
+\fBsize\fP (size_t) \-\- Size that was allocated
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5518,7 +5608,7 @@ Return number of allocation failures since last reset.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5539,9 +5629,9 @@ Attach arbitrary user data to a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBuserdata\fP (void*) – Pointer to user\-supplied data
+\fBuserdata\fP (void*) \-\- Pointer to user\-supplied data
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5558,13 +5648,66 @@ Retrieve user data previously attached to a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
 The userdata pointer, or NULL if not set.
+.SS typedef fy_generic_builder_cleanup_fn
+.INDENT 0.0
+.TP
+.B void fy_generic_builder_cleanup_fn(struct fy_generic_builder *gb) 
+Callback for when builder is destroyed
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS fy_generic_builder_set_cleanup
+.INDENT 0.0
+.TP
+.B fy_generic_builder_cleanup_fn fy_generic_builder_set_cleanup(struct fy_generic_builder *gb, fy_generic_builder_cleanup_fn cleanup) 
+Set a builder destructor callback
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
+.IP \(bu 2
+\fBcleanup\fP (fy_generic_builder_cleanup_fn) \-\- Pointer to the function that will be called on cleanup
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Set the cleanup callback \- pass NULL to erase it.
+.SS Return
+.sp
+The previous cleanup callback or NULL
+.SS fy_generic_builder_get_cleanup
+.INDENT 0.0
+.TP
+.B fy_generic_builder_cleanup_fn fy_generic_builder_get_cleanup(struct fy_generic_builder *gb) 
+Retrieve cleanup function attached to a builder.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The cleanup function, or NULL if not set.
 .SS fy_generic_builder_create_in_place
 .INDENT 0.0
 .TP
@@ -5575,13 +5718,13 @@ Create a builder using a caller\-supplied stack/static buffer.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBflags\fP (enum fy_gb_cfg_flags) – Configuration flags (see enum fy_gb_cfg_flags)
+\fBflags\fP (enum fy_gb_cfg_flags) \-\- Configuration flags (see enum fy_gb_cfg_flags)
 .IP \(bu 2
-\fBparent\fP (struct fy_generic_builder*) – Optional parent builder; NULL for standalone
+\fBparent\fP (struct fy_generic_builder*) \-\- Optional parent builder; NULL for standalone
 .IP \(bu 2
-\fBbuffer\fP (void*) – Caller\-supplied backing buffer (typically alloca’d or stack\-allocated)
+\fBbuffer\fP (void*) \-\- Caller\-supplied backing buffer (typically alloca\(aqd or stack\-allocated)
 .IP \(bu 2
-\fBsize\fP (size_t) – Size of \fBbuffer\fP in bytes; must be >= FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE
+\fBsize\fP (size_t) \-\- Size of \fBbuffer\fP in bytes; must be >= FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5603,7 +5746,7 @@ Return the allocator used by a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5620,7 +5763,7 @@ Return the configuration used to create a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5637,7 +5780,7 @@ Return the runtime flags of a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5648,13 +5791,13 @@ The current fy_gb_flags bitmask.
 .INDENT 0.0
 .TP
 .B size_t fy_generic_builder_get_free(struct fy_generic_builder *gb) 
-Return available free bytes in the builder’s current arena.
+Return available free bytes in the builder\(aqs current arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5665,21 +5808,21 @@ Bytes available before the next arena extension or failure.
 .INDENT 0.0
 .TP
 .B bool fy_generic_builder_contains_out_of_place(struct fy_generic_builder *gb, fy_generic v) 
-Check whether an out\-of\-place generic lives in this builder’s arena.
+Check whether an out\-of\-place generic lives in this builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – Out\-of\-place generic value
+\fBv\fP (fy_generic) \-\- Out\-of\-place generic value
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-true if the pointer inside \fBv\fP points into \fBgb\fP‘s arena.
+true if the pointer inside \fBv\fP points into \fBgb\fP\(aqs arena.
 .SS fy_generic_builder_contains
 .INDENT 0.0
 .TP
@@ -5690,9 +5833,9 @@ Check whether a generic value is owned by this builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder (may be NULL)
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder (may be NULL)
 .IP \(bu 2
-\fBv\fP (fy_generic) – Value to test
+\fBv\fP (fy_generic) \-\- Value to test
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5701,7 +5844,7 @@ Check whether a generic value is owned by this builder.
 Inplace values are always considered owned; invalid values are never owned.
 .SS Return
 .sp
-true if \fBv\fP is inplace or its pointer lives in \fBgb\fP‘s arena.
+true if \fBv\fP is inplace or its pointer lives in \fBgb\fP\(aqs arena.
 .SS fy_generic_builder_get_scope_leader
 .INDENT 0.0
 .TP
@@ -5712,7 +5855,7 @@ Walk the builder chain to find the scope\-leader builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5729,13 +5872,13 @@ Return the builder to which values should be exported.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-The export builder is the scope\-leader’s parent (or the scope\-leader itself if at the root).
+The export builder is the scope\-leader\(aqs parent (or the scope\-leader itself if at the root).
 .SS Return
 .sp
 The export builder, or NULL.
@@ -5743,15 +5886,15 @@ The export builder, or NULL.
 .INDENT 0.0
 .TP
 .B fy_generic fy_generic_builder_export(struct fy_generic_builder *gb, fy_generic v) 
-Copy a value into the export builder’s arena if necessary.
+Copy a value into the export builder\(aqs arena if necessary.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder (the source scope)
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder (the source scope)
 .IP \(bu 2
-\fBv\fP (fy_generic) – Value to export
+\fBv\fP (fy_generic) \-\- Value to export
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5766,17 +5909,17 @@ The exported value (possibly a copy), or fy_invalid on error.
 .INDENT 0.0
 .TP
 .B fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len) 
-Intern a string of length \fBlen\fP in the builder’s arena.
+Intern a string of length \fBlen\fP in the builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBstr\fP (const char*) – String data (need not be NUL\-terminated)
+\fBstr\fP (const char*) \-\- String data (need not be NUL\-terminated)
 .IP \(bu 2
-\fBlen\fP (size_t) – String length in bytes
+\fBlen\fP (size_t) \-\- String length in bytes
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5787,15 +5930,15 @@ Out\-of\-place fy_generic string, or fy_invalid on allocation failure.
 .INDENT 0.0
 .TP
 .B fy_generic fy_gb_string_create_out_of_place(struct fy_generic_builder *gb, const char *str) 
-Intern a NUL\-terminated string in the builder’s arena.
+Intern a NUL\-terminated string in the builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBstr\fP (const char*) – NUL\-terminated string
+\fBstr\fP (const char*) \-\- NUL\-terminated string
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5806,15 +5949,15 @@ Out\-of\-place fy_generic string, or fy_invalid on allocation failure.
 .INDENT 0.0
 .TP
 .B fy_generic fy_gb_szstr_create_out_of_place(struct fy_generic_builder *gb, const fy_generic_sized_string szstr) 
-Intern a sized string in the builder’s arena.
+Intern a sized string in the builder\(aqs arena.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBszstr\fP (const fy_generic_sized_string) – Sized string (length + pointer)
+\fBszstr\fP (const fy_generic_sized_string) \-\- Sized string (length + pointer)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5831,18 +5974,18 @@ Create a string generic, choosing inplace encoding if possible.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBstr\fP (const char*) – String data
+\fBstr\fP (const char*) \-\- String data
 .IP \(bu 2
-\fBlen\fP (size_t) – Length in bytes
+\fBlen\fP (size_t) \-\- Length in bytes
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
 Strings up to 7 bytes (64\-bit) or 3 bytes (32\-bit) are encoded inplace with no allocation.
-Longer strings are stored in the builder’s arena.
+Longer strings are stored in the builder\(aqs arena.
 .SS Return
 .sp
 fy_generic string value, or fy_invalid on allocation failure.
@@ -5856,21 +5999,21 @@ Generate fy_gb_<T>_create_out_of_place() and fy_gb_<T>_create() for C type \fB_c
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_ctype\fP – C type (e.g. int, double)
+\fB_ctype\fP \-\- C type (e.g. int, double)
 .IP \(bu 2
-\fB_gtype\fP – Name token used in the generated function names (e.g. int, double)
+\fB_gtype\fP \-\- Name token used in the generated function names (e.g. int, double)
 .IP \(bu 2
-\fB_gttype\fP – Generic type tag (e.g. INT, FLOAT) — unused in generated code
+\fB_gttype\fP \-\- Generic type tag (e.g. INT, FLOAT) — unused in generated code
 .IP \(bu 2
-\fB_xctype\fP – Cast destination type for the underlying primitive creator
+\fB_xctype\fP \-\- Cast destination type for the underlying primitive creator
 .IP \(bu 2
-\fB_xgtype\fP – Base type creator (int_type, uint_type, float_type, etc.)
+\fB_xgtype\fP \-\- Base type creator (int_type, uint_type, float_type, etc.)
 .IP \(bu 2
-\fB_xminv\fP – Minimum value (unused at runtime; kept for documentation)
+\fB_xminv\fP \-\- Minimum value (unused at runtime; kept for documentation)
 .IP \(bu 2
-\fB_xmaxv\fP – Maximum value (unused at runtime)
+\fB_xmaxv\fP \-\- Maximum value (unused at runtime)
 .IP \(bu 2
-\fB_default_v\fP – Default value (unused at runtime)
+\fB_default_v\fP \-\- Default value (unused at runtime)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5884,9 +6027,9 @@ Encode \fB_v\fP as an out\-of\-place generic using the builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fB_v\fP – Value of any supported C type
+\fB_v\fP \-\- Value of any supported C type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5906,9 +6049,9 @@ Encode \fB_v\fP as a fy_generic_value using the builder for out\-of\-place stora
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fB_v\fP – Value to encode
+\fB_v\fP \-\- Value to encode
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5928,15 +6071,15 @@ Encode \fB_v\fP as a fy_generic using the builder for out\-of\-place storage.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fB_v\fP – Value to encode
+\fB_v\fP \-\- Value to encode
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Return
 .sp
-fy_generic value backed by the builder’s arena (or inplace for small values).
+fy_generic value backed by the builder\(aqs arena (or inplace for small values).
 .SS macro fy_to_generic_value
 .INDENT 0.0
 .TP
@@ -5947,9 +6090,9 @@ Encode a value using a builder (if provided) or alloca (for inplace / short\-liv
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_maybe_gb\fP – Either a fy_generic_builder* or any other C value
+\fB_maybe_gb\fP \-\- Either a fy_generic_builder* or any other C value
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – variable arguments
+\fBellipsis\fP (ellipsis) \-\- variable arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5970,11 +6113,11 @@ Create a string generic from a printf\-style format string and va_list.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBfmt\fP (const char*) – printf\-compatible format string
+\fBfmt\fP (const char*) \-\- printf\-compatible format string
 .IP \(bu 2
-\fBap\fP (va_list) – Variadic argument list
+\fBap\fP (va_list) \-\- Variadic argument list
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -5991,11 +6134,11 @@ Create a string generic from a printf\-style format string.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder
 .IP \(bu 2
-\fBfmt\fP (const char*) – printf\-compatible format string
+\fBfmt\fP (const char*) \-\- printf\-compatible format string
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Format arguments
+\fBellipsis\fP (ellipsis) \-\- Format arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -6199,9 +6342,9 @@ Predicate function for filter operations.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – The active generic builder (or NULL for stack\-based operations)
+\fBgb\fP (struct fy_generic_builder*) \-\- The active generic builder (or NULL for stack\-based operations)
 .IP \(bu 2
-\fBv\fP (fy_generic) – The element being tested
+\fBv\fP (fy_generic) \-\- The element being tested
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -6218,9 +6361,9 @@ Transform function for map operations.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – The active generic builder
+\fBgb\fP (struct fy_generic_builder*) \-\- The active generic builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – The element to transform
+\fBv\fP (fy_generic) \-\- The element to transform
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -6237,11 +6380,11 @@ Reducer function for fold/reduce operations.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – The active generic builder
+\fBgb\fP (struct fy_generic_builder*) \-\- The active generic builder
 .IP \(bu 2
-\fBacc\fP (fy_generic) – The running accumulator value
+\fBacc\fP (fy_generic) \-\- The running accumulator value
 .IP \(bu 2
-\fBv\fP (fy_generic) – The current element
+\fBv\fP (fy_generic) \-\- The current element
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -6552,7 +6695,7 @@ Type\-erased common layout for filter/map/reduce.
 struct fy_op_filter_map_reduce_common {
     struct fy_op_common_args common;
     union {
-        void (*fn)(void);
+        fy_generic_erased_fn fn;
     } ;
 }
 .EE
@@ -6574,6 +6717,339 @@ Type\-erased function pointer
 .sp
 Used internally so that the dispatcher can access the function pointer
 uniformly before casting it to the appropriate typed function/block.
+.SS enum fy_generic_document_builder_flags
+.INDENT 0.0
+.TP
+.B enum fy_generic_document_builder_flags 
+Configuration flags for a generic document builder.
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+enum fy_generic_document_builder_flags {
+    FYGDBF_DISABLE_DIRECTORY,
+    FYGDBF_TRACE,
+    FYGDBF_KEEP_COMMENTS,
+    FYGDBF_CREATE_MARKERS,
+    FYGDBF_PYYAML_COMPAT,
+    FYGDBF_KEEP_STYLE,
+    FYGDBF_KEEP_FAILSAFE_STR
+};
+.EE
+.UNINDENT
+.UNINDENT
+.SS Constants
+.INDENT 0.0
+.TP
+.B FYGDBF_DISABLE_DIRECTORY
+Return the document root instead of a vds entry
+.TP
+.B FYGDBF_TRACE
+Enable event trace output for debugging
+.TP
+.B FYGDBF_KEEP_COMMENTS
+Preserve comments in the parsed representation
+.TP
+.B FYGDBF_CREATE_MARKERS
+Attach position markers to parsed nodes
+.TP
+.B FYGDBF_PYYAML_COMPAT
+Apply YAML 1.1 PyYAML\-compatible parsing quirks
+.TP
+.B FYGDBF_KEEP_STYLE
+Preserve original scalar/collection style information
+.TP
+.B FYGDBF_KEEP_FAILSAFE_STR
+Keep failsafe\-schema plain string tags
+.UNINDENT
+.SS struct fy_generic_document_builder_cfg
+.INDENT 0.0
+.TP
+.B struct fy_generic_document_builder_cfg 
+Configuration for creating a generic document builder.
+.UNINDENT
+.SS Definition
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+struct fy_generic_document_builder_cfg {
+    struct fy_parse_cfg parse_cfg;
+    void *userdata;
+    struct fy_diag *diag;
+    struct fy_generic_builder *gb;
+    enum fy_generic_document_builder_flags flags;
+}
+.EE
+.UNINDENT
+.UNINDENT
+.SS Members
+.INDENT 0.0
+.TP
+.B parse_cfg
+Parser configuration used for defaults such as depth limits and resolution
+.TP
+.B userdata
+Opaque user data pointer
+.TP
+.B diag
+Optional diagnostic interface to use
+.TP
+.B gb
+Caller\-owned generic builder used for all allocations
+.TP
+.B flags
+Generic document builder configuration flags
+.UNINDENT
+.SS fy_generic_document_builder_create
+.INDENT 0.0
+.TP
+.B struct fy_generic_document_builder *fy_generic_document_builder_create(const struct fy_generic_document_builder_cfg *cfg) 
+Create a generic document builder.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBcfg\fP (const struct fy_generic_document_builder_cfg*) \-\- Configuration for the builder; NULL uses defaults
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+A pointer to the builder or NULL on error.
+.SS fy_generic_document_builder_create_on_parser
+.INDENT 0.0
+.TP
+.B struct fy_generic_document_builder *fy_generic_document_builder_create_on_parser(struct fy_parser *fyp, struct fy_generic_builder *gb) 
+Create a generic builder associated with a parser.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfyp\fP (struct fy_parser*) \-\- Parser whose configuration and diagnostics should be mirrored
+.IP \(bu 2
+\fBgb\fP (struct fy_generic_builder*) \-\- Caller\-owned generic builder used for all allocations
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+A pointer to the builder or NULL on error.
+.SS fy_generic_document_builder_reset
+.INDENT 0.0
+.TP
+.B void fy_generic_document_builder_reset(struct fy_generic_document_builder *fygdb) 
+Reset a generic document builder without destroying it.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS fy_generic_document_builder_destroy
+.INDENT 0.0
+.TP
+.B void fy_generic_document_builder_destroy(struct fy_generic_document_builder *fygdb) 
+Destroy a generic document builder.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS fy_generic_document_builder_get_document
+.INDENT 0.0
+.TP
+.B fy_generic fy_generic_document_builder_get_document(struct fy_generic_document_builder *fygdb) 
+Get the current document generic.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Returns the currently materialized document for the builder. If the current
+event stream has not yet produced a complete generic value, returns
+\fBfy_invalid\fP\&.
+.SS Return
+.sp
+The current document generic, or \fBfy_invalid\fP if none is available.
+.SS fy_generic_document_builder_is_in_stream
+.INDENT 0.0
+.TP
+.B bool fy_generic_document_builder_is_in_stream(struct fy_generic_document_builder *fygdb) 
+Test whether the builder is in stream state.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if in stream, false otherwise.
+.SS fy_generic_document_builder_is_in_document
+.INDENT 0.0
+.TP
+.B bool fy_generic_document_builder_is_in_document(struct fy_generic_document_builder *fygdb) 
+Test whether the builder is in document state.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if in a document, false otherwise.
+.SS fy_generic_document_builder_is_document_complete
+.INDENT 0.0
+.TP
+.B bool fy_generic_document_builder_is_document_complete(struct fy_generic_document_builder *fygdb) 
+Test whether a document is complete.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if a document is complete and can be taken, false otherwise.
+.SS fy_generic_document_builder_take_document
+.INDENT 0.0
+.TP
+.B fy_generic fy_generic_document_builder_take_document(struct fy_generic_document_builder *fygdb) 
+Take ownership of the current document generic.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The completed document generic, or \fBfy_invalid\fP on error.
+.SS fy_generic_document_builder_peek_document
+.INDENT 0.0
+.TP
+.B fy_generic fy_generic_document_builder_peek_document(struct fy_generic_document_builder *fygdb) 
+Peek at the current document generic.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Ownership remains with the builder.
+.SS Return
+.sp
+The current document generic, or \fBfy_invalid\fP if none is available.
+.SS fy_generic_document_builder_set_in_stream
+.INDENT 0.0
+.TP
+.B void fy_generic_document_builder_set_in_stream(struct fy_generic_document_builder *fygdb) 
+Set the builder state to stream mode.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS fy_generic_document_builder_set_in_document
+.INDENT 0.0
+.TP
+.B int fy_generic_document_builder_set_in_document(struct fy_generic_document_builder *fygdb, struct fy_document_state *fyds, bool single) 
+Set the builder state to document mode.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.IP \(bu 2
+\fBfyds\fP (struct fy_document_state*) \-\- The document state
+.IP \(bu 2
+\fBsingle\fP (bool) \-\- Single\-document mode; complete as soon as the root value is built
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+0 on success, \-1 on error.
+.SS fy_generic_document_builder_load_document
+.INDENT 0.0
+.TP
+.B fy_generic fy_generic_document_builder_load_document(struct fy_generic_document_builder *fygdb, struct fy_parser *fyp) 
+Load the next document generic from a parser.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.IP \(bu 2
+\fBfyp\fP (struct fy_parser*) \-\- The parser
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+The next completed document generic, or \fBfy_invalid\fP on error or EOF.
+.SS fy_generic_document_builder_process_event
+.INDENT 0.0
+.TP
+.B int fy_generic_document_builder_process_event(struct fy_generic_document_builder *fygdb, struct fy_event \%<#\:c\:.fy_event> *fye) 
+Process a single event with a builder.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBfygdb\fP (struct fy_generic_document_builder*) \-\- The generic document builder
+.IP \(bu 2
+\fBfye\fP (struct fy_event \%<#\:c\:.fy_event>*) \-\- The event
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+0 on success, 1 when the processed event completes a document, \-1 on error.
 .SS enum fy_op_parse_flags
 .INDENT 0.0
 .TP
@@ -6604,7 +7080,11 @@ enum fy_op_parse_flags {
     FYOPPF_KEEP_COMMENTS,
     FYOPPF_CREATE_MARKERS,
     FYOPPF_KEEP_STYLE,
-    FYOPPF_KEEP_FAILSAFE_STR
+    FYOPPF_KEEP_FAILSAFE_STR,
+    FYOPPF_SLOPPY_FLOW_INDENTATION,
+    FYOPPF_RELAXED_FLOW_DOC,
+    FYOPPF_KEEP_ANCHORS,
+    FYOPPF_ENABLE_CACHE
 };
 .EE
 .UNINDENT
@@ -6668,6 +7148,18 @@ Preserve original scalar/collection style information
 .TP
 .B FYOPPF_KEEP_FAILSAFE_STR
 Keep failsafe\-schema plain string tags
+.TP
+.B FYOPPF_SLOPPY_FLOW_INDENTATION
+Allow sloppy indentation in flow mode
+.TP
+.B FYOPPF_RELAXED_FLOW_DOC
+Documents are implicitly started via flow markers
+.TP
+.B FYOPPF_KEEP_ANCHORS
+Preserve anchor metadata even when resolving documents
+.TP
+.B FYOPPF_ENABLE_CACHE
+Enable transparent regular\-file parse caching
 .UNINDENT
 .SS Description
 .sp
@@ -6754,7 +7246,8 @@ enum fy_op_emit_flags {
     FYOPEF_STYLE_FLOW,
     FYOPEF_STYLE_PRETTY,
     FYOPEF_STYLE_COMPACT,
-    FYOPEF_STYLE_ONELINE
+    FYOPEF_STYLE_ONELINE,
+    FYOPEF_EMIT_EVENTS
 };
 .EE
 .UNINDENT
@@ -6872,6 +7365,9 @@ Compact (minimal whitespace) style
 .TP
 .B FYOPEF_STYLE_ONELINE
 Single\-line style
+.TP
+.B FYOPEF_EMIT_EVENTS
+Use emit events, not the optimized generic emit path
 .UNINDENT
 .SS Description
 .sp
@@ -6939,7 +7435,7 @@ Embedded common args
 Starting index (inclusive, zero\-based)
 .TP
 .B end
-Ending index (exclusive); use SIZE_MAX for “to the end”
+Ending index (exclusive); use SIZE_MAX for \(dqto the end\(dq
 .UNINDENT
 .SS struct fy_op_slice_py_args
 .INDENT 0.0
@@ -7264,13 +7760,13 @@ Execute a generic operation using a pre\-filled args struct.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result (may be NULL for local/alloca operations)
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result (may be NULL for local/alloca operations)
 .IP \(bu 2
-\fBflags\fP (enum fy_gb_op_flags) – Opcode (low 8 bits) plus modifier flags
+\fBflags\fP (enum fy_gb_op_flags) \-\- Opcode (low 8 bits) plus modifier flags
 .IP \(bu 2
-\fBin\fP (fy_generic) – Primary input collection or scalar; use fy_invalid / fy_seq_empty as appropriate
+\fBin\fP (fy_generic) \-\- Primary input collection or scalar; use fy_invalid / fy_seq_empty as appropriate
 .IP \(bu 2
-\fBargs\fP (const struct fy_generic_op_args*) – Pointer to the filled fy_generic_op_args union
+\fBargs\fP (const struct fy_generic_op_args*) \-\- Pointer to the filled fy_generic_op_args union
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7291,11 +7787,11 @@ Execute a generic operation using variadic arguments.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBflags\fP (enum fy_gb_op_flags) – Opcode (low 8 bits) plus modifier flags
+\fBflags\fP (enum fy_gb_op_flags) \-\- Opcode (low 8 bits) plus modifier flags
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Operation\-specific arguments (count, items, index, function, etc.)
+\fBellipsis\fP (ellipsis) \-\- Operation\-specific arguments (count, items, index, function, etc.)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7317,11 +7813,11 @@ Create a sequence generic from an item array.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBcount\fP (size_t) – Number of elements in \fBitems\fP
+\fBcount\fP (size_t) \-\- Number of elements in \fBitems\fP
 .IP \(bu 2
-\fBitems\fP (const fy_generic*) – Array of fy_generic elements to include in the sequence
+\fBitems\fP (const fy_generic*) \-\- Array of fy_generic elements to include in the sequence
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7338,11 +7834,11 @@ Create a mapping generic from a key/value pair array.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBcount\fP (size_t) – Number of key/value PAIRS in \fBpairs\fP (i.e. half the array length)
+\fBcount\fP (size_t) \-\- Number of key/value PAIRS in \fBpairs\fP (i.e. half the array length)
 .IP \(bu 2
-\fBpairs\fP (const fy_generic*) – Interleaved key/value fy_generic array
+\fBpairs\fP (const fy_generic*) \-\- Interleaved key/value fy_generic array
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7359,9 +7855,9 @@ Create an indirect generic wrapping metadata.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBgi\fP (const fy_generic_indirect*) – Pointer to the indirect descriptor to copy into the builder arena
+\fBgi\fP (const fy_generic_indirect*) \-\- Pointer to the indirect descriptor to copy into the builder arena
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7382,9 +7878,9 @@ Create an alias generic referencing an anchor value.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBanchor\fP (fy_generic) – The fy_generic value that serves as the anchor target
+\fBanchor\fP (fy_generic) \-\- The fy_generic value that serves as the anchor target
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7401,9 +7897,9 @@ Build a sequence fy_generic_value from variadic elements using a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Zero or more values of any supported C type
+\fBellipsis\fP (ellipsis) \-\- Zero or more values of any supported C type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7424,9 +7920,9 @@ Build a sequence fy_generic from variadic elements using a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Zero or more values of any supported C type
+\fBellipsis\fP (ellipsis) \-\- Zero or more values of any supported C type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7446,9 +7942,9 @@ Build a mapping fy_generic_value from variadic key/value pairs using a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Zero or more key/value pairs of any supported C type
+\fBellipsis\fP (ellipsis) \-\- Zero or more key/value pairs of any supported C type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7469,9 +7965,9 @@ Build a mapping fy_generic from variadic key/value pairs using a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb\fP – Builder
+\fB_gb\fP \-\- Builder
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Zero or more key/value pairs of any supported C type
+\fBellipsis\fP (ellipsis) \-\- Zero or more key/value pairs of any supported C type
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7491,13 +7987,13 @@ Parse a text scalar and create a typed generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that owns the result
 .IP \(bu 2
-\fBtext\fP (const char*) – Pointer to the scalar text (not necessarily NUL\-terminated)
+\fBtext\fP (const char*) \-\- Pointer to the scalar text (not necessarily NUL\-terminated)
 .IP \(bu 2
-\fBlen\fP (size_t) – Length of \fBtext\fP in bytes
+\fBlen\fP (size_t) \-\- Length of \fBtext\fP in bytes
 .IP \(bu 2
-\fBforce_type\fP (enum fy_generic_type) – If != FYGT_INVALID, force this type instead of auto\-detecting
+\fBforce_type\fP (enum fy_generic_type) \-\- If != FYGT_INVALID, force this type instead of auto\-detecting
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7519,15 +8015,15 @@ Deep\-copy an out\-of\-place generic into a builder arena.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Destination builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Destination builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – Out\-of\-place source value (must not be inplace or invalid)
+\fBv\fP (fy_generic) \-\- Out\-of\-place source value (must not be inplace or invalid)
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Recursively copies the value and all referenced data into \fBgb\fP‘s arena.
+Recursively copies the value and all referenced data into \fBgb\fP\(aqs arena.
 This is the slow path; prefer \fBfy_gb_copy()\fP which skips the copy for
 inplace values.
 .SS Return
@@ -7543,9 +8039,9 @@ Copy a generic into a builder arena, skipping inplace values.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Destination builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Destination builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – Source value
+\fBv\fP (fy_generic) \-\- Source value
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7566,16 +8062,16 @@ Intern an out\-of\-place generic if it lives outside the builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Target builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Target builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – Out\-of\-place generic to potentially intern
+\fBv\fP (fy_generic) \-\- Out\-of\-place generic to potentially intern
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Copies \fBv\fP into \fBgb\fP‘s arena only if its pointer does not already fall within
-the builder’s allocated regions.  If the value is already owned by \fBgb\fP,
+Copies \fBv\fP into \fBgb\fP\(aqs arena only if its pointer does not already fall within
+the builder\(aqs allocated regions.  If the value is already owned by \fBgb\fP,
 returns it unchanged.
 .SS Return
 .sp
@@ -7590,9 +8086,9 @@ Intern a generic into a builder, skipping inplace and invalid values.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Target builder
+\fBgb\fP (struct fy_generic_builder*) \-\- Target builder
 .IP \(bu 2
-\fBv\fP (fy_generic) – Value to intern
+\fBv\fP (fy_generic) \-\- Value to intern
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7613,7 +8109,7 @@ Validate an out\-of\-place generic (no builder).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Out\-of\-place generic to validate
+\fBv\fP (fy_generic) \-\- Out\-of\-place generic to validate
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7635,7 +8131,7 @@ Validate a generic, skipping inplace and invalid values.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic to validate
+\fBv\fP (fy_generic) \-\- Generic to validate
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7653,9 +8149,9 @@ Validate an out\-of\-place generic using a builder context.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder providing schema context
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder providing schema context
 .IP \(bu 2
-\fBv\fP (fy_generic) – Out\-of\-place generic to validate
+\fBv\fP (fy_generic) \-\- Out\-of\-place generic to validate
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7676,9 +8172,9 @@ Validate a generic using a builder, skipping trivial cases.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder providing schema context
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder providing schema context
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic to validate
+\fBv\fP (fy_generic) \-\- Generic to validate
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7696,13 +8192,13 @@ Adjust all pointers in a generic after a buffer realloc.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (void*) – Old buffer start
+\fBstart\fP (void*) \-\- Old buffer start
 .IP \(bu 2
-\fBend\fP (void*) – Old buffer end (exclusive)
+\fBend\fP (void*) \-\- Old buffer end (exclusive)
 .IP \(bu 2
-\fBv\fP (fy_generic) – Generic value to patch
+\fBv\fP (fy_generic) \-\- Generic value to patch
 .IP \(bu 2
-\fBd\fP (ptrdiff_t) – Delta to add to pointers (new_base \- old_base)
+\fBd\fP (ptrdiff_t) \-\- Delta to add to pointers (new_base \- old_base)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7724,7 +8220,7 @@ Return the schema currently active in a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to query
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to query
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7741,9 +8237,9 @@ Set the schema for a builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to update
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to update
 .IP \(bu 2
-\fBschema\fP (enum fy_generic_schema) – New schema to use for subsequent operations
+\fBschema\fP (enum fy_generic_schema) \-\- New schema to use for subsequent operations
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7757,9 +8253,9 @@ Derive and set the builder schema from a parser mode.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder to update
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder to update
 .IP \(bu 2
-\fBparser_mode\fP (enum fy_parser_mode) – Parser mode whose schema to adopt
+\fBparser_mode\fP (enum fy_parser_mode) \-\- Parser mode whose schema to adopt
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7780,11 +8276,11 @@ Dump a fy_generic value to a FILE stream for debugging.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfp\fP (FILE*) – Destination FILE stream (e.g. stderr)
+\fBfp\fP (FILE*) \-\- Destination FILE stream (e.g. stderr)
 .IP \(bu 2
-\fBlevel\fP (int) – Current indentation level (pass 0 for the top\-level call)
+\fBlevel\fP (int) \-\- Current indentation level (pass 0 for the top\-level call)
 .IP \(bu 2
-\fBvv\fP (fy_generic) – Generic value to dump
+\fBvv\fP (fy_generic) \-\- Generic value to dump
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7802,7 +8298,7 @@ Build a sequence fy_generic_value from variadic elements.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Optional builder followed by zero or more element values
+\fBellipsis\fP (ellipsis) \-\- Optional builder followed by zero or more element values
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7824,7 +8320,7 @@ Build a sequence fy_generic from variadic elements.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Optional builder followed by zero or more element values
+\fBellipsis\fP (ellipsis) \-\- Optional builder followed by zero or more element values
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7844,7 +8340,7 @@ Build a mapping fy_generic_value from variadic key/value pairs.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Optional builder followed by zero or more key/value pairs
+\fBellipsis\fP (ellipsis) \-\- Optional builder followed by zero or more key/value pairs
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7866,7 +8362,7 @@ Build a mapping fy_generic from variadic key/value pairs.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Optional builder followed by zero or more key/value pairs
+\fBellipsis\fP (ellipsis) \-\- Optional builder followed by zero or more key/value pairs
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7886,9 +8382,9 @@ Encode a value as a fy_generic using a builder or alloca.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_maybe_gb\fP – Either a fy_generic_builder* or a C value to encode
+\fB_maybe_gb\fP \-\- Either a fy_generic_builder* or a C value to encode
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Additional value args when \fB_maybe_gb\fP is a builder
+\fBellipsis\fP (ellipsis) \-\- Additional value args when \fB_maybe_gb\fP is a builder
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7909,9 +8405,9 @@ Iterate over every element (or key) of a collection.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_v\fP – Loop variable (lvalue) that receives each element/key
+\fB_v\fP \-\- Loop variable (lvalue) that receives each element/key
 .IP \(bu 2
-\fB_col\fP – Collection to iterate (fy_generic sequence or mapping)
+\fB_col\fP \-\- Collection to iterate (fy_generic sequence or mapping)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7931,13 +8427,13 @@ Execute a generic operation using a stack\-allocated (alloca) builder.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Same arguments as \fBfy_generic_op()\fP (flags, input, count, items, …)
+\fBellipsis\fP (ellipsis) \-\- Same arguments as \fBfy_generic_op()\fP (flags, input, count, items, ...)
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Creates a temporary fy_generic_builder backed by an alloca’d buffer and
+Creates a temporary fy_generic_builder backed by an alloca\(aqd buffer and
 forwards the remaining arguments to \fBfy_generic_op()\fP\&.  On allocation failure
 the buffer is doubled and the operation is retried until it either succeeds
 or the buffer would exceed FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE.
@@ -7958,11 +8454,11 @@ Dispatch to fy_generic_op or FY_LOCAL_OP based on \fB_gb_or_NULL\fP\&.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_gb_or_NULL\fP – Builder pointer, or NULL to use FY_LOCAL_OP
+\fB_gb_or_NULL\fP \-\- Builder pointer, or NULL to use FY_LOCAL_OP
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifiers
+\fB_flags\fP \-\- Opcode + modifiers
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Remaining arguments forwarded unchanged
+\fBellipsis\fP (ellipsis) \-\- Remaining arguments forwarded unchanged
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7976,11 +8472,11 @@ Dispatch a single\-collection operation (no items array).
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifiers
+\fB_flags\fP \-\- Opcode + modifiers
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first collection arg
+\fB_gb_or_first\fP \-\- Optional builder or first collection arg
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Remaining args (usually the collection when \fB_gb_or_first\fP is a builder)
+\fBellipsis\fP (ellipsis) \-\- Remaining args (usually the collection when \fB_gb_or_first\fP is a builder)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -7997,11 +8493,11 @@ Dispatch a collection+items operation.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifiers
+\fB_flags\fP \-\- Opcode + modifiers
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first collection arg
+\fB_gb_or_first\fP \-\- Optional builder or first collection arg
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Collection (if builder given) + item arguments
+\fBellipsis\fP (ellipsis) \-\- Collection (if builder given) + item arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8019,11 +8515,11 @@ Dispatch a collection+index+items operation.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifiers
+\fB_flags\fP \-\- Opcode + modifiers
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first collection arg
+\fB_gb_or_first\fP \-\- Optional builder or first collection arg
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Collection, index, and item arguments
+\fBellipsis\fP (ellipsis) \-\- Collection, index, and item arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8041,11 +8537,11 @@ Dispatch a half\-open slice [start, end) operation.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifier flags (e.g. FYGBOPF_SLICE).
+\fB_flags\fP \-\- Opcode + modifier flags (e.g. FYGBOPF_SLICE).
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first sequence argument.
+\fB_gb_or_first\fP \-\- Optional builder or first sequence argument.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Sequence, start index (size_t), end index (size_t).
+\fBellipsis\fP (ellipsis) \-\- Sequence, start index (size_t), end index (size_t).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8063,11 +8559,11 @@ Dispatch a Python\-style slice operation with signed indices.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifier flags (e.g. FYGBOPF_SLICE_PY).
+\fB_flags\fP \-\- Opcode + modifier flags (e.g. FYGBOPF_SLICE_PY).
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first sequence argument.
+\fB_gb_or_first\fP \-\- Optional builder or first sequence argument.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Sequence, start (ssize_t), end (ssize_t).
+\fBellipsis\fP (ellipsis) \-\- Sequence, start (ssize_t), end (ssize_t).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8085,11 +8581,11 @@ Dispatch a take\-N or drop\-N slice operation.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fB_flags\fP – Opcode + modifier flags (e.g. FYGBOPF_TAKE or FYGBOPF_DROP).
+\fB_flags\fP \-\- Opcode + modifier flags (e.g. FYGBOPF_TAKE or FYGBOPF_DROP).
 .IP \(bu 2
-\fB_gb_or_first\fP – Optional builder or first sequence argument.
+\fB_gb_or_first\fP \-\- Optional builder or first sequence argument.
 .IP \(bu 2
-\fBellipsis\fP (ellipsis) – Sequence, count N (size_t).
+\fBellipsis\fP (ellipsis) \-\- Sequence, count N (size_t).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8107,7 +8603,7 @@ Emit a generic value to stdout in compact (flow\-style) format.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to emit.
+\fBv\fP (fy_generic) \-\- The generic value to emit.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8128,7 +8624,7 @@ Emit a generic value to stdout in default (block\-style) format.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic value to emit.
+\fBv\fP (fy_generic) \-\- The generic value to emit.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8149,7 +8645,7 @@ Get the number of documents in a directory generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvdir\fP (fy_generic) – The directory generic.
+\fBvdir\fP (fy_generic) \-\- The directory generic.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8170,9 +8666,9 @@ Get the vds generic for a document at a given index.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvdir\fP (fy_generic) – The directory generic.
+\fBvdir\fP (fy_generic) \-\- The directory generic.
 .IP \(bu 2
-\fBidx\fP (size_t) – Zero\-based document index.
+\fBidx\fP (size_t) \-\- Zero\-based document index.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8193,7 +8689,7 @@ Extract the root value from a document\-with\-state generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvds\fP (fy_generic) – The document\-with\-state generic.
+\fBvds\fP (fy_generic) \-\- The document\-with\-state generic.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8214,7 +8710,7 @@ Extract the YAML document state from a vds generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvds\fP (fy_generic) – The document\-with\-state generic.
+\fBvds\fP (fy_generic) \-\- The document\-with\-state generic.
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8235,11 +8731,11 @@ Bundle a root value and document state into a vds generic.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBgb\fP (struct fy_generic_builder*) – Builder that will own the resulting vds generic.
+\fBgb\fP (struct fy_generic_builder*) \-\- Builder that will own the resulting vds generic.
 .IP \(bu 2
-\fBvroot\fP (fy_generic) – The document root generic.
+\fBvroot\fP (fy_generic) \-\- The document root generic.
 .IP \(bu 2
-\fBfyds\fP (struct fy_document_state*) – The YAML document state (version, tags, schema information).
+\fBfyds\fP (struct fy_document_state*) \-\- The YAML document state (version, tags, schema information).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8250,6 +8746,44 @@ mapping generic backed by the builder \fBgb\fP\&.
 .SS Return
 .sp
 The vds fy_generic, or fy_invalid on error.
+.SS fy_generic_get_comments
+.INDENT 0.0
+.TP
+.B char *fy_generic_get_comments(fy_generic v) 
+Get all the concatenated comments
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) \-\- Any generic value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Get all the comments of a generic, concatenated and returned
+in a malloc\(aqed buffer. Free after use.
+.SS Return
+.sp
+The concatenated comments of \fBstruct fy_generic\fP, or \fBNULL\fP if none.
+.SS fy_generic_has_comments
+.INDENT 0.0
+.TP
+.B bool fy_generic_has_comments(fy_generic v) 
+Test whether the generic has comments
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) \-\- Any generic value.
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Return
+.sp
+true if generic has attached comments, false otherwise
 .SS enum fy_generic_iterator_cfg_flags
 .INDENT 0.0
 .TP
@@ -8322,6 +8856,7 @@ document iterator configuration structure.
 struct fy_generic_iterator_cfg {
     enum fy_generic_iterator_cfg_flags flags;
     fy_generic vdir;
+    enum fy_generic_schema schema;
 }
 .EE
 .UNINDENT
@@ -8334,6 +8869,10 @@ The document iterator flags
 .TP
 .B vdir
 The directory of the parsed input
+.TP
+.B schema
+The schema to use for scalar formatting when a document does not
+carry schema metadata
 .UNINDENT
 .SS Description
 .sp
@@ -8348,7 +8887,7 @@ Create a document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBvoid\fP – no arguments
+\fBvoid\fP \-\- no arguments
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8369,7 +8908,7 @@ Create a document iterator using config
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBcfg\fP (const struct fy_generic_iterator_cfg*) – The document iterator to destroy
+\fBcfg\fP (const struct fy_generic_iterator_cfg*) \-\- The document iterator to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8391,7 +8930,7 @@ Destroy the given document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to destroy
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to destroy
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8408,9 +8947,9 @@ Free an event that was created by a document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator that created the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator that created the event
 .IP \(bu 2
-\fBfye\fP (struct fy_event \%<#\:c\:.fy_event>*) – The event
+\fBfye\fP (struct fy_event \%<#\:c\:.fy_event>*) \-\- The event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8427,7 +8966,7 @@ Create a stream start event using the iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8448,7 +8987,7 @@ Create a stream end event using the iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8469,9 +9008,9 @@ Create a document start event using the iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .IP \(bu 2
-\fBvds\fP (fy_generic) – The generic directory (or fy_null for none)
+\fBvds\fP (fy_generic) \-\- The generic directory (or fy_null for none)
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8493,7 +9032,7 @@ Create a document end event using the iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8515,7 +9054,7 @@ Create document body events until the end
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8546,9 +9085,9 @@ Start a document node iteration run using a starting point
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to run with
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to run with
 .IP \(bu 2
-\fBv\fP (fy_generic) – The generic to start on
+\fBv\fP (fy_generic) \-\- The generic to start on
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8565,7 +9104,7 @@ Return the next node in the iteration sequence
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to use for the iteration
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to use for the iteration
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8587,7 +9126,7 @@ Create events from document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to create the event
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to create the event
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8611,13 +9150,13 @@ Get the error state of the document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to use for checking it’s error state.
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to use for checking it\(aqs error state.
 .UNINDENT
 .UNINDENT
 .UNINDENT
 .SS Description
 .sp
-Returns the error state of the iterator. If it’s in error state, return true
+Returns the error state of the iterator. If it\(aqs in error state, return true
 and reset the iterator to the state just after creation.
 .SS Return
 .sp
@@ -8632,11 +9171,11 @@ Associate a parser with a document iterator
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBfyp\fP (struct fy_parser*) – The parser
+\fBfyp\fP (struct fy_parser*) \-\- The parser
 .IP \(bu 2
-\fBflags\fP (enum fy_parser_event_generator_flags \%<#\:c\:.fy_parser_event_generator_flags>) – The event generation flags
+\fBflags\fP (enum fy_parser_event_generator_flags \%<#\:c\:.fy_parser_event_generator_flags>) \-\- The event generation flags
 .IP \(bu 2
-\fBfygi\fP (struct fy_generic_iterator*) – The document iterator to associate
+\fBfygi\fP (struct fy_generic_iterator*) \-\- The document iterator to associate
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -8644,6 +9183,28 @@ Associate a parser with a document iterator
 .sp
 Associate a parser with a generic iterator, that is instead of parsing the events
 will be generated by the generic iterator.
+.SS Return
+.sp
+0 on success, \-1 on error
+.SS fy_emit_generic_vdir
+.INDENT 0.0
+.TP
+.B int fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir) 
+Emit the generic directory
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBemit\fP (struct fy_emitter*) \-\- The emitter
+.IP \(bu 2
+\fBvdir\fP (fy_generic) \-\- The directory generic
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Emits a directory generic using the emitter.
 .SS Return
 .sp
 0 on success, \-1 on error

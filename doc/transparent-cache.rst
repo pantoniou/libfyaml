@@ -104,6 +104,9 @@ The core public cache inspection API consists of:
 * ``fy_parse_cache_walk()`` to enumerate cache entries
 * ``fy_parse_cache_override()`` to redirect the cache root for the current
   process
+* ``fy_parse_cache_get_min_file_size()`` to read the active size cutoff
+* ``fy_parse_cache_set_min_file_size()`` to override the size cutoff for the
+  current process; pass ``-1`` to restore the default
 
 The associated metadata container is ``struct fy_parse_cache_file_info``.
 

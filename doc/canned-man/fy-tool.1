@@ -28,26 +28,26 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "FY-TOOL" "1" "Mar 18, 2026" "1.0.0" "libfyaml"
+.TH "FY-TOOL" "1" "May 28, 2026" "1.0.0" "libfyaml"
 .SH NAME
 fy-tool \- fy-tool documentation 
 .SH SYNOPSIS
 .sp
-\fBfy\-tool\fP [\fIOPTIONS\fP] [<\fIfile\fP> …]
+\fBfy\-tool\fP [\fIOPTIONS\fP] [<\fIfile\fP> ...]
 .sp
-\fBfy\-dump\fP [\fIOPTIONS\fP] [<\fIfile\fP> …]
+\fBfy\-dump\fP [\fIOPTIONS\fP] [<\fIfile\fP> ...]
 .sp
 \fBfy\-testsuite\fP [\fIOPTIONS\fP] <\fIfile\fP>
 .sp
-\fBfy\-filter\fP [\fIOPTIONS\fP] [\-f \fIFILE\fP] [<\fIpath\fP> …]
+\fBfy\-filter\fP [\fIOPTIONS\fP] [\-f \fIFILE\fP] [<\fIpath\fP> ...]
 .sp
-\fBfy\-join\fP [\fIOPTIONS\fP] [\-T \fIPATH\fP] [\-F \fIPATH\fP] [\-t \fIPATH\fP] [<\fIfile\fP> …]
+\fBfy\-join\fP [\fIOPTIONS\fP] [\-T \fIPATH\fP] [\-F \fIPATH\fP] [\-t \fIPATH\fP] [<\fIfile\fP> ...]
 .sp
-\fBfy\-ypath\fP [\fIOPTIONS\fP] <\fIypath\-expression\fP> [<\fIfile\fP> …]
+\fBfy\-ypath\fP [\fIOPTIONS\fP] <\fIypath\-expression\fP> [<\fIfile\fP> ...]
 .sp
-\fBfy\-compose\fP [\fIOPTIONS\fP] [<\fIfile\fP> …]
+\fBfy\-compose\fP [\fIOPTIONS\fP] [<\fIfile\fP> ...]
 .sp
-\fBfy\-b3sum\fP [\fIOPTIONS\fP] [<\fIfile\fP> …]
+\fBfy\-b3sum\fP [\fIOPTIONS\fP] [<\fIfile\fP> ...]
 .SH DESCRIPTION
 .sp
 \fBfy\-tool\fP is the libfyaml command\-line front\-end for parsing,
@@ -168,6 +168,12 @@ Accept relaxed indentation rules in flow mode.
 .UNINDENT
 .INDENT 0.0
 .TP
+.B \-\-relaxed\-flow\-doc
+Accept flow\-style documents without an explicit document start, as used by
+JSON\-lines style input.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-\-prefer\-recursive
 Prefer recursive algorithms over iterative ones.
 .UNINDENT
@@ -205,6 +211,52 @@ Disable memory\-mapped input.
 .TP
 .B \-\-disable\-depth\-limit
 Disable the normal nesting\-depth limit.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-enable\-cache
+Enable the transparent parse cache for eligible regular\-file inputs. Cache
+hits reuse a cached generic representation instead of parsing the source
+file again. The cache is disabled by default.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-list
+List parse cache entries. Output contains the BLAKE3 cache key, original
+source filename, and cache file size.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-info PATH_OR_SOURCE
+Show detailed metadata for a cache entry in YAML form. The argument may be
+a cache file path, a BLAKE3 cache key, or an original source filename.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-remove PATH_OR_SOURCE
+Remove cache entries matching a cache file path, BLAKE3 cache key, or
+original source filename.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-clear
+Remove all entries from the active parse cache directory.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-dir
+Print the active parse cache directory.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cache\-stats
+Print parse cache directory statistics.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-emit\-events
+Use parser events to drive the emitter even when another cached or generic
+path could otherwise be used directly.
 .UNINDENT
 .sp
 Emitter options
@@ -517,11 +569,6 @@ Enable generic testsuite mode.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-builder\-policy
-Select the generic builder policy.
-.UNINDENT
-.INDENT 0.0
-.TP
 .B \-\-generic\-parse\-dump
 Parse and dump using the generic layer.
 .UNINDENT
@@ -547,8 +594,11 @@ Create source markers in generated generic data.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-pyyaml\-compat
-Enable PyYAML compatibility mode.
+.B \-\-schema SCHEMA
+Select the generic decoder schema. Supported values include \fBauto\fP,
+\fByaml1.2\-failsafe\fP, \fByaml1.2\-core\fP, \fByaml1.2\-json\fP,
+\fByaml1.1\-failsafe\fP, \fByaml1.1\fP, \fByaml1.1\-pyyaml\fP, \fBjson\fP, and
+\fBpython\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
