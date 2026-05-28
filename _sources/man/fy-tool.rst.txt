@@ -125,6 +125,11 @@ Options
 
    Accept relaxed indentation rules in flow mode.
 
+.. option:: --relaxed-flow-doc
+
+   Accept flow-style documents without an explicit document start, as used by
+   JSON-lines style input.
+
 .. option:: --prefer-recursive
 
    Prefer recursive algorithms over iterative ones.
@@ -156,6 +161,44 @@ Options
 .. option:: --disable-depth-limit
 
    Disable the normal nesting-depth limit.
+
+.. option:: --enable-cache
+
+   Enable the transparent parse cache for eligible regular-file inputs. Cache
+   hits reuse a cached generic representation instead of parsing the source
+   file again. The cache is disabled by default.
+
+.. option:: --cache-list
+
+   List parse cache entries. Output contains the BLAKE3 cache key, original
+   source filename, and cache file size.
+
+.. option:: --cache-info PATH_OR_SOURCE
+
+   Show detailed metadata for a cache entry in YAML form. The argument may be
+   a cache file path, a BLAKE3 cache key, or an original source filename.
+
+.. option:: --cache-remove PATH_OR_SOURCE
+
+   Remove cache entries matching a cache file path, BLAKE3 cache key, or
+   original source filename.
+
+.. option:: --cache-clear
+
+   Remove all entries from the active parse cache directory.
+
+.. option:: --cache-dir
+
+   Print the active parse cache directory.
+
+.. option:: --cache-stats
+
+   Print parse cache directory statistics.
+
+.. option:: --emit-events
+
+   Use parser events to drive the emitter even when another cached or generic
+   path could otherwise be used directly.
 
 .. rubric:: Emitter options
 
@@ -409,10 +452,6 @@ Options
 
    Enable generic testsuite mode.
 
-.. option:: --builder-policy
-
-   Select the generic builder policy.
-
 .. option:: --generic-parse-dump
 
    Parse and dump using the generic layer.
@@ -433,9 +472,12 @@ Options
 
    Create source markers in generated generic data.
 
-.. option:: --pyyaml-compat
+.. option:: --schema SCHEMA
 
-   Enable PyYAML compatibility mode.
+   Select the generic decoder schema. Supported values include ``auto``,
+   ``yaml1.2-failsafe``, ``yaml1.2-core``, ``yaml1.2-json``,
+   ``yaml1.1-failsafe``, ``yaml1.1``, ``yaml1.1-pyyaml``, ``json``, and
+   ``python``.
 
 .. option:: --keep-style
 

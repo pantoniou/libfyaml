@@ -11,6 +11,7 @@ Welcome to libfyaml's documentation!
    :caption: Contents:
 
    intro
+   transparent-cache
    generics-guide
    reflection-guide
    man/fy-tool

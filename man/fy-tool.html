@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>fy-tool &mdash; libfyaml 1.0.0-alpha1 documentation</title>
+  <title>fy-tool &mdash; libfyaml 1.0.0-alpha7 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=25eb954f"></script>
+      <script src="../_static/documentation_options.js?v=4a1a819b"></script>
       <script src="../_static/doctools.js?v=9bcbadda"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/js/theme.js"></script>
@@ -45,6 +45,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../transparent-cache.html">Transparent Parse Caching</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generics-guide.html">Generics Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">fy-tool</a><ul>
@@ -236,6 +237,13 @@ JSON data.</p>
 </dd></dl>
 
 <dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-relaxed-flow-doc">
+<span class="sig-name descname"><span class="pre">--relaxed-flow-doc</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-relaxed-flow-doc" title="Link to this definition"></a></dt>
+<dd><p>Accept flow-style documents without an explicit document start, as used by
+JSON-lines style input.</p>
+</dd></dl>
+
+<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-fy-tool-prefer-recursive">
 <span class="sig-name descname"><span class="pre">--prefer-recursive</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-prefer-recursive" title="Link to this definition"></a></dt>
 <dd><p>Prefer recursive algorithms over iterative ones.</p>
@@ -281,6 +289,60 @@ JSON data.</p>
 <dt class="sig sig-object std" id="cmdoption-fy-tool-disable-depth-limit">
 <span class="sig-name descname"><span class="pre">--disable-depth-limit</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-disable-depth-limit" title="Link to this definition"></a></dt>
 <dd><p>Disable the normal nesting-depth limit.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-enable-cache">
+<span class="sig-name descname"><span class="pre">--enable-cache</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-enable-cache" title="Link to this definition"></a></dt>
+<dd><p>Enable the transparent parse cache for eligible regular-file inputs. Cache
+hits reuse a cached generic representation instead of parsing the source
+file again. The cache is disabled by default.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-list">
+<span class="sig-name descname"><span class="pre">--cache-list</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-cache-list" title="Link to this definition"></a></dt>
+<dd><p>List parse cache entries. Output contains the BLAKE3 cache key, original
+source filename, and cache file size.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-info">
+<span class="sig-name descname"><span class="pre">--cache-info</span></span><span class="sig-prename descclassname"> <span class="pre">PATH_OR_SOURCE</span></span><a class="headerlink" href="#cmdoption-fy-tool-cache-info" title="Link to this definition"></a></dt>
+<dd><p>Show detailed metadata for a cache entry in YAML form. The argument may be
+a cache file path, a BLAKE3 cache key, or an original source filename.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-remove">
+<span class="sig-name descname"><span class="pre">--cache-remove</span></span><span class="sig-prename descclassname"> <span class="pre">PATH_OR_SOURCE</span></span><a class="headerlink" href="#cmdoption-fy-tool-cache-remove" title="Link to this definition"></a></dt>
+<dd><p>Remove cache entries matching a cache file path, BLAKE3 cache key, or
+original source filename.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-clear">
+<span class="sig-name descname"><span class="pre">--cache-clear</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-cache-clear" title="Link to this definition"></a></dt>
+<dd><p>Remove all entries from the active parse cache directory.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-dir">
+<span class="sig-name descname"><span class="pre">--cache-dir</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-cache-dir" title="Link to this definition"></a></dt>
+<dd><p>Print the active parse cache directory.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-cache-stats">
+<span class="sig-name descname"><span class="pre">--cache-stats</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-cache-stats" title="Link to this definition"></a></dt>
+<dd><p>Print parse cache directory statistics.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-fy-tool-emit-events">
+<span class="sig-name descname"><span class="pre">--emit-events</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-emit-events" title="Link to this definition"></a></dt>
+<dd><p>Use parser events to drive the emitter even when another cached or generic
+path could otherwise be used directly.</p>
 </dd></dl>
 
 <p class="rubric">Emitter options</p>
@@ -641,12 +703,6 @@ disables threaded hashing.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-fy-tool-builder-policy">
-<span class="sig-name descname"><span class="pre">--builder-policy</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-builder-policy" title="Link to this definition"></a></dt>
-<dd><p>Select the generic builder policy.</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-fy-tool-generic-parse-dump">
 <span class="sig-name descname"><span class="pre">--generic-parse-dump</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-generic-parse-dump" title="Link to this definition"></a></dt>
 <dd><p>Parse and dump using the generic layer.</p>
@@ -677,9 +733,12 @@ disables threaded hashing.</p>
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-fy-tool-pyyaml-compat">
-<span class="sig-name descname"><span class="pre">--pyyaml-compat</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-fy-tool-pyyaml-compat" title="Link to this definition"></a></dt>
-<dd><p>Enable PyYAML compatibility mode.</p>
+<dt class="sig sig-object std" id="cmdoption-fy-tool-schema">
+<span class="sig-name descname"><span class="pre">--schema</span></span><span class="sig-prename descclassname"> <span class="pre">SCHEMA</span></span><a class="headerlink" href="#cmdoption-fy-tool-schema" title="Link to this definition"></a></dt>
+<dd><p>Select the generic decoder schema. Supported values include <code class="docutils literal notranslate"><span class="pre">auto</span></code>,
+<code class="docutils literal notranslate"><span class="pre">yaml1.2-failsafe</span></code>, <code class="docutils literal notranslate"><span class="pre">yaml1.2-core</span></code>, <code class="docutils literal notranslate"><span class="pre">yaml1.2-json</span></code>,
+<code class="docutils literal notranslate"><span class="pre">yaml1.1-failsafe</span></code>, <code class="docutils literal notranslate"><span class="pre">yaml1.1</span></code>, <code class="docutils literal notranslate"><span class="pre">yaml1.1-pyyaml</span></code>, <code class="docutils literal notranslate"><span class="pre">json</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">python</span></code>.</p>
 </dd></dl>
 
 <dl class="std option">

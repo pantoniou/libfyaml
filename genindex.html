@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; libfyaml 1.0.0-alpha1 documentation</title>
+  <title>Index &mdash; libfyaml 1.0.0-alpha7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=25eb954f"></script>
+      <script src="_static/documentation_options.js?v=4a1a819b"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -42,6 +42,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="transparent-cache.html">Transparent Parse Caching</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
@@ -112,10 +113,45 @@
 </li>
       </ul></li>
       <li>
-    --builder-policy
+    --cache-clear
 
       <ul>
-        <li><a href="man/fy-tool.html#cmdoption-fy-tool-builder-policy">fy-tool command line option</a>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-clear">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cache-dir
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-dir">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cache-info
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-info">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cache-list
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-list">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cache-remove
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-remove">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --cache-stats
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-stats">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -298,6 +334,20 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-reflection">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --emit-events
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-emit-events">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --enable-cache
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-enable-cache">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -489,6 +539,8 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-mmap-min-chunk">fy-tool command line option</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     --mode
 
@@ -510,8 +562,6 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-no-ending-newline">fy-tool command line option</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     --no-names
 
@@ -583,13 +633,6 @@
 </li>
       </ul></li>
       <li>
-    --pyyaml-compat
-
-      <ul>
-        <li><a href="man/fy-tool.html#cmdoption-fy-tool-pyyaml-compat">fy-tool command line option</a>
-</li>
-      </ul></li>
-      <li>
     --quiet
 
       <ul>
@@ -618,6 +661,13 @@
 </li>
       </ul></li>
       <li>
+    --relaxed-flow-doc
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-relaxed-flow-doc">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
     --resolve
 
       <ul>
@@ -629,6 +679,13 @@
 
       <ul>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-scan-dump">fy-tool command line option</a>
+</li>
+      </ul></li>
+      <li>
+    --schema
+
+      <ul>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-schema">fy-tool command line option</a>
 </li>
       </ul></li>
       <li>
@@ -973,7 +1030,17 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-backend">--backend</a>
 </li>
-        <li><a href="man/fy-tool.html#cmdoption-fy-tool-builder-policy">--builder-policy</a>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-clear">--cache-clear</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-dir">--cache-dir</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-info">--cache-info</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-list">--cache-list</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-remove">--cache-remove</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-cache-stats">--cache-stats</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-cflags">--cflags</a>
 </li>
@@ -1026,6 +1093,10 @@
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-primitives">--dump-primitives</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-dump-reflection">--dump-reflection</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-emit-events">--emit-events</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-enable-cache">--enable-cache</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-enable-diag">--enable-diag</a>
 </li>
@@ -1107,8 +1178,6 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-preserve-flow-layout">--preserve-flow-layout</a>
 </li>
-        <li><a href="man/fy-tool.html#cmdoption-fy-tool-pyyaml-compat">--pyyaml-compat</a>
-</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-q">--quiet</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-raw">--raw</a>
@@ -1117,9 +1186,13 @@
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-reflect">--reflect</a>
 </li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-relaxed-flow-doc">--relaxed-flow-doc</a>
+</li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-r">--resolve</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-scan-dump">--scan-dump</a>
+</li>
+        <li><a href="man/fy-tool.html#cmdoption-fy-tool-schema">--schema</a>
 </li>
         <li><a href="man/fy-tool.html#cmdoption-fy-tool-show-diag">--show-diag</a>
 </li>
@@ -1484,6 +1557,8 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_DIAG_IGNORE_ARRAY_BOUNDS">FY_DIAG_IGNORE_ARRAY_BOUNDS (C macro)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.FY_DIAG_IGNORE_TYPE_LIMITS">FY_DIAG_IGNORE_TYPE_LIMITS (C macro)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_DIAG_IGNORE_UNUSED_PARAMETER">FY_DIAG_IGNORE_UNUSED_PARAMETER (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_DIAG_IGNORE_UNUSED_VARIABLE">FY_DIAG_IGNORE_UNUSED_VARIABLE (C macro)</a>
@@ -1658,11 +1733,15 @@
 </li>
       <li><a href="libfyaml-core.html#c.fy_document_start_event_version">fy_document_start_event_version (C function)</a>
 </li>
+      <li><a href="libfyaml-core.html#c.fy_document_state_end_explicit">fy_document_state_end_explicit (C function)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_document_state_end_implicit">fy_document_state_end_implicit (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_document_state_end_mark">fy_document_state_end_mark (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_document_state_json_mode">fy_document_state_json_mode (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_document_state_start_explicit">fy_document_state_start_explicit (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_document_state_start_implicit">fy_document_state_start_implicit (C function)</a>
 </li>
@@ -1727,6 +1806,8 @@
       <li><a href="libfyaml-core.html#c.fy_emit_eventf">fy_emit_eventf (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_emit_explicit_document_end">fy_emit_explicit_document_end (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_emit_generic_vdir">fy_emit_generic_vdir (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_emit_node">fy_emit_node (C function)</a>
 </li>
@@ -2004,6 +2085,8 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_cleanup">fy_generic_builder_cleanup (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_cleanup_fn">fy_generic_builder_cleanup_fn (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_contains">fy_generic_builder_contains (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_contains_out_of_place">fy_generic_builder_contains_out_of_place (C function)</a>
@@ -2020,6 +2103,8 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_cfg">fy_generic_builder_get_cfg (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_cleanup">fy_generic_builder_get_cleanup (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_export_builder">fy_generic_builder_get_export_builder (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_flags">fy_generic_builder_get_flags (C function)</a>
@@ -2031,6 +2116,8 @@
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_get_userdata">fy_generic_builder_get_userdata (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_reset">fy_generic_builder_reset (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_builder_set_cleanup">fy_generic_builder_set_cleanup (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_set_userdata">fy_generic_builder_set_userdata (C function)</a>
 </li>
@@ -2076,6 +2163,38 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_dir_get_document_vds">fy_generic_dir_get_document_vds (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_cfg">fy_generic_document_builder_cfg (C struct)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_create">fy_generic_document_builder_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_create_on_parser">fy_generic_document_builder_create_on_parser (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_destroy">fy_generic_document_builder_destroy (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_flags">fy_generic_document_builder_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_get_document">fy_generic_document_builder_get_document (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_is_document_complete">fy_generic_document_builder_is_document_complete (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_is_in_document">fy_generic_document_builder_is_in_document (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_is_in_stream">fy_generic_document_builder_is_in_stream (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_load_document">fy_generic_document_builder_load_document (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_peek_document">fy_generic_document_builder_peek_document (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_process_event">fy_generic_document_builder_process_event (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_reset">fy_generic_document_builder_reset (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_set_in_document">fy_generic_document_builder_set_in_document (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_set_in_stream">fy_generic_document_builder_set_in_stream (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_document_builder_take_document">fy_generic_document_builder_take_document (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_dump_primitive">fy_generic_dump_primitive (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_emit_compact">fy_generic_emit_compact (C function)</a>
@@ -2096,7 +2215,11 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_bool_type_no_check">fy_generic_get_bool_type_no_check (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_collection_style">fy_generic_get_collection_style (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_comment">fy_generic_get_comment (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_comments">fy_generic_get_comments (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_default">fy_generic_get_default (C macro)</a>
 </li>
@@ -2116,7 +2239,11 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_marker">fy_generic_get_marker (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_node_style">fy_generic_get_node_style (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_null_type_no_check">fy_generic_get_null_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_get_scalar_style">fy_generic_get_scalar_style (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_string_default_alloca">fy_generic_get_string_default_alloca (C macro)</a>
 </li>
@@ -2135,6 +2262,8 @@
       <li><a href="libfyaml-generics.html#c.fy_generic_get_type_indirect">fy_generic_get_type_indirect (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_get_uint_type_no_check">fy_generic_get_uint_type_no_check (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_has_comments">fy_generic_has_comments (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_in_place_bool_type">fy_generic_in_place_bool_type (C function)</a>
 </li>
@@ -2182,6 +2311,10 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_indirect_get_value_nocheck">fy_generic_indirect_get_value_nocheck (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_reset">fy_generic_indirect_reset (C function)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="libfyaml-generics.html#c.FY_GENERIC_INT_LVAL_TEMPLATE">FY_GENERIC_INT_LVAL_TEMPLATE (C macro)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct">fy_generic_is_direct (C function)</a>
@@ -2204,14 +2337,14 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_null_type">fy_generic_is_direct_null_type (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_scalar">fy_generic_is_direct_scalar (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_sequence">fy_generic_is_direct_sequence (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_sequence_type">fy_generic_is_direct_sequence_type (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_string">fy_generic_is_direct_string (C function)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_string_type">fy_generic_is_direct_string_type (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_uint_type">fy_generic_is_direct_uint_type (C function)</a>
@@ -2360,8 +2493,6 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_const_szstrp">fy_generic_out_of_place_size_const_szstrp (C function)</a>
 </li>
-      <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_double">fy_generic_out_of_place_size_double (C function)</a>
-</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_float_type">fy_generic_out_of_place_size_float_type (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_out_of_place_size_int_type">fy_generic_out_of_place_size_int_type (C function)</a>
@@ -2383,6 +2514,8 @@
       <li><a href="libfyaml-generics.html#c.fy_generic_resolve_ptr">fy_generic_resolve_ptr (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_schema">fy_generic_schema (C enum)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_schema_from_text">fy_generic_schema_from_text (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_schema_get_text">fy_generic_schema_get_text (C function)</a>
 </li>
@@ -2883,6 +3016,22 @@
       <li><a href="libfyaml-generics.html#c.fy_op_sort_args">fy_op_sort_args (C struct)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_op_take_args">fy_op_take_args (C struct)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_file_info">fy_parse_cache_file_info (C struct)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_file_info_load">fy_parse_cache_file_info_load (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_get_dir">fy_parse_cache_get_dir (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_get_min_file_size">fy_parse_cache_get_min_file_size (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_override">fy_parse_cache_override (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_set_min_file_size">fy_parse_cache_set_min_file_size (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_walk">fy_parse_cache_walk (C function)</a>
+</li>
+      <li><a href="libfyaml-core.html#c.fy_parse_cache_walk_cb">fy_parse_cache_walk_cb (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_parse_cfg">fy_parse_cfg (C struct)</a>
 </li>
@@ -3425,8 +3574,6 @@
       <li><a href="libfyaml-reflection.html#c.fy_type_kind_size">fy_type_kind_size (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_UNIQUE">FY_UNIQUE (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_UNUSED">FY_UNUSED (C macro)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_validate">fy_validate (C function)</a>
 </li>

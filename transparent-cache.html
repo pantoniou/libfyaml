@@ -1,0 +1,265 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transparent Parse Caching &mdash; libfyaml 1.0.0-alpha7 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=4a1a819b"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Generics Guide" href="generics-guide.html" />
+    <link rel="prev" title="Introduction" href="intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            libfyaml
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Transparent Parse Caching</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-does">What It Does</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relationship-with-generics">Relationship With Generics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-gets-cached">What Gets Cached</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#cache-location">Cache Location</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#public-cache-inspection-api">Public Cache Inspection API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-to-use-it">When To Use It</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-surfaces">Configuration Surfaces</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generics-guide.html">Generics Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reflection-guide.html">Reflection Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="man/fy-tool.html">fy-tool</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml.html">libfyaml API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-core.html">Core API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-misc.html">Miscellaneous API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-generics.html">Generic API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libfyaml-reflection.html">Reflection API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">libfyaml</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Transparent Parse Caching</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/transparent-cache.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="transparent-parse-caching">
+<h1>Transparent Parse Caching<a class="headerlink" href="#transparent-parse-caching" title="Link to this heading"></a></h1>
+<p>libfyaml can cache parsed input in a generic arena and reuse that cached
+representation on later runs. The cache is transparent in the sense that the
+caller still uses the normal parse entry points. When the cache is enabled and
+usable, libfyaml decides whether to parse the original input or to load the
+cached representation.</p>
+<section id="what-it-does">
+<h2>What It Does<a class="headerlink" href="#what-it-does" title="Link to this heading"></a></h2>
+<p>The transparent cache targets repeated reads of stable YAML or JSON inputs,
+especially during process startup. A cache hit avoids re-parsing the original
+text and instead loads a previously serialized generic arena.</p>
+<p>The cache is currently conservative:</p>
+<ul class="simple">
+<li><p>it is opt-in</p></li>
+<li><p>it only applies to inputs that are eligible for content-addressed caching</p></li>
+<li><p>incompatible, corrupt, or unreadable entries are treated as cache misses</p></li>
+</ul>
+<p>The cache is content-addressed. The key includes the input bytes and the
+parser and decoder options that affect semantics, so changing either the input
+or the relevant parse configuration produces a different cache entry.</p>
+</section>
+<section id="relationship-with-generics">
+<h2>Relationship With Generics<a class="headerlink" href="#relationship-with-generics" title="Link to this heading"></a></h2>
+<p>The cache is implemented on top of the generic subsystem. That is an internal
+design choice with visible consequences:</p>
+<ul class="simple">
+<li><p>generic support must be available for transparent caching to work</p></li>
+<li><p>the cached payload is a serialized generic arena</p></li>
+<li><p>cache hits are best suited to generic-oriented consumers</p></li>
+</ul>
+<p>This does not mean the core parser API becomes a generic API. The core parser,
+document, and emitter interfaces remain unchanged. It means the cache backend
+uses generics as its stored representation because generics already provide:</p>
+<ul class="simple">
+<li><p>a compact immutable value model</p></li>
+<li><p>arena-based storage</p></li>
+<li><p>deduplication support</p></li>
+<li><p>stable serialization and relocation machinery</p></li>
+</ul>
+<p>For generic consumers, a cache hit can often return directly to generic data.
+For non-generic consumers, libfyaml may still need to replay parser events or
+reconstruct higher-level structures from the cached generic representation.
+That is why the cache/backend relationship matters when reasoning about hit
+performance.</p>
+</section>
+<section id="how-it-works">
+<h2>How It Works<a class="headerlink" href="#how-it-works" title="Link to this heading"></a></h2>
+<p>On a cache miss:</p>
+<ol class="arabic simple">
+<li><p>libfyaml parses the input normally.</p></li>
+<li><p>In parallel with normal parsing, it builds a generic representation.</p></li>
+<li><p>At successful end of stream, it linearizes the generic arena.</p></li>
+<li><p>It writes a cache file atomically under the cache directory.</p></li>
+</ol>
+<p>On a cache hit:</p>
+<ol class="arabic simple">
+<li><p>libfyaml computes the same content-addressed key.</p></li>
+<li><p>It locates the cache file and validates the header.</p></li>
+<li><p>It tries to map the stored arena at the recorded address.</p></li>
+<li><p>If fixed-address mapping is not possible, it falls back to relocation.</p></li>
+<li><p>The cached generic arena is then used as the parse result backend.</p></li>
+</ol>
+<p>The zero-copy fast path is the fixed-address mapping case. Relocation is the
+fallback path for cases where the original address range is not available.</p>
+</section>
+<section id="what-gets-cached">
+<h2>What Gets Cached<a class="headerlink" href="#what-gets-cached" title="Link to this heading"></a></h2>
+<p>The cache stores:</p>
+<ul class="simple">
+<li><p>cache format metadata</p></li>
+<li><p>the original source name</p></li>
+<li><p>parser and decoder flags relevant to behavior</p></li>
+<li><p>the serialized generic arena payload</p></li>
+</ul>
+<p>It does not store the internal parser state machine directly.</p>
+</section>
+<section id="cache-location">
+<h2>Cache Location<a class="headerlink" href="#cache-location" title="Link to this heading"></a></h2>
+<p>By default, libfyaml uses:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">$XDG_CACHE_HOME/libfyaml</span></code> when <code class="docutils literal notranslate"><span class="pre">XDG_CACHE_HOME</span></code> is set</p></li>
+<li><p>otherwise <code class="docutils literal notranslate"><span class="pre">~/.cache/libfyaml</span></code></p></li>
+</ul>
+<p>The current cache directory can be queried programmatically via
+<code class="docutils literal notranslate"><span class="pre">fy_parse_cache_get_dir()</span></code>. The directory may also be overridden for the
+current process via <code class="docutils literal notranslate"><span class="pre">fy_parse_cache_override()</span></code>.</p>
+</section>
+<section id="public-cache-inspection-api">
+<h2>Public Cache Inspection API<a class="headerlink" href="#public-cache-inspection-api" title="Link to this heading"></a></h2>
+<p>The core public cache inspection API consists of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_get_dir()</span></code> to resolve the active cache directory</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_file_info_load()</span></code> to inspect one cache file</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_walk()</span></code> to enumerate cache entries</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_override()</span></code> to redirect the cache root for the current
+process</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_get_min_file_size()</span></code> to read the active size cutoff</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fy_parse_cache_set_min_file_size()</span></code> to override the size cutoff for the
+current process; pass <code class="docutils literal notranslate"><span class="pre">-1</span></code> to restore the default</p></li>
+</ul>
+<p>The associated metadata container is <code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">fy_parse_cache_file_info</span></code>.</p>
+</section>
+<section id="when-to-use-it">
+<h2>When To Use It<a class="headerlink" href="#when-to-use-it" title="Link to this heading"></a></h2>
+<p>Transparent caching is a good fit when:</p>
+<ul class="simple">
+<li><p>the same files are parsed repeatedly across process starts</p></li>
+<li><p>the inputs are large enough that parsing dominates startup cost</p></li>
+<li><p>the input contents change infrequently relative to reads</p></li>
+</ul>
+<p>It is less useful when:</p>
+<ul class="simple">
+<li><p>the inputs are tiny</p></li>
+<li><p>the inputs are highly volatile</p></li>
+<li><p>the workload is dominated by one-off parsing</p></li>
+</ul>
+</section>
+<section id="configuration-surfaces">
+<h2>Configuration Surfaces<a class="headerlink" href="#configuration-surfaces" title="Link to this heading"></a></h2>
+<p>The cache is disabled unless explicitly enabled by the calling API surface.
+Examples include:</p>
+<ul class="simple">
+<li><p>parser configuration using <code class="docutils literal notranslate"><span class="pre">FYPCF_ENABLE_CACHE</span></code></p></li>
+<li><p>generic parse operations using the corresponding generic parse flag</p></li>
+<li><p>Python binding helpers with <code class="docutils literal notranslate"><span class="pre">enable_cache=True</span></code></p></li>
+</ul>
+<p>The cache implementation also has environment-controlled behavior for testing
+and diagnostics, including cache directory override and relocation forcing.</p>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="intro.html"><span class="doc">Introduction</span></a></p></li>
+<li><p><a class="reference internal" href="generics-guide.html"><span class="doc">Generics Guide</span></a></p></li>
+<li><p><a class="reference internal" href="libfyaml-core.html"><span class="doc">Core API</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="intro.html" class="btn btn-neutral float-left" title="Introduction" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generics-guide.html" class="btn btn-neutral float-right" title="Generics Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2019-2026, Pantelis Antoniou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
