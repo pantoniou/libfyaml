@@ -24,6 +24,10 @@
 
 #include <libfyaml.h>
 
+#ifdef HAVE_GENERIC
+#include "fy-generic.h"
+#endif
+
 #include "fy-utf8.h"
 #include "fy-event.h"
 #include "fy-check.h"
@@ -1336,6 +1340,174 @@ START_TEST(emit_bug_invalid_utf8_surrogate_dfff)
 }
 END_TEST
 
+#ifdef HAVE_GENERIC
+
+static void assert_invalid_utf8_generic_string_emits_escaped(const char *name,
+							     const uint8_t *data,
+							     size_t size)
+{
+	fy_generic_sized_string input, output;
+	fy_generic value, emitted;
+	char *expected;
+	size_t expected_len, off, i;
+
+	input.data = (const char *)data;
+	input.size = size;
+	value = fy_value(input);
+	ck_assert(fy_generic_is_valid(value));
+	ck_assert(fy_generic_is_string(value));
+
+	emitted = fy_emit(value,
+			  FYOPEF_DISABLE_DIRECTORY |
+			  FYOPEF_MODE_YAML_1_2 |
+			  FYOPEF_STYLE_BLOCK,
+			  NULL);
+	ck_assert(fy_generic_is_valid(emitted));
+	ck_assert(fy_generic_is_string(emitted));
+
+	output = fy_generic_cast_default(emitted, fy_szstr_empty);
+	ck_assert_ptr_ne(output.data, NULL);
+
+	expected_len = 2 + (size * 4) + 2;
+	expected = malloc(expected_len + 1);
+	ck_assert_ptr_ne(expected, NULL);
+
+	off = 0;
+	expected[off++] = '"';
+	for (i = 0; i < size; i++) {
+		if (data[i] < 0x80)
+			expected[off++] = (char)data[i];
+		else {
+			snprintf(expected + off, expected_len + 1 - off,
+				 "\\x%02X", data[i]);
+			off += 4;
+		}
+	}
+	expected[off++] = '"';
+	expected[off++] = '\n';
+	expected[off] = '\0';
+
+	fprintf(stderr, "generic %s:\nexpected:\n%sactual:\n%.*s",
+		name, expected, (int)output.size, output.data);
+
+	ck_assert_msg(output.size == off && !memcmp(output.data, expected, off),
+		      "%s: expected generic emitted output:\n%sactual:\n%.*s",
+		      name, expected, (int)output.size, output.data);
+
+	assert_no_raw_invalid_bytes(output.data, output.size, data, size, name);
+
+	free(expected);
+}
+
+#define ASSERT_INVALID_UTF8_GENERIC_STRING(_name, _data) \
+	assert_invalid_utf8_generic_string_emits_escaped((_name), (_data), sizeof(_data))
+
+START_TEST(emit_bug_invalid_utf8_generic_first_byte_c0)
+{
+	static const uint8_t data[] = { 0xc0 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("invalid first byte 0xc0", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_first_byte_c1)
+{
+	static const uint8_t data[] = { 0xc1 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("invalid first byte 0xc1", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_missing_cont_2byte)
+{
+	static const uint8_t data[] = { 0xc2 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("missing continuation 2-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_missing_cont_3byte)
+{
+	static const uint8_t data[] = { 0xe2, 0x80 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("missing continuation 3-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_missing_cont_4byte)
+{
+	static const uint8_t data[] = { 0xf0, 0x9f, 0x98 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("missing continuation 4-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_lone_cont)
+{
+	static const uint8_t data[] = { 0x80 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("lone continuation", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_unexpected_cont)
+{
+	static const uint8_t data[] = { 'a', 0x80, 'b' };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("unexpected continuation", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_overlong_2byte)
+{
+	static const uint8_t data[] = { 0xc0, 0xaf };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("overlong 2-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_overlong_3byte)
+{
+	static const uint8_t data[] = { 0xe0, 0x80, 0xaf };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("overlong 3-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_overlong_4byte)
+{
+	static const uint8_t data[] = { 0xf0, 0x80, 0x80, 0xaf };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("overlong 4-byte", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_out_of_range)
+{
+	static const uint8_t data[] = { 0xf4, 0x90, 0x80, 0x80 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("out of range code point", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_surrogate_d800)
+{
+	static const uint8_t data[] = { 0xed, 0xa0, 0x80 };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("surrogate U+D800", data);
+}
+END_TEST
+
+START_TEST(emit_bug_invalid_utf8_generic_surrogate_dfff)
+{
+	static const uint8_t data[] = { 0xed, 0xbf, 0xbf };
+
+	ASSERT_INVALID_UTF8_GENERIC_STRING("surrogate U+DFFF", data);
+}
+END_TEST
+
+#endif
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
@@ -1452,4 +1624,21 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_out_of_range);
 	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_surrogate_d800);
 	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_surrogate_dfff);
+
+#ifdef HAVE_GENERIC
+	/* Bug 21: invalid UTF-8 in generic string scalars */
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_first_byte_c0);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_first_byte_c1);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_missing_cont_2byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_missing_cont_3byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_missing_cont_4byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_lone_cont);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_unexpected_cont);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_overlong_2byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_overlong_3byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_overlong_4byte);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_out_of_range);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_surrogate_d800);
+	fy_check_testcase_add_test(ctc, emit_bug_invalid_utf8_generic_surrogate_dfff);
+#endif
 }
