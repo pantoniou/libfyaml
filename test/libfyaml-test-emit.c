@@ -834,6 +834,329 @@ START_TEST(emit_subtree_comment_indent)
 }
 END_TEST
 
+static int scalar_seq_sort_cmp(struct fy_node *a, struct fy_node *b, void *arg)
+{
+	const char *sa = fy_node_get_scalar0(a);
+	const char *sb = fy_node_get_scalar0(b);
+	if (!sa) sa = "";
+	if (!sb) sb = "";
+	return strcmp(sa, sb);
+}
+
+START_TEST(emit_first_key_comment_follows_key_after_sort)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root;
+	char *output;
+	const char *comment_pos, *z_pos, *a_pos;
+	int rc;
+
+	/* Comment before z (first key). After sorting, a comes first.
+	 * The comment must stay with z, not remain at the top. */
+	fyd = fy_document_build_from_string(&cfg,
+		"# above z\nz: 1\na: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+
+	rc = fy_node_mapping_sort(root, NULL, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* comment must appear in output */
+	comment_pos = strstr(output, "# above z");
+	ck_assert_ptr_ne(comment_pos, NULL);
+
+	/* a: must come before z: (sorted order) */
+	a_pos = strstr(output, "a:");
+	z_pos = strstr(output, "z:");
+	ck_assert_ptr_ne(a_pos, NULL);
+	ck_assert_ptr_ne(z_pos, NULL);
+	ck_assert(a_pos < z_pos);
+
+	/* comment must appear AFTER a: (i.e. with z, not at document top) */
+	ck_assert(comment_pos > a_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_first_item_comment_follows_item_after_seq_sort)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root, *seq;
+	char *output;
+	const char *comment_pos, *c_pos, *a_pos;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"items:\n  # above c\n  - c\n  - a\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	seq = fy_node_by_path(root, "/items", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(seq, NULL);
+
+	rc = fy_node_sequence_sort(seq, scalar_seq_sort_cmp, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	comment_pos = strstr(output, "# above c");
+	ck_assert_ptr_ne(comment_pos, NULL);
+
+	a_pos = strstr(output, "- a");
+	c_pos = strstr(output, "- c");
+	ck_assert_ptr_ne(a_pos, NULL);
+	ck_assert_ptr_ne(c_pos, NULL);
+	ck_assert(a_pos < c_pos);
+
+	/* comment must appear after a (i.e. with c, not at top of sequence) */
+	ck_assert(comment_pos > a_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+static int mapping_seq_sort_by_name(struct fy_node *a, struct fy_node *b, void *arg)
+{
+	const char *na = fy_node_get_scalar0(fy_node_by_path(a, "/name", FY_NT, FYNWF_DONT_FOLLOW));
+	const char *nb = fy_node_get_scalar0(fy_node_by_path(b, "/name", FY_NT, FYNWF_DONT_FOLLOW));
+	if (!na) na = "";
+	if (!nb) nb = "";
+	return strcmp(na, nb);
+}
+
+START_TEST(emit_first_item_comment_follows_mapping_item_after_seq_sort)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root, *seq;
+	char *output;
+	const char *comment_pos, *bar_pos, *foo_pos;
+	int rc;
+
+	/* Comment before the first sequence item (a mapping). After sort by name,
+	 * bar comes first; the comment must move with foo, not stay at the top. */
+	fyd = fy_document_build_from_string(&cfg,
+		"steps:\n"
+		"  # above foo\n"
+		"  - name: foo\n"
+		"  - name: bar\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	ck_assert_ptr_ne(root, NULL);
+	seq = fy_node_by_path(root, "/steps", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(seq, NULL);
+
+	rc = fy_node_sequence_sort(seq, mapping_seq_sort_by_name, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	comment_pos = strstr(output, "# above foo");
+	bar_pos     = strstr(output, "name: bar");
+	foo_pos     = strstr(output, "name: foo");
+	ck_assert_ptr_ne(comment_pos, NULL);
+	ck_assert_ptr_ne(bar_pos, NULL);
+	ck_assert_ptr_ne(foo_pos, NULL);
+
+	/* bar must come before foo after sort */
+	ck_assert(bar_pos < foo_pos);
+	/* comment must travel with foo, not stay at top before bar */
+	ck_assert(comment_pos > bar_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_multi_comment_blocks_before_first_key)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root;
+	char *output;
+	const char *block_a, *block_b, *z_pos, *a_pos;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"# block A\n# block B\nz: 1\na: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	rc = fy_node_mapping_sort(root, NULL, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	block_a = strstr(output, "# block A");
+	block_b = strstr(output, "# block B");
+	a_pos = strstr(output, "a:");
+	z_pos = strstr(output, "z:");
+	ck_assert_ptr_ne(block_a, NULL);
+	ck_assert_ptr_ne(block_b, NULL);
+	ck_assert_ptr_ne(a_pos, NULL);
+	ck_assert_ptr_ne(z_pos, NULL);
+
+	/* both comment blocks should follow z after sort (i.e. appear after a:) */
+	ck_assert(block_a > a_pos);
+	ck_assert(block_b > a_pos);
+	ck_assert(block_a < z_pos);
+	ck_assert(block_b < z_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_first_key_comment_and_interstitial_with_sort)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root;
+	char *output;
+	const char *before_z, *before_a, *z_pos, *a_pos;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"# before z\nz: 1\n# before a\na: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	rc = fy_node_mapping_sort(root, NULL, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	before_z = strstr(output, "# before z");
+	before_a = strstr(output, "# before a");
+	a_pos = strstr(output, "a:");
+	z_pos = strstr(output, "z:");
+	ck_assert_ptr_ne(before_z, NULL);
+	ck_assert_ptr_ne(before_a, NULL);
+
+	/* after sort: # before a\na: 2\n# before z\nz: 1 */
+	ck_assert(before_a < a_pos);
+	ck_assert(before_z < z_pos);
+	ck_assert(before_z > a_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_already_sorted_comments_stable)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root;
+	char *output;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"# before a\na: 1\n# before b\nb: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	rc = fy_node_mapping_sort(root, NULL, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* comments must still be present and in order */
+	const char *before_a = strstr(output, "# before a");
+	const char *before_b = strstr(output, "# before b");
+	const char *a_pos = strstr(output, "a:");
+	const char *b_pos = strstr(output, "b:");
+	ck_assert_ptr_ne(before_a, NULL);
+	ck_assert_ptr_ne(before_b, NULL);
+	ck_assert(before_a < a_pos);
+	ck_assert(before_b < b_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_comment_idempotent_roundtrip)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	char *output1, *output2;
+
+	/* parse → emit → parse → emit should be identical */
+	fyd = fy_document_build_from_string(&cfg,
+		"# before a\na: 1\n# before b\nb: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output1 = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output1, NULL);
+	fy_document_destroy(fyd);
+
+	fyd = fy_document_build_from_string(&cfg, output1, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output2 = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output2, NULL);
+
+	ck_assert_str_eq(output1, output2);
+
+	free(output1);
+	free(output2);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+START_TEST(emit_nested_mapping_first_key_comment_sort)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
+	struct fy_document *fyd;
+	struct fy_node *root, *inner;
+	char *output;
+	int rc;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"outer:\n  # before z\n  z: 1\n  a: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	root = fy_document_root(fyd);
+	inner = fy_node_by_path(root, "/outer", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(inner, NULL);
+
+	rc = fy_node_mapping_sort(inner, NULL, NULL);
+	ck_assert_int_eq(rc, 0);
+
+	output = fy_emit_document_to_string(fyd, FYECF_OUTPUT_COMMENTS);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* comment should be with z, after a */
+	const char *comment = strstr(output, "# before z");
+	const char *a_pos = strstr(output, "a:");
+	const char *z_pos = strstr(output, "z:");
+	ck_assert_ptr_ne(comment, NULL);
+	ck_assert(comment > a_pos);
+	ck_assert(comment < z_pos);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(emit_constructed_comment_indent)
 {
 	struct fy_document *fyd;
@@ -915,5 +1238,13 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_streaming_multiline_flow_stays_multiline);
 	fy_check_testcase_add_test(ctc, emit_streaming_nested_flow_oneline);
 	fy_check_testcase_add_test(ctc, emit_subtree_comment_indent);
+	fy_check_testcase_add_test(ctc, emit_first_key_comment_follows_key_after_sort);
+	fy_check_testcase_add_test(ctc, emit_first_item_comment_follows_item_after_seq_sort);
+	fy_check_testcase_add_test(ctc, emit_first_item_comment_follows_mapping_item_after_seq_sort);
+	fy_check_testcase_add_test(ctc, emit_multi_comment_blocks_before_first_key);
+	fy_check_testcase_add_test(ctc, emit_first_key_comment_and_interstitial_with_sort);
+	fy_check_testcase_add_test(ctc, emit_already_sorted_comments_stable);
+	fy_check_testcase_add_test(ctc, emit_comment_idempotent_roundtrip);
+	fy_check_testcase_add_test(ctc, emit_nested_mapping_first_key_comment_sort);
 	fy_check_testcase_add_test(ctc, emit_constructed_comment_indent);
 }
