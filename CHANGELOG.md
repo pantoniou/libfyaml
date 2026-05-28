@@ -5,6 +5,53 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha7] - 2026-05-28
+
+The seventh alpha milestone for the 1.0 line. This release adds transparent
+parser cache support, makes optimized generic event emission the default path,
+and improves Python wheel compatibility through Stable ABI builds and broader
+ARM wheel coverage. Modulo any show-stopper bugs found after release, this is
+expected to be the last alpha before the 1.0 line moves into beta.
+
+### Added
+
+- `cache`: add transparent parser cache support with documentation, benchmarks, and tests
+- `fy-tool`: expose transparent parse cache support
+- `python`: expose transparent parse functionality and add a parse-cache benchmark script
+- `python`: build the extension against the Stable ABI (`abi3`, `cp310`)
+- `python`: add Ubuntu and Windows ARM binary wheels
+- `parse`: add `FYPCF_KEEP_ANCHORS` and `FYOPPF_KEEP_ANCHORS`, with Python `keep_anchors` keyword support
+- `generic`: export `fy_generic_is_scalar()` helpers
+- `test`: add C++ translation-unit compilation tests for `libfyaml-atomics.h`
+
+### Changed
+
+- `emit`: switch to the optimized generic event emitter by default
+- `emit`: rework token emission for reuse by the optimized generic emitter
+- `generic`: rework and simplify generic indirect internals
+- `generic`: add builder cleanup and linearization/arena relocation helpers
+- `python`: force extension builds to use PIC
+- `workflows`: pass a correct `LIBFYAML_REPO_ROOT`
+- `win32`: add more emulation helpers for Windows
+- `util`: add portable wrapper helpers used by the new portability work
+
+### Fixed
+
+- `emit`: escape invalid UTF-8 generic strings and preserve partial UTF-8 bytes for quoting
+- `token`: fix wrong token type collection-end test helpers
+- `parse`: clone replayed stream-end tokens and add fuzz regressions for token cleanup issues
+- `generic`: fix decoder double-free behavior and preserve `FYGBF_OWNS_ALLOCATOR` correctly
+- `python`: fix `Py_None` refcount underflow in `FyDocumentState_get_tags`
+- `portability`: make public atomic macros usable from C++ translation units on GCC, Clang, and MSVC
+- `portability`: add an MSVC C++17 fallback for atomic macros
+- `doc`: fix documentation build warnings
+- `configure`: fix double-passing behavior
+
+### Statistics
+
+- 47 commits since `v1.0.0-alpha6`
+- Focus areas: transparent parse caching, optimized generic emission, Python wheel compatibility, invalid UTF-8 handling, and C++/atomic portability
+
 ## [1.0.0-alpha6] - 2026-05-07
 
 The sixth alpha milestone for the 1.0 line. This release expands the generic
@@ -710,6 +757,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha7]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha6...v1.0.0-alpha7
 [1.0.0-alpha6]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha5...v1.0.0-alpha6
 [1.0.0-alpha5]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha4...v1.0.0-alpha5
 [1.0.0-alpha4]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha3...v1.0.0-alpha4

@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha6
+# libfyaml 1.0-alpha7
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,20 +17,23 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha6 matters
+## Why 1.0-alpha7 matters
 
-`1.0.0-alpha6` is the feature-and-portability follow-up to the earlier
+`1.0.0-alpha7` is the cache, emission, and Python packaging follow-up to the earlier
 `1.0.0-alpha` releases.
 
-It keeps the same overall 1.0 direction, but makes the generic layer more
-capable, improves text and formatting fidelity, and broadens platform/build
-coverage in the places that matter for early adopters:
+It keeps the same overall 1.0 direction, but makes repeated parsing cheaper,
+switches generic emission to the optimized path by default, and improves the
+Python packaging story for wider binary compatibility:
 
-* generic document-builder support, schema controls, and formatting/style parity work
-* relaxed-flow document parsing for JSONL-like inputs and matching tool/generic flags
-* major atom/text-analysis rework with better literal handling and new coverage
-* wider build portability across Windows ARM, Android, older compilers, and `libatomic`-requiring platforms
-* another round of CMake/autoconf cleanup with stricter warning handling
+* transparent parser cache support in the core parser, `fy-tool`, and Python binding
+* optimized generic event emission enabled by default, with expanded emitter coverage
+* Python Stable ABI (`abi3`, `cp310`) wheels and additional ARM wheel builds
+* keep-anchor parsing options for C and Python users
+* invalid UTF-8 emission fixes and stronger C++/atomic portability coverage
+
+Modulo any show-stopper bugs found after release, this is expected to be the
+last alpha before the 1.0 line moves into beta.
 
 ### Generic runtime
 
@@ -283,7 +286,8 @@ The binding is part of the alpha release story and shows the generic runtime's
 data model in regular use. `v1.0.0-alpha3` improved the Windows story for the
 binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow,
 `v1.0.0-alpha5` broadened build and CI coverage, and `v1.0.0-alpha6` expands
-generic formatting/document handling while continuing the portability push.
+generic formatting/document handling. `v1.0.0-alpha7` adds transparent parse
+caching, optimized generic emission, and Stable ABI Python wheels.
 
 ## License
 
