@@ -2177,8 +2177,11 @@ fy_emit_scalar_style_from_analysis(struct fy_emitter *emit, int flags, int inden
 	}
 
 out:
-	/* any zero (or non newline linebreak) -> double quoted */
-	if (ta_flags & (FYTTAF_HAS_ZERO | FYTTAF_HAS_NON_NL_LB))
+	/* any zero, non newline linebreak, or invalid UTF-8 -> double quoted */
+	if (ta_flags & (FYTTAF_HAS_ZERO |
+			FYTTAF_HAS_NON_NL_LB |
+			FYTTAF_HAS_INVALID_UTF8 |
+			FYTTAF_HAS_PARTIAL_UTF8))
 		style = FYNS_DOUBLE_QUOTED;
 
 	if (style == FYNS_ANY && (ta_flags & FYTTAF_CAN_BE_PLAIN)) {
@@ -5259,7 +5262,7 @@ generic_iter_peekc(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state
 static int generic_iter_getc_dq(struct fy_emitter *emit FY_UNUSED, struct fy_emit_write_state *state, uint8_t *buf, size_t *lenp)
 {
 	struct generic_state *gstate = state->user;
-	int c, w;
+	int c, w, ww;
 	size_t avail;
 	uint8_t b;
 
@@ -5279,6 +5282,7 @@ static int generic_iter_getc_dq(struct fy_emitter *emit FY_UNUSED, struct fy_emi
 	if (!w) {
 		buf[0] = b;
 		*lenp = 1;
+		gstate->s++;
 		return 0;	/* illegal */
 	}
 
@@ -5286,12 +5290,17 @@ static int generic_iter_getc_dq(struct fy_emitter *emit FY_UNUSED, struct fy_emi
 	if ((size_t)w > avail) {
 		memcpy(buf, gstate->s, avail);
 		*lenp = avail;
+		gstate->s = gstate->e;
 		return 0;
 	}
 
-	c = fy_utf8_get(gstate->s, (size_t)(gstate->e - gstate->s), &w);
-	if (c < 0)	/* any kind of error */
-		return c;
+	c = fy_utf8_get(gstate->s, (size_t)(gstate->e - gstate->s), &ww);
+	if (c < 0) {	/* any kind of error */
+		memcpy(buf, gstate->s, w);
+		*lenp = w;
+		gstate->s += w;
+		return 0;
+	}
 
 	gstate->s += w;
 	if (c == 0) {
