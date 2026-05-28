@@ -114,7 +114,7 @@ master_doc = 'index'
 
 # Tell kernel-doc to strip libfyaml-specific compiler-hint macros from
 # function prototypes before passing them to Sphinx C domain.
-kernel_doc_known_attrs = "FY_ALWAYS_INLINE FY_GENERIC_CONTAINER_ALIGNMENT"
+kernel_doc_known_attrs = "FY_ALWAYS_INLINE FY_GENERIC_CONTAINER_ALIGNMENT FY_UNUSED"
 
 man_pages = [
     ('man/fy-tool', 'fy-tool', 'fy-tool documentation ', '', 1),

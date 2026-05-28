@@ -336,7 +336,7 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
 
-/**
+/*
  * FY_UNUSED - Suppress "unused variable/parameter" warnings.
  *
  * On GCC/Clang (version >= 4) expands to ``__attribute__((unused))``.

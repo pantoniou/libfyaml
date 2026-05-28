@@ -1646,6 +1646,7 @@ fy_type_info_lookup_field_by_unsigned_enum_value(const struct fy_type_info *ti, 
  *         int s_foo;
  *         int s_bar;
  *     };
+ *
  *   Emits as ``{ foo: ..., bar: ... }``.
  *
  * ``flatten-field: <field-name>``

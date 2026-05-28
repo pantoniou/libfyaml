@@ -1813,7 +1813,7 @@ FY_GENERIC_IS_TEMPLATE_INLINE(alias);
  * @v: A generic value known to be null.
  * Returns: Always NULL.
  */
-static inline void *fy_generic_get_null_type_no_check(fy_generic v FY_UNUSED)
+static inline void *fy_generic_get_null_type_no_check(fy_generic v FY_UNUSED )
 {
 	return NULL;
 }
@@ -1835,7 +1835,7 @@ fy_generic_in_place_null_type(void *p)
  * Returns: 0 — nulls are always stored inplace.
  */
 static inline size_t
-fy_generic_out_of_place_size_null_type(void *v FY_UNUSED)
+fy_generic_out_of_place_size_null_type(void *v FY_UNUSED )
 {
 	return 0;
 }
@@ -1847,8 +1847,8 @@ fy_generic_out_of_place_size_null_type(void *v FY_UNUSED)
  * Returns: %fy_null_value.
  */
 static inline fy_generic_value
-fy_generic_out_of_place_put_null_type(void *buf FY_UNUSED,
-				      void *v FY_UNUSED)
+fy_generic_out_of_place_put_null_type(void *buf FY_UNUSED ,
+				      void *v FY_UNUSED )
 {
 	return fy_null_value;
 }
@@ -1878,7 +1878,7 @@ static inline fy_generic_value fy_generic_in_place_bool_type(_Bool v)
  * @v: Ignored.
  * Returns: 0 — booleans are always stored inplace.
  */
-static inline size_t fy_generic_out_of_place_size_bool_type(bool v FY_UNUSED)
+static inline size_t fy_generic_out_of_place_size_bool_type(bool v FY_UNUSED )
 {
 	return 0;
 }
@@ -1890,7 +1890,7 @@ static inline size_t fy_generic_out_of_place_size_bool_type(bool v FY_UNUSED)
  * Returns: %fy_true_value or %fy_false_value.
  */
 static inline fy_generic_value
-fy_generic_out_of_place_put_bool_type(void *buf FY_UNUSED,
+fy_generic_out_of_place_put_bool_type(void *buf FY_UNUSED ,
 				      bool v)
 {
 	return v ? fy_true_value : fy_false_value;
@@ -2180,7 +2180,7 @@ static inline double fy_generic_get_float_type_no_check(fy_generic v)
 	return *(double *)p;
 }
 
-/**
+/*
  * fy_generic_out_of_place_size_float_type() - Out-of-place allocation size for a float (32-bit).
  *
  * On 32-bit platforms all floats are stored out-of-place as doubles.
@@ -5405,8 +5405,8 @@ fy_generic_cast_default_should_alloca_never(fy_generic v FY_UNUSED)
 static inline void
 fy_generic_cast_const_char_ptr_default_final(fy_generic v,
 					     void *p,
-					     size_t size FY_UNUSED,
-					     const char *default_value FY_UNUSED,
+					     size_t size FY_UNUSED ,
+					     const char *default_value FY_UNUSED ,
 					     const char **store_value)
 {
 	size_t len;
@@ -5435,8 +5435,8 @@ fy_generic_cast_const_char_ptr_default_final(fy_generic v,
 static inline void
 fy_generic_cast_sized_string_default_final(fy_generic v,
 					   void *p,
-					   size_t size FY_UNUSED,
-					   fy_generic_sized_string default_value FY_UNUSED,
+					   size_t size FY_UNUSED ,
+					   fy_generic_sized_string default_value FY_UNUSED ,
 					   fy_generic_sized_string *store_value)
 {
 	size_t len;
@@ -7269,6 +7269,8 @@ fy_generic_builder_get_userdata(struct fy_generic_builder *gb)
 
 /**
  * typedef fy_generic_builder_cleanup_fn - Callback for when builder is destroyed
+ *
+ * @gb: Builder
  */
 typedef void (*fy_generic_builder_cleanup_fn)(struct fy_generic_builder *gb);
 
@@ -8365,7 +8367,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
  * @FYOPPF_KEEP_STYLE:              Preserve original scalar/collection style information
  * @FYOPPF_KEEP_FAILSAFE_STR:       Keep failsafe-schema plain string tags
  * @FYOPPF_SLOPPY_FLOW_INDENTATION: Allow sloppy indentation in flow mode
- * @FYOPPF_RELAX_FLOW_DOC:          Documents are implicitly started via flow markers
+ * @FYOPPF_RELAXED_FLOW_DOC:        Documents are implicitly started via flow markers
  * @FYOPPF_KEEP_ANCHORS:            Preserve anchor metadata even when resolving documents
  * @FYOPPF_ENABLE_CACHE:            Enable transparent regular-file parse caching
  */
