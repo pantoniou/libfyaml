@@ -1218,6 +1218,142 @@ fy_generic_get_comment(fy_generic v, enum fy_comment_placement placement)
 	FY_EXPORT;
 
 /**
+ * fy_generic_set_tag() - Set tag on the given generic
+ *
+ * Sets a tag of the generic, or removes it if setting @vtag fy_invalid
+ *
+ * @v: Any generic value.
+ * @vtag: The generic tag to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_set_tag(struct fy_generic_builder *gb, fy_generic v, fy_generic vtag)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_diag() - Set diagnostic on the given generic
+ *
+ * Sets a diagnostic of the generic, or removes it if setting @vdiag fy_invalid
+ *
+ * @v: Any generic value.
+ * @vdiag: The generic diagnostic to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_set_diag(struct fy_generic_builder *gb, fy_generic v, fy_generic vdiag)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_marker() - Set marker on the given generic
+ *
+ * Sets a marker of the generic, or removes it if setting @vmarker fy_invalid
+ *
+ * @v: Any generic value.
+ * @vmarker: The generic marker to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_set_marker(struct fy_generic_builder *gb, fy_generic v, fy_generic vmarker)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_comment() - Set a comment on the given generic
+ *
+ * Sets a comment with the given placement of the generic, or remove
+ * it if setting @vcomm fy_invalid
+ *
+ * @v: Any generic value.
+ * @placement: The comment placement
+ * @vcomm: The generic comment to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_indirect_set_comment(struct fy_generic_builder *gb, fy_generic v,
+				enum fy_comment_placement placement, fy_generic vcomm)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_style() - Set a style on the given generic
+ *
+ * Sets a style of the generic, or remove it if setting @vstyle fy_invalid
+ *
+ * @v: Any generic value.
+ * @vstyle: The generic style to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_set_style(struct fy_generic_builder *gb, fy_generic v, fy_generic vstyle)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_node_style() - Set the node style of a generic
+ *
+ * @v: Any generic value.
+ * @nstyle: The node style (FYNS_ANY removes it)
+ *
+ * Returns:
+ * The updated generic
+ */
+fy_generic
+fy_generic_set_node_style(struct fy_generic_builder *gb, fy_generic v, enum fy_node_style nstyle)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_scalar_style() - Set the scalar style of a generic
+ *
+ * It fails if generic is not a scalar
+ *
+ * @v: Any generic value.
+ * @sstyle: The scalar style (FYSS_ANY removes it)
+ *
+ * Returns:
+ * The updated generic
+ */
+fy_generic
+fy_generic_set_scalar_style(struct fy_generic_builder *gb, fy_generic v, enum fy_scalar_style sstyle)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_collection_style() - Set the collection style of a generic
+ *
+ * It fails if generic is not a collection
+ *
+ * @v: Any generic value.
+ * @sstyle: The collection style (FYCS_ANY removes it)
+ *
+ * Returns:
+ * The updated generic
+ */
+fy_generic
+fy_generic_set_collection_style(struct fy_generic_builder *gb, fy_generic v, enum fy_collection_style cstyle)
+	FY_EXPORT;
+
+/**
+ * fy_generic_set_failsafe() - Set a failsafe on the given generic
+ *
+ * Sets a failsafe of the generic, or remove it if setting @vfailsafe fy_invalid
+ *
+ * @v: Any generic value.
+ * @vfailsafe: The generic failsafe to set, fy_invalid to remove it
+ *
+ * Returns:
+ * The updated generic value
+ */
+fy_generic
+fy_generic_set_failsafe_str(struct fy_generic_builder *gb, fy_generic v, fy_generic vfailsafe)
+	FY_EXPORT;
+
+/**
  * fy_generic_get_type() - Get the type of any generic value.
  *
  * Dispatches to the indirect or direct type accessor as appropriate.

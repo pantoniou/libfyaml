@@ -484,6 +484,125 @@ fy_generic_get_collection_style(fy_generic v)
 	return cstyle;
 }
 
+static fy_generic
+fy_generic_set_indirect_value(struct fy_generic_builder *gb, fy_generic v, size_t idx, fy_generic vind)
+{
+	fy_generic_indirect gi;
+
+	/* sanity check */
+	if (idx >= FYGIIDX_MAX || fy_generic_is_invalid(v))
+		return fy_invalid;
+
+	fy_generic_indirect_get(v, &gi);
+
+	if (fy_generic_is_valid(vind)) {
+		/* setting indirect */
+		gi.flags |= FY_BIT((uint64_t)idx);
+		gi.vindirect[idx] = vind;
+	} else {
+		gi.flags &= ~FY_BIT((uint64_t)idx);
+		if (gi.flags == FYGIF_VALUE)	/* if only the direct value remains, unwrap */
+			return gi.value;
+		if (!gi.flags)
+			return fy_invalid;
+		gi.vindirect[idx] = fy_invalid;
+	}
+
+	return fy_gb_indirect_create(gb, &gi);
+
+}
+
+fy_generic fy_generic_set_tag(struct fy_generic_builder *gb, fy_generic v, fy_generic vtag)
+{
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_TAG, vtag);
+}
+
+fy_generic fy_generic_set_diag(struct fy_generic_builder *gb, fy_generic v, fy_generic vdiag)
+{
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_DIAG, vdiag);
+}
+
+fy_generic fy_generic_set_marker(struct fy_generic_builder *gb, fy_generic v, fy_generic vmarker)
+{
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_MARKER, vmarker);
+}
+
+fy_generic fy_generic_indirect_set_comment(struct fy_generic_builder *gb, fy_generic v, enum fy_comment_placement placement, fy_generic vcomm)
+{
+	if ((size_t)placement >= fycp_max)
+		return fy_invalid;
+
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_TOP_COMMENT + (size_t)placement, vcomm);
+}
+
+fy_generic fy_generic_set_style(struct fy_generic_builder *gb, fy_generic v, fy_generic vstyle)
+{
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_STYLE, vstyle);
+}
+
+fy_generic fy_generic_set_failsafe_str(struct fy_generic_builder *gb, fy_generic v, fy_generic vfailsafe)
+{
+	return fy_generic_set_indirect_value(gb, v, FYGIIDX_FAILSAFE_STR, vfailsafe);
+}
+
+fy_generic
+fy_generic_set_node_style(struct fy_generic_builder *gb, fy_generic v, enum fy_node_style nstyle)
+{
+	int style_idx = -1;
+
+	/* remove it */
+	if (nstyle == FYNS_ANY)
+		return fy_generic_set_style(gb, v, fy_invalid);
+
+	if (nstyle < FYNS_ANY || nstyle > FYNS_FOLDED)
+		return fy_invalid;
+
+	if (fy_generic_is_collection(v)) {
+		if (nstyle < FYNS_FLOW || nstyle > FYNS_BLOCK)
+			return fy_invalid;
+		style_idx = (int)FYNS_BLOCK - (int)nstyle;	// XXX unfortunate we have it backwards
+	} else if (fy_generic_is_scalar(v)) {
+		if (nstyle < FYNS_PLAIN || nstyle > FYNS_FOLDED)
+			return fy_invalid;
+		style_idx = (int)nstyle - (int)FYNS_PLAIN;
+	} else
+		return fy_invalid;
+
+	return fy_generic_set_style(gb, v, fy_value(style_idx));
+}
+
+fy_generic
+fy_generic_set_scalar_style(struct fy_generic_builder *gb, fy_generic v, enum fy_scalar_style sstyle)
+{
+	/* remove it */
+	if (sstyle == FYSS_ANY)
+		return fy_generic_set_style(gb, v, fy_invalid);
+
+	if (sstyle < FYSS_ANY || sstyle > FYSS_FOLDED)
+		return fy_invalid;
+
+	if (!fy_generic_is_scalar(v))
+		return fy_invalid;
+
+	return fy_generic_set_style(gb, v, fy_value((int)sstyle));
+}
+
+fy_generic
+fy_generic_set_collection_style(struct fy_generic_builder *gb, fy_generic v, enum fy_collection_style cstyle)
+{
+	/* remove it */
+	if (cstyle == FYCS_ANY)
+		return fy_generic_set_style(gb, v, fy_invalid);
+
+	if (cstyle < FYCS_ANY || cstyle > FYCS_FLOW)
+		return fy_invalid;
+
+	if (!fy_generic_is_collection(v))
+		return fy_invalid;
+
+	return fy_generic_set_style(gb, v, fy_value((int)cstyle));
+}
+
 FY_GENERIC_IS_TEMPLATE_NON_INLINE(null_type);
 FY_GENERIC_IS_TEMPLATE_NON_INLINE(bool_type);
 
