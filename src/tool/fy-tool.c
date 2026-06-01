@@ -2133,12 +2133,12 @@ int main(int argc, char *argv[])
 		case 'I':
 			tmp = alloca(strlen(cfg.search_path) + 1 + strlen(optarg) + 1);
 			s = tmp;
-			strcpy(s, cfg.search_path);
+			memcpy(s, cfg.search_path, strlen(cfg.search_path) + 1);
 			if (cfg.search_path && cfg.search_path[0]) {
 				s += strlen(cfg.search_path);
 				*s++ = ':';
 			}
-			strcpy(s, optarg);
+			memcpy(s, optarg, strlen(optarg) + 1);
 			s += strlen(optarg);
 			*s = '\0';
 			cfg.search_path = tmp;
@@ -2618,6 +2618,9 @@ int main(int argc, char *argv[])
 	if (tool_mode == OPT_JOIN) {
 		join_resolve = !!(cfg.flags & FYPCF_RESOLVE_DOCUMENT);
 		cfg.flags &= ~FYPCF_RESOLVE_DOCUMENT;
+		/* Protect against YAML bomb: enforce depth limit when resolving aliases */
+		if (join_resolve)
+			cfg.flags &= ~FYPCF_DISABLE_DEPTH_LIMIT;
 	}
 
 	/* create common diagnostic object */
