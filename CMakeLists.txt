@@ -1644,7 +1644,7 @@ endif()
 # They require only a C++ compiler and the shared fyaml target; no check/bash.
 include(CheckLanguage)
 check_language(CXX)
-if(CMAKE_CXX_COMPILER)
+if(BUILD_TESTING AND CMAKE_CXX_COMPILER)
     enable_language(CXX)
 
     # Pick a C++ standard high enough for libfyaml-atomics.h to find a usable
@@ -1673,9 +1673,7 @@ if(CMAKE_CXX_COMPILER)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     target_link_libraries(libfyaml-test-cpp-atomics PRIVATE fyaml)
-    if(BUILD_TESTING)
-        add_test(NAME cpp-atomics COMMAND libfyaml-test-cpp-atomics)
-    endif()
+    add_test(NAME cpp-atomics COMMAND libfyaml-test-cpp-atomics)
 
     # Test 2: libfyaml-core.h (and therefore the full public API) usable
     # from a pure C++ translation unit — mirrors the MRPT yaml.cpp use-case.
@@ -1690,9 +1688,7 @@ if(CMAKE_CXX_COMPILER)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     target_link_libraries(libfyaml-test-cpp-include-tu PRIVATE fyaml)
-    if(BUILD_TESTING)
-        add_test(NAME cpp-include-tu COMMAND libfyaml-test-cpp-include-tu)
-    endif()
+    add_test(NAME cpp-include-tu COMMAND libfyaml-test-cpp-include-tu)
 endif()
 
 # Documentation
