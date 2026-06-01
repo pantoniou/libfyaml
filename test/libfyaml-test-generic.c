@@ -1302,6 +1302,119 @@ START_TEST(gb_basics)
 }
 END_TEST
 
+/* Test: Generic indirect setters */
+START_TEST(generic_indirect_setters)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	fy_generic base, seq, v, meta;
+	fy_generic_indirect gi;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	base = fy_value(100);
+	ck_assert(fy_generic_is_valid(base));
+	ck_assert(fy_generic_is_direct(base));
+
+	meta = fy_value(gb, "tag:example.com,2026:test");
+	v = fy_generic_set_tag(gb, base, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_tag(v).v == meta.v);
+	v = fy_generic_set_tag(gb, v, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_gb_mapping(gb, "message", "diagnostic");
+	v = fy_generic_set_diag(gb, base, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_diag(v).v == meta.v);
+	v = fy_generic_set_diag(gb, v, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_gb_mapping(gb, "line", 7, "column", 11);
+	v = fy_generic_set_marker(gb, base, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_marker(v).v == meta.v);
+	v = fy_generic_set_marker(gb, v, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_value(FYSS_SINGLE_QUOTED);
+	v = fy_generic_set_style(gb, base, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_style(v).v == meta.v);
+	v = fy_generic_set_style(gb, v, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_value(gb, "100");
+	v = fy_generic_set_failsafe_str(gb, base, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	fy_generic_indirect_get(v, &gi);
+	ck_assert(gi.failsafe_str.v == meta.v);
+	v = fy_generic_set_failsafe_str(gb, v, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_value(gb, "top comment");
+	v = fy_generic_indirect_set_comment(gb, base, fycp_top, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_comment(v, fycp_top).v == meta.v);
+	v = fy_generic_indirect_set_comment(gb, v, fycp_top, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_value(gb, "right comment");
+	v = fy_generic_indirect_set_comment(gb, base, fycp_right, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_comment(v, fycp_right).v == meta.v);
+	v = fy_generic_indirect_set_comment(gb, v, fycp_right, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	meta = fy_value(gb, "bottom comment");
+	v = fy_generic_indirect_set_comment(gb, base, fycp_bottom, meta);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_comment(v, fycp_bottom).v == meta.v);
+	v = fy_generic_indirect_set_comment(gb, v, fycp_bottom, fy_invalid);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	v = fy_generic_set_scalar_style(gb, base, FYSS_DOUBLE_QUOTED);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_scalar_style(v) == FYSS_DOUBLE_QUOTED);
+	v = fy_generic_set_scalar_style(gb, v, FYSS_ANY);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	v = fy_generic_set_node_style(gb, base, FYNS_SINGLE_QUOTED);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_node_style(v) == FYNS_SINGLE_QUOTED);
+	v = fy_generic_set_node_style(gb, v, FYNS_ANY);
+	ck_assert(v.v == base.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	seq = fy_gb_sequence(gb, 1, 2, 3);
+	ck_assert(fy_generic_is_direct(seq));
+	v = fy_generic_set_collection_style(gb, seq, FYCS_FLOW);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_collection_style(v) == FYCS_FLOW);
+	v = fy_generic_set_collection_style(gb, v, FYCS_ANY);
+	ck_assert(v.v == seq.v);
+	ck_assert(fy_generic_is_direct(v));
+
+	v = fy_generic_set_node_style(gb, seq, FYNS_FLOW);
+	ck_assert(fy_generic_is_indirect(v));
+	ck_assert(fy_generic_get_node_style(v) == FYNS_FLOW);
+	v = fy_generic_set_node_style(gb, v, FYNS_ANY);
+	ck_assert(v.v == seq.v);
+	ck_assert(fy_generic_is_direct(v));
+}
+END_TEST
+
 /* Test: testing whether is_unsigned for outofplace ints is proper */
 START_TEST(generic_is_unsigned)
 {
@@ -5927,6 +6040,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* builders */
 	fy_check_testcase_add_test(ctc, gb_basics);
+	fy_check_testcase_add_test(ctc, generic_indirect_setters);
 
 	/* special for is_unsigned */
 	fy_check_testcase_add_test(ctc, generic_is_unsigned);
