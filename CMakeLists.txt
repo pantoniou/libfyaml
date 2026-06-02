@@ -50,6 +50,14 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
 
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
+if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
+    if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+        set(PROJECT_IS_TOP_LEVEL ON)
+    else()
+        set(PROJECT_IS_TOP_LEVEL OFF)
+    endif()
+endif()
+
 # Export compile commands by default for clangd LSP support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -1716,22 +1724,21 @@ if(SPHINX_EXECUTABLE)
     set(SPHINX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/doc")
     set(SPHINX_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/doc/_build")
 
-    # Add custom targets for documentation
-    add_custom_target(doc-html
+    add_custom_target(libfyaml-doc-html
         COMMAND ${SPHINX_EXECUTABLE} -M html "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Building HTML documentation with Sphinx"
         VERBATIM
     )
 
-    add_custom_target(doc-man
+    add_custom_target(libfyaml-doc-man
         COMMAND ${SPHINX_EXECUTABLE} -M man "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Building man pages with Sphinx"
         VERBATIM
     )
 
-    add_custom_target(doc-text
+    add_custom_target(libfyaml-doc-text
         COMMAND ${SPHINX_EXECUTABLE} -M text "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Building plain-text documentation with Sphinx"
@@ -1739,7 +1746,7 @@ if(SPHINX_EXECUTABLE)
     )
 
     if(HAVE_DOC_LATEXPDF)
-        add_custom_target(doc-latexpdf
+        add_custom_target(libfyaml-doc-latexpdf
             COMMAND ${SPHINX_EXECUTABLE} -M latexpdf "${SPHINX_SOURCE_DIR}" "${SPHINX_BUILD_DIR}"
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             COMMENT "Building PDF documentation with Sphinx"
@@ -1747,13 +1754,13 @@ if(SPHINX_EXECUTABLE)
         )
     endif()
 
-    add_custom_target(doc-clean
+    add_custom_target(libfyaml-doc-clean
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${SPHINX_BUILD_DIR}"
         COMMENT "Cleaning documentation build directory"
     )
 
-    add_custom_target(doc-canned-man
-        DEPENDS doc-man
+    add_custom_target(libfyaml-doc-canned-man
+        DEPENDS libfyaml-doc-man
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${SPHINX_BUILD_DIR}/man/fy-tool.1"
             "${CMAKE_CURRENT_SOURCE_DIR}/doc/canned-man/fy-tool.1"
@@ -1776,13 +1783,34 @@ if(SPHINX_EXECUTABLE)
         VERBATIM
     )
 
+    if(PROJECT_IS_TOP_LEVEL)
+        if(NOT TARGET doc-html)
+            add_custom_target(doc-html DEPENDS libfyaml-doc-html)
+        endif()
+        if(NOT TARGET doc-man)
+            add_custom_target(doc-man DEPENDS libfyaml-doc-man)
+        endif()
+        if(NOT TARGET doc-text)
+            add_custom_target(doc-text DEPENDS libfyaml-doc-text)
+        endif()
+        if(HAVE_DOC_LATEXPDF AND NOT TARGET doc-latexpdf)
+            add_custom_target(doc-latexpdf DEPENDS libfyaml-doc-latexpdf)
+        endif()
+        if(NOT TARGET doc-clean)
+            add_custom_target(doc-clean DEPENDS libfyaml-doc-clean)
+        endif()
+        if(NOT TARGET doc-canned-man)
+            add_custom_target(doc-canned-man DEPENDS libfyaml-doc-canned-man)
+        endif()
+    endif()
+
     message(STATUS "Sphinx found: ${SPHINX_EXECUTABLE}")
-    message(STATUS "  make doc-html     - Build HTML documentation")
-    message(STATUS "  make doc-man      - Build man pages")
-    message(STATUS "  make doc-canned-man - Refresh canned man pages from doc-man")
-    message(STATUS "  make doc-text     - Build plain-text documentation")
+    message(STATUS "  make libfyaml-doc-html     - Build HTML documentation")
+    message(STATUS "  make libfyaml-doc-man      - Build man pages")
+    message(STATUS "  make libfyaml-doc-canned-man - Refresh canned man pages from libfyaml-doc-man")
+    message(STATUS "  make libfyaml-doc-text     - Build plain-text documentation")
     if(HAVE_DOC_LATEXPDF)
-        message(STATUS "  make doc-latexpdf - Build PDF documentation")
+        message(STATUS "  make libfyaml-doc-latexpdf - Build PDF documentation")
     endif()
 else()
     set(HAVE_SPHINX FALSE)
@@ -1882,7 +1910,10 @@ install(
 )
 
 # tags and cscope support
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
+option(LIBFYAML_ENABLE_TAGS "Add libfyaml tags helper targets" ${PROJECT_IS_TOP_LEVEL})
+if(LIBFYAML_ENABLE_TAGS)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tags.cmake)
+endif()
 
 # Python core bindings
 if(NOT CMAKE_CROSSCOMPILING)
