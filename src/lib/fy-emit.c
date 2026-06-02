@@ -5129,7 +5129,10 @@ fy_emit_generic_scalar_style(struct fy_emitter *emit, fy_generic v, fy_generic_s
 	else /* already analyzed, use that */
 		ta_mod = *ta;
 
-	if (fy_emit_generic_is_null_scalar(emit, v))
+	/* In JSON mode, empty string is a string, not null; only mark as null when not JSON mode
+	 * or when the value is an actual null type */
+	if (fy_emit_generic_is_null_scalar(emit, v) &&
+	    (!fy_emit_is_json_mode(emit) || !fy_generic_is_string(v)))
 		ta_mod.flags |= FYTTAF_X_NULL_SCALAR;
 	if (fy_emit_generic_is_json_plain(emit, v))
 		ta_mod.flags |= FYTTAF_X_JSON_PLAIN;
