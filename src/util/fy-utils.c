@@ -18,12 +18,14 @@
 #include <ctype.h>
 
 #ifndef _WIN32
-#include <termios.h>
 #include <unistd.h>
-#include <sys/select.h>
-#include <sys/time.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#if !defined(__PICOLIBC__)
+#include <termios.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#endif
 #endif
 
 #include "fy-win32.h"
@@ -417,8 +419,9 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info)
 }
 
 /* simple terminal methods; mainly for getting size of terminal */
-/* These functions are not available on Windows */
+/* These functions are not available on Windows or picolibc */
 #ifndef _WIN32
+#if !defined(__PICOLIBC__)
 static int
 fy_term_set_raw(int fd, struct termios *oldt)
 {
@@ -660,6 +663,18 @@ int fy_term_query_size(int fd, int *rows, int *cols)
 
 	return ret;
 }
+
+#else /* picolibc - no terminal */
+
+int fy_term_query_size(int fd, int *rows, int *cols)
+{
+	(void)fd;
+	(void)rows;
+	(void)cols;
+	return -1;
+}
+
+#endif /* !__PICOLIBC__ */
 
 #else /* _WIN32 */
 
@@ -962,7 +977,12 @@ struct fy_memstream *fy_memstream_open(FILE **fpp)
 		return NULL;
 	memset(fyms, 0, sizeof(*fyms));
 #if !defined(_WIN32)
+#if defined(__PICOLIBC__)
+	/* no open_memstream on picolibc: emit-to-string unsupported */
+	fyms->fp = NULL;
+#else
 	fyms->fp = open_memstream(&fyms->buf, &fyms->size);
+#endif
 #else
 	fyms->fp = tmpfile();
 #endif

@@ -54,6 +54,11 @@ extern "C" {
 # define __LITTLE_ENDIAN 1234
 # define __BIG_ENDIAN    4321
 # define __BYTE_ORDER    __LITTLE_ENDIAN
+#elif defined(__PICOLIBC__)
+/* picolibc has no <endian.h>; use the compiler's built-in byte-order macros. */
+# define __LITTLE_ENDIAN __ORDER_LITTLE_ENDIAN__
+# define __BIG_ENDIAN    __ORDER_BIG_ENDIAN__
+# define __BYTE_ORDER    __BYTE_ORDER__
 #else
 # error unsupported platform
 #endif
