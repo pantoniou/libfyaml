@@ -3718,6 +3718,92 @@ err_out:
 	goto out;
 }
 
+static fy_generic
+fy_generic_op_join(const struct fy_generic_op_desc *desc FY_UNUSED,
+		   struct fy_generic_builder *gb,
+		   enum fy_gb_op_flags flags,
+		   fy_generic in,
+		   const struct fy_generic_op_args *args)
+{
+	fy_generic sep_v, v;
+	fy_generic_sized_string sep_szstr, szstr;
+	char stack_buf[256];
+	char *buf = stack_buf, *buf_alloc = NULL, *buf_new;
+	size_t i, count, bufsz, bufcap, need;
+	fy_generic out = fy_invalid;
+
+	if (fy_generic_is_invalid(in))
+		return fy_invalid;
+
+	/* no items: return empty string */
+	count = args->common.count;
+	if (!count || !args->common.items)
+		return fy_generic_op_internalize(gb, flags, fy_gb_string_size_create(gb, "", 0));
+
+	/* convert separator */
+	sep_v = fy_convert(in, FYGT_STRING);
+	sep_szstr = fy_castp(&sep_v, fy_szstr_empty);
+
+	bufsz = 0;
+	bufcap = sizeof(stack_buf);
+
+	/* one pass convert and accumulate */
+	for (i = 0; i < count; i++) {
+		/* convert to string */
+		v = fy_convert(args->common.items[i], FYGT_STRING);
+		if (fy_generic_is_invalid(v))
+			goto out;
+
+		szstr = fy_castp(&v, fy_szstr_empty);
+
+		/* calculate how much we need */
+		need = (i > 0 ? sep_szstr.size : 0) + szstr.size;
+
+		/* we need to grow beyond current capacity */
+		if (bufsz + need > bufcap) {
+			/* double from current capacity until it fits */
+			while (bufsz + need > bufcap)
+				bufcap *= 2;
+			if (!buf_alloc) {
+				/* first overflow: stack → heap, must copy manually */
+				buf_new = malloc(bufcap);
+				if (!buf_new)
+					goto out;
+				memcpy(buf_new, stack_buf, bufsz);
+			} else {
+				/* already on heap: realloc may grow in place */
+				buf_new = realloc(buf_alloc, bufcap);
+				if (!buf_new)
+					goto out;
+			}
+			buf_alloc = buf_new;
+			buf = buf_alloc;
+		}
+		/* verify */
+		assert(buf);
+		assert(bufsz + need <= bufcap);
+
+		/* separator */
+		if (i > 0) {
+			memcpy(buf + bufsz, sep_szstr.data, sep_szstr.size);
+			bufsz += sep_szstr.size;
+		}
+
+		/* content */
+		memcpy(buf + bufsz, szstr.data, szstr.size);
+		bufsz += szstr.size;
+	}
+	/* the whole buffer */
+	szstr.data = buf;
+	szstr.size = bufsz;
+
+	/* and convert to generic storing */
+	out = fy_value(gb, szstr);
+out:
+	free(buf_alloc);
+	return out;
+}
+
 static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 	[FYGBOP_CREATE_INV] = {
 		.op = FYGBOP_CREATE_INV,
@@ -4006,6 +4092,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_ANY,
 		.handler = fy_generic_op_convert,
 	},
+	[FYGBOP_JOIN] = {
+		.op = FYGBOP_JOIN,
+		.op_name = "join",
+		.in_mask = FYGTM_ANY,
+		.out_mask = FYGTM_STRING,
+		.handler = fy_generic_op_join,
+	},
 };
 
 fy_generic
@@ -4071,6 +4164,7 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_GET_AT_PATH:
 	case FYGBOP_SET:
 	case FYGBOP_SET_AT_PATH:
+	case FYGBOP_JOIN:
 		break;
 
 	case FYGBOP_INSERT:

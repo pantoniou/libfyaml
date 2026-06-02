@@ -7963,6 +7963,7 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
  * @FYGBOP_PARSE:           Parse YAML/JSON text into a generic value
  * @FYGBOP_EMIT:            Emit a generic value as YAML/JSON text
  * @FYGBOP_CONVERT:         Convert a generic value to a different type
+ * @FYGBOP_JOIN:            Convert arguments to strings and join with a separator
  */
 enum fy_gb_op {
 	FYGBOP_CREATE_INV,
@@ -8006,9 +8007,10 @@ enum fy_gb_op {
 	FYGBOP_PARSE,
 	FYGBOP_EMIT,
 	FYGBOP_CONVERT,
+	FYGBOP_JOIN,
 };
 /* FYGBOP_COUNT - Total number of generic builder opcodes */
-#define FYGBOP_COUNT	(FYGBOP_CONVERT + 1)
+#define FYGBOP_COUNT	(FYGBOP_JOIN + 1)
 
 /**
  * typedef fy_generic_filter_pred_fn - Predicate function for filter operations.
@@ -8803,6 +8805,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_PARSE:           Parse YAML/JSON input
  * @FYGBOPF_EMIT:            Emit generic value as YAML/JSON
  * @FYGBOPF_CONVERT:         Convert to a different type
+ * @FYGBOPF_JOIN:            Join values as strings with a separator
  * @FYGBOPF_DONT_INTERNALIZE: Skip copying items into the builder arena
  * @FYGBOPF_DEEP_VALIDATE:    Recursively validate all elements
  * @FYGBOPF_NO_CHECKS:        Skip all input validity checks
@@ -8848,6 +8851,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_PARSE		= FYGBOPF_OP(FYGBOP_PARSE),
 	FYGBOPF_EMIT		= FYGBOPF_OP(FYGBOP_EMIT),
 	FYGBOPF_CONVERT		= FYGBOPF_OP(FYGBOP_CONVERT),
+	FYGBOPF_JOIN		= FYGBOPF_OP(FYGBOP_JOIN),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
@@ -9733,6 +9737,13 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__), \
 		       (_type)))
 
+/* fy_gb_join() - Convert @... to strings and join them with separator @_sep using builder @_gb */
+#define fy_gb_join(_gb, _sep, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_JOIN | FYGBOPF_MAP_ITEM_COUNT, fy_gb_to_generic((_gb), (_sep)), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
 
 /* FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE - Maximum stack-buffer size tried by FY_LOCAL_OP before giving up */
 #define FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE	65536
@@ -10043,6 +10054,16 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		FY_LOCAL_OP(FYGBOPF_CONVERT | FYGBOPF_MAP_ITEM_COUNT, \
 				fy_value(_v), _count, _items, \
 				(_type)); \
+	})
+
+/* fy_local_join() - Convert @... to strings and join with separator @_sep using a stack builder */
+#define fy_local_join(_sep, ...) \
+	({ \
+		const fy_generic __sep = fy_value(_sep); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_JOIN | FYGBOPF_MAP_ITEM_COUNT, \
+				__sep, _count, _items); \
 	})
 
 /* Lambda operation macros.
@@ -10657,6 +10678,9 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 /* fy_convert() - Convert a generic value to a different scalar type; dispatches to fy_gb_convert or fy_local_convert */
 #define fy_convert(...) \
 	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_convert, fy_local_convert)(__VA_ARGS__))
+
+/* fy_join() - Join values as strings with a separator using a stack builder */
+#define fy_join(_sep, ...) fy_local_join((_sep) __VA_OPT__(,) __VA_ARGS__)
 
 /**
  * fy_generic_emit_compact() - Emit a generic value to stdout in compact (flow-style) format.
