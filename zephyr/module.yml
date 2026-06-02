@@ -1,0 +1,4 @@
+name: libfyaml
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig

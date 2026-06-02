@@ -1,0 +1,14 @@
+# libfyaml Zephyr module
+# SPDX-License-Identifier: MIT
+
+config LIBFYAML
+	bool "libfyaml YAML 1.2 / JSON parser"
+	help
+	  Enable libfyaml, a fully-featured YAML 1.2 and JSON parser, document
+	  model and emitter.
+
+	  This Zephyr build targets in-memory use: parse YAML/JSON from a RAM
+	  buffer (fy_parser_set_string / fy_document_build_from_string) or from
+	  a streamed pull callback (fy_parser_set_input_callback). No filesystem
+	  is required. The on-disk parse cache, reflection and generic
+	  subsystems are not built.
