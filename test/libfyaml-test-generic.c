@@ -5768,6 +5768,205 @@ START_TEST(convert_op)
 }
 END_TEST
 
+/* Test: join_op - string join via fy_join / fy_gb_join */
+START_TEST(join_op)
+{
+	char buf[4096];
+	struct fy_generic_builder *gb;
+	fy_generic result;
+	const char *str;
+
+	printf("\n> Testing join op\n");
+
+	/* basic string join */
+	result = fy_join(", ", "hello", "world", "!");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "hello, world, !");
+	printf("> join(', ', 'hello', 'world', '!'): '%s'\n", fy_cast(result, ""));
+
+	/* integer values auto-converted */
+	result = fy_join("-", 1, 2, 3);
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "1-2-3");
+	printf("> join('-', 1, 2, 3): '%s'\n", fy_cast(result, ""));
+
+	/* empty separator */
+	result = fy_join("", "ab", "cd", "ef");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "abcdef");
+	printf("> join('', 'ab', 'cd', 'ef'): '%s'\n", fy_cast(result, ""));
+
+	/* single item */
+	result = fy_join(", ", "only");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "only");
+	printf("> join(', ', 'only'): '%s'\n", fy_cast(result, ""));
+
+	/* no items → empty string */
+	result = fy_join(", ");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "");
+	printf("> join(', '): '%s'\n", fy_cast(result, ""));
+
+	/* bool value */
+	result = fy_join("|", true, false, true);
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "true|false|true");
+	printf("> join('|', true, false, true): '%s'\n", fy_cast(result, ""));
+
+	/* mixed types */
+	result = fy_join(":", "name", 42, true);
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "name:42:true");
+	printf("> join(':', 'name', 42, true): '%s'\n", fy_cast(result, ""));
+
+	/* already-encoded fy_generic values */
+	result = fy_join(", ", fy_to_generic("foo"), fy_to_generic(99));
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "foo, 99");
+	printf("> join(', ', fy_generic 'foo', fy_generic 99): '%s'\n", fy_cast(result, ""));
+
+	/* with explicit builder */
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+						NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	result = fy_gb_join(gb, "/", "usr", "local", "bin");
+	ck_assert(fy_generic_is_string(result));
+	str = fy_cast(result, "");
+	ck_assert_str_eq(str, "usr/local/bin");
+	printf("> fy_gb_join(gb, '/', 'usr', 'local', 'bin'): '%s'\n", str);
+
+	/* separator is empty fy_generic string (not C "") */
+	result = fy_join(fy_to_generic(""), "foo", "bar");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "foobar");
+	printf("> join(fy_generic_empty_str, 'foo', 'bar'): '%s'\n", fy_cast(result, ""));
+
+	/* non-string separator: integer — converted via fy_convert */
+	{
+		fy_generic sep = fy_to_generic(0);
+		fy_generic sep_str = fy_convert(sep, FYGT_STRING);
+		char expected[64];
+		snprintf(expected, sizeof(expected), "a%sb", fy_cast(sep_str, ""));
+		result = fy_join(sep, "a", "b");
+		ck_assert(fy_generic_is_string(result));
+		ck_assert_str_eq(fy_cast(result, ""), expected);
+		printf("> join(int 0, 'a', 'b'): '%s'\n", fy_cast(result, ""));
+	}
+
+	/* non-string separator: bool */
+	{
+		fy_generic sep = fy_to_generic((_Bool)true);
+		fy_generic sep_str = fy_convert(sep, FYGT_STRING);
+		char expected[64];
+		snprintf(expected, sizeof(expected), "x%sy", fy_cast(sep_str, ""));
+		result = fy_join(sep, "x", "y");
+		ck_assert(fy_generic_is_string(result));
+		ck_assert_str_eq(fy_cast(result, ""), expected);
+		printf("> join(bool true, 'x', 'y'): '%s'\n", fy_cast(result, ""));
+	}
+
+	/* non-string separator: null */
+	{
+		fy_generic sep = fy_null;
+		fy_generic sep_str = fy_convert(sep, FYGT_STRING);
+		char expected[64];
+		snprintf(expected, sizeof(expected), "p%sq", fy_cast(sep_str, ""));
+		result = fy_join(sep, "p", "q");
+		ck_assert(fy_generic_is_string(result));
+		ck_assert_str_eq(fy_cast(result, ""), expected);
+		printf("> join(null, 'p', 'q'): '%s'\n", fy_cast(result, ""));
+	}
+
+	/* collection items: sequences are flow-emitted */
+	{
+		fy_generic s1 = fy_sequence(1, 2, 3);
+		fy_generic s2 = fy_sequence(4, 5);
+		fy_generic s1_str = fy_convert(s1, FYGT_STRING);
+		fy_generic s2_str = fy_convert(s2, FYGT_STRING);
+		char expected[256];
+		snprintf(expected, sizeof(expected), "%s, %s",
+			 fy_cast(s1_str, ""), fy_cast(s2_str, ""));
+		result = fy_join(", ", s1, s2);
+		ck_assert(fy_generic_is_string(result));
+		ck_assert_str_eq(fy_cast(result, ""), expected);
+		printf("> join(', ', seq[1,2,3], seq[4,5]): '%s'\n", fy_cast(result, ""));
+	}
+
+	/* collection items: mappings are flow-emitted */
+	{
+		fy_generic m1 = fy_mapping("a", 1, "b", 2);
+		fy_generic m2 = fy_mapping("c", 3);
+		fy_generic m1_str = fy_convert(m1, FYGT_STRING);
+		fy_generic m2_str = fy_convert(m2, FYGT_STRING);
+		char expected[256];
+		snprintf(expected, sizeof(expected), "%s | %s",
+			 fy_cast(m1_str, ""), fy_cast(m2_str, ""));
+		result = fy_join(" | ", m1, m2);
+		ck_assert(fy_generic_is_string(result));
+		ck_assert_str_eq(fy_cast(result, ""), expected);
+		printf("> join(' | ', map{a:1,b:2}, map{c:3}): '%s'\n", fy_cast(result, ""));
+	}
+
+	/* overflow the 256-byte stack buffer: 10 items of 30 chars + 2-char separator = 318 bytes */
+	{
+		const char *item = "abcdefghijklmnopqrstuvwxyz1234";  /* 30 chars */
+		fy_generic items[10];
+		char expected[512];
+		char *ep = expected;
+		size_t j;
+
+		for (j = 0; j < 10; j++) {
+			items[j] = fy_to_generic(item);
+			if (j > 0) { memcpy(ep, ", ", 2); ep += 2; }
+			memcpy(ep, item, 30);
+			ep += 30;
+		}
+		*ep = '\0';
+
+		result = fy_join(fy_to_generic(", "),
+				 items[0], items[1], items[2], items[3], items[4],
+				 items[5], items[6], items[7], items[8], items[9]);
+		ck_assert(fy_generic_is_string(result));
+		str = fy_cast(result, "");
+		ck_assert_str_eq(str, expected);
+		printf("> join overflow stack buf (len=%zu): '%.*s...'\n",
+		       strlen(str), 40, str);
+	}
+
+	/* multiple realloc doublings: 20 items of 50 chars + 2-char separator = 1038 bytes */
+	{
+		const char *item = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX";  /* 50 chars */
+		fy_generic items[20];
+		char expected[2048];
+		char *ep = expected;
+		size_t j;
+
+		for (j = 0; j < 20; j++) {
+			items[j] = fy_to_generic(item);
+			if (j > 0) { memcpy(ep, ", ", 2); ep += 2; }
+			memcpy(ep, item, 50);
+			ep += 50;
+		}
+		*ep = '\0';
+
+		result = fy_join(fy_to_generic(", "),
+				 items[0],  items[1],  items[2],  items[3],  items[4],
+				 items[5],  items[6],  items[7],  items[8],  items[9],
+				 items[10], items[11], items[12], items[13], items[14],
+				 items[15], items[16], items[17], items[18], items[19]);
+		ck_assert(fy_generic_is_string(result));
+		str = fy_cast(result, "");
+		ck_assert_str_eq(str, expected);
+		printf("> join multiple realloc doublings (len=%zu): '%.*s...'\n",
+		       strlen(str), 40, str);
+	}
+
+	printf("> All join op tests passed!\n");
+}
+END_TEST
+
 /* Test: Generic iterator functionality */
 START_TEST(generic_iterator)
 {
@@ -6126,6 +6325,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, conversion_to_string);
 	fy_check_testcase_add_test(ctc, conversion_to_bool);
 	fy_check_testcase_add_test(ctc, convert_op);
+	fy_check_testcase_add_test(ctc, join_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
