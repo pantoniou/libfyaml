@@ -651,7 +651,7 @@ START_TEST(doc_references)
 
 	/* get reference to /foo */
 	fyn_ref = fy_node_create_reference(fyn_foo);
-	ck_assert_ptr_ne(path, NULL);
+	ck_assert_ptr_ne(fyn_ref, NULL);
 	fyn = fy_node_resolve_alias(fyn_ref);
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_ptr_eq(fyn, fyn_foo);
@@ -659,7 +659,7 @@ START_TEST(doc_references)
 
 	/* get reference to /notfoo */
 	fyn_ref = fy_node_create_reference(fyn_notfoo);
-	ck_assert_ptr_ne(path, NULL);
+	ck_assert_ptr_ne(fyn_ref, NULL);
 	fyn = fy_node_resolve_alias(fyn_ref);
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_ptr_eq(fyn, fyn_notfoo);
@@ -667,7 +667,7 @@ START_TEST(doc_references)
 
 	/* get reference to /bar */
 	fyn_ref = fy_node_create_reference(fyn_bar);
-	ck_assert_ptr_ne(path, NULL);
+	ck_assert_ptr_ne(fyn_ref, NULL);
 	fyn = fy_node_resolve_alias(fyn_ref);
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_ptr_eq(fyn, fyn_bar);
@@ -675,7 +675,7 @@ START_TEST(doc_references)
 
 	/* get reference to /baz */
 	fyn_ref = fy_node_create_reference(fyn_baz);
-	ck_assert_ptr_ne(path, NULL);
+	ck_assert_ptr_ne(fyn_ref, NULL);
 	fyn = fy_node_resolve_alias(fyn_ref);
 	ck_assert_ptr_ne(fyn, NULL);
 	ck_assert_ptr_eq(fyn, fyn_baz);
