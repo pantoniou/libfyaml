@@ -570,6 +570,7 @@ if have_check:
         test_dir / "libfyaml-test-parser.c",
         test_dir / "libfyaml-test-thread.c",
         test_dir / "libfyaml-test-atom-analysis.c",
+        test_dir / "libfyaml-test-durable-arena.c",
     ]
     if have_generic:
         test_sources.extend([

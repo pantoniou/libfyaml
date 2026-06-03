@@ -46,6 +46,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs);
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs);
 
 void libfyaml_case_allocator(struct fy_check_suite *cs);
+void libfyaml_case_durable_arena(struct fy_check_suite *cs);
 
 void libfyaml_case_parser(struct fy_check_suite *cs);
 void libfyaml_case_thread(struct fy_check_suite *cs);
@@ -73,6 +74,7 @@ struct fy_check_suite *libfyaml_suite(int argc, char **argv)
 	libfyaml_case_emit_bugs(cs);
 	libfyaml_case_parse_bugs(cs);
 	libfyaml_case_allocator(cs);
+	libfyaml_case_durable_arena(cs);
 	libfyaml_case_parser(cs);
 	libfyaml_case_thread(cs);
 	libfyaml_case_fuzzing(cs);

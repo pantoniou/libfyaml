@@ -1495,6 +1495,7 @@ if(CAN_TEST)
             test/libfyaml-test-emit-bugs.c
             test/libfyaml-test-parse-bugs.c
             test/libfyaml-test-allocator.c
+            test/libfyaml-test-durable-arena.c
             test/libfyaml-test-fuzzing.c
             test/libfyaml-test-private.c
             test/libfyaml-test-private-id.c
@@ -1520,6 +1521,7 @@ if(CAN_TEST)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/util
             ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
             ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
             ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CHECK_INCLUDE_DIRS}

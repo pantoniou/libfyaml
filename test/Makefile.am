@@ -52,6 +52,7 @@ libfyaml_test_SOURCES = \
 	libfyaml-test-emit.c \
 	libfyaml-test-atom-analysis.c \
 	libfyaml-test-allocator.c \
+	libfyaml-test-durable-arena.c \
 	libfyaml-test-fuzzing.c \
 	libfyaml-test-emit-bugs.c \
 	libfyaml-test-parse-bugs.c
