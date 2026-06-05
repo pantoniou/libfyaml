@@ -177,6 +177,7 @@
 #define OPT_GENERIC_PARSE_DUMP		6006
 #define OPT_CREATE_MARKERS		6007
 #define OPT_KEEP_STYLE			6008
+#define OPT_STORAGE_STATS		6009
 #endif
 
 #ifdef HAVE_REFLECTION
@@ -309,6 +310,7 @@ static struct option lopts[] = {
 	{"no-dedup",		no_argument,		0,	OPT_NO_DEDUP },
 	{"generic-testsuite",	no_argument,		0,	OPT_GENERIC_TESTSUITE },
 	{"dump-primitives",	no_argument,		0,	OPT_DUMP_PRIMITIVES },
+	{"storage-stats",	no_argument,		0,	OPT_STORAGE_STATS },
 	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
@@ -595,6 +597,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM_DEFAULT("--dedup", "Dedup mode on", DEDUP_DEFAULT ? "true" : "false");
 		USAGE_ITEM("--no-dedup", "Dedup mode off");
 		USAGE_ITEM("--dump-primitives", "Dump primitives");
+		USAGE_ITEM("--storage-stats", "Report storage statistics (dedup effectiveness)");
 		USAGE_ITEM("--create-markers", "Create markers");
 		USAGE_ITEM_DEFAULT("--schema <schema>", "Schema: auto, yaml1.2-failsafe, yaml1.2-core, "
 				"yaml1.2-json, yaml1.1-failsafe, yaml1.1, yaml1.1-pyyaml, json, python", "auto");
@@ -1609,6 +1612,7 @@ struct generic_config {
 	bool dedup : 1;
 	bool null_output : 1;
 	bool dump_primitives : 1;
+	bool storage_stats : 1;
 	bool create_markers : 1;
 	bool testsuite : 1;
 	bool parse_dump : 1;
@@ -1759,6 +1763,42 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (fy_generic_is_invalid(v)) {
 			had_error = true;
 			break;
+		}
+
+		if (gcfg->storage_stats) {
+			fy_generic vdir = v, vds, vroot;
+			struct fy_generic_storage_stats ss;
+			int i, count;
+
+			count = fy_generic_dir_get_document_count(vdir);
+			for (i = 0; i < count; i++) {
+				vds = fy_generic_dir_get_document_vds(vdir, (size_t)i);
+				if (!fy_generic_is_valid(vds))
+					continue;
+
+				vroot = fy_generic_vds_get_root(vds);
+				if (!fy_generic_is_valid(vroot))
+					continue;
+
+				if (fy_generic_calc_storage_stats(vroot, max_size, &ss) != 0)
+					continue;
+
+				fprintf(stderr, "storage statistics for '%s', document #%d\n", filename, i);
+				fprintf(stderr, "  in-place                : %zu bytes\n",
+					ss.inplace_bytes);
+				fprintf(stderr, "  out-of-place-unique     : %zu bytes\n",
+					ss.unique_bytes);
+				fprintf(stderr, "  out-of-place-duplicate  : %zu bytes\n",
+					ss.duplicate_bytes);
+				fprintf(stderr, "  total                   : %zu bytes\n",
+					ss.total_bytes);
+				fprintf(stderr, "  total-non-dedup         : %zu bytes\n",
+					ss.total_non_dedup_bytes);
+				if (ss.total_non_dedup_bytes)
+					fprintf(stderr, "  dedup-savings           : %.1f%%\n",
+						100.0 * (double)(ss.total_non_dedup_bytes - ss.total_bytes) /
+							(double)ss.total_non_dedup_bytes);
+			}
 		}
 
 		/* we don't support arbitrary indents */
@@ -1995,6 +2035,7 @@ int main(int argc, char *argv[])
 	struct generic_config gcfg = default_generic_cfg;
 	bool dedup = DEDUP_DEFAULT;
 	bool dump_primitives = false;
+	bool storage_stats = false;
 	bool create_markers = false;
 	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
@@ -2554,6 +2595,10 @@ int main(int argc, char *argv[])
 
 		case OPT_DUMP_PRIMITIVES:
 			dump_primitives = true;
+			break;
+
+		case OPT_STORAGE_STATS:
+			storage_stats = true;
 			break;
 
 		case OPT_CREATE_MARKERS:
@@ -3394,6 +3439,7 @@ int main(int argc, char *argv[])
 		gcfg.dedup = dedup;
 		gcfg.null_output = null_output;
 		gcfg.dump_primitives = dump_primitives;
+		gcfg.storage_stats = storage_stats;
 		gcfg.create_markers = create_markers;
 		gcfg.schema = schema;
 		gcfg.emit_cfg_flags = emit_flags | emit_width_flags |
