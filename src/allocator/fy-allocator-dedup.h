@@ -21,7 +21,7 @@
 #define FY_DEDUP_TAG_MAX	128
 
 struct fy_dedup_entry {
-	struct fy_dedup_entry *next;
+	FY_ATOMIC(struct fy_dedup_entry *) next;
 	uint64_t hash;
 	size_t size;
 	void *mem;
@@ -54,16 +54,26 @@ struct fy_dedup_tag_data {
 	fy_id_bits *buckets_in_use;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
+	FY_ATOMIC(uint32_t) in_flight_state;
 };
+
+#define FY_DEDUP_FROZEN_BIT  ((uint32_t)1 << 31)
+#define FY_DEDUP_INFLIGHT_MASK  (FY_DEDUP_FROZEN_BIT - 1)
 
 struct fy_dedup_tag {
 	FY_ATOMIC(struct fy_dedup_tag_data *)tag_datas;
 	int content_tag;
 	int entries_tag;
 	fy_atomic_flag growing;
-	FY_ATOMIC(uint64_t) unique_stores;
-	FY_ATOMIC(uint64_t) dup_stores;
-	FY_ATOMIC(uint64_t) collisions;
+	FY_ATOMIC(uint64_t) unique_stores;	/* unique stores */
+	FY_ATOMIC(uint64_t) dup_stores;		/* duplicate lookups */
+	FY_ATOMIC(uint64_t) collisions;		/* hash colissions */
+	FY_ATOMIC(uint64_t) failures;		/* failed to allocate */
+	FY_ATOMIC(uint64_t) retries;		/* link head retried times */
+	FY_ATOMIC(uint64_t) dup_retries;	/* duplicate, but found after reservation */
+	FY_ATOMIC(uint64_t) lost_entries;	/* lost an entry due to a race */
+	FY_ATOMIC(uint64_t) waits_on_frozen;	/* had to wait for a frozen layer */
+	FY_ATOMIC(uint64_t) adjustments;	/* times we had to grow index */
 };
 
 struct fy_dedup_allocator {

@@ -56,6 +56,74 @@ static __inline int64_t fy_dedup_after_calc(const struct timespec *before, const
 
 #endif
 
+/*
+ * bit_to_chain_length_map[b] - the bucket chain length that triggers a grow,
+ * indexed by bucket_count_bits b (so m = 1<<b buckets).
+ *
+ * Why the trigger is NOT a constant
+ * ---------------------------------
+ * Growth fires when the ONE chain we just walked exceeds the trigger, i.e. on
+ * the per-bucket MAXIMUM chain length, not the average. With a good hash a
+ * bucket's length is Poisson(alpha), alpha = n/m the load factor. The average
+ * chain is alpha, but the maximum over all m buckets grows with m even at
+ * fixed alpha (balls-in-bins). So a constant trigger would fire on random tail
+ * spikes in a large, still-mostly-empty table. The trigger must therefore
+ * track the EXPECTED MAXIMUM chain length at the load factor we want to grow
+ * at - hence it rises with b.
+ *
+ * Derivation
+ * ----------
+ * Pick a target load factor alpha* (the fill at which we want to grow) and a
+ * tolerance lambda (expected number of buckets allowed to reach the trigger,
+ * ~1). The trigger is the smallest t with
+ *
+ *     m * P(Poisson(alpha*) >= t) <= lambda          (m = 1<<b)
+ *
+ * P(Poisson(alpha*) >= t) is the Poisson survival = Q(t, alpha*), the
+ * regularized upper incomplete gamma. Reading: grow when a chain is so long
+ * that, at load alpha*, you'd expect fewer than lambda such buckets in the
+ * whole table - so its existence is evidence of real overload, not luck.
+ *
+ * Closed forms (alpha* <~ 1, the regime we live in):
+ *     t(m) ~= ln(m/lambda) / W( ln(m/lambda) / (e*alpha*) )   (Lambert W)
+ *     t(m) ~= ln m / ln ln m                                  (alpha*=1, lambda=1)
+ * Heavily loaded (alpha* >> ln m): t(m) ~= alpha* + sqrt(2*alpha* ln m).
+ *
+ * What this hand-tuned table actually encodes
+ * -------------------------------------------
+ * Inverting the criterion on the entries below gives an IMPLIED alpha* that is
+ * not constant: ~0.18 for small/medium tables, rising toward ~1.0 for huge
+ * ones (b=6->~0.18, b=14->~0.20, b=18->~0.37, b=20->~0.66, b=22->~0.99).
+ *
+ * That rise is deliberate and correct for THIS structure: a grow does not
+ * rehash, it prepends a doubled layer (old entries stay; lookups walk layers
+ * newest->oldest behind bloom gates). So the real trade-off is
+ *     (#layers * bloom_probe_cost) + chain_walk_cost + memory_cost.
+ * For small/medium tables layers and walks are cheap, so we keep chains short
+ * (alpha*~0.2, t=2..3). For huge tables a grow allocates a large bucket+bloom
+ * array and memory dominates, so we tolerate denser packing (alpha*->1) to
+ * grow less often. A single fixed load-factor trigger would throw that away.
+ *
+ * To revisit: choose alpha*(b) and lambda, then regenerate this array from the
+ * criterion above instead of hand-tuning - the runtime cost stays an O(1)
+ * lookup, but the constants become a documented consequence of two knobs.
+ *
+ * Empirical note (measured: 1.5M unique ~30B keys, mremap parent, single
+ * thread; build/hit/miss-insert ns + peak RSS swept over several tables):
+ *   - Dedup-HIT latency is essentially INDEPENDENT of this trigger (~58ns
+ *     across everything from very aggressive to flat alpha*=1). Hits resolve
+ *     in the newest layer behind the bloom gate, so the chain policy can't
+ *     speed them up - do not tune this expecting faster hits.
+ *   - LESS aggressive than this table (longer chains, the formula tables for
+ *     lambda=1 or flat alpha*=1) is strictly worse: slower build, slower miss
+ *     scans, and NO memory win (metadata is negligible vs content here).
+ *   - MORE aggressive (shorter chains) only speeds the MISS path (full chain
+ *     walked before concluding absent), at a real +10..30% RSS cost from more
+ *     and larger bloom/bucket arrays, with no hit benefit.
+ * So this hand-tuned table sits at the knee. If revisiting, the only useful
+ * lever is a single bias: grow MORE aggressively only when miss-heavy AND
+ * memory-rich; growing less aggressively saves no memory, so don't.
+ */
 static const unsigned int bit_to_chain_length_map[] = {
 	[0] = 1,	/* 1 */
 	[1] = 1,	/* 2 */
@@ -130,6 +198,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 
 	memset(dtd, 0, sizeof(*dtd));
 	dtd->cfg = *cfg;
+	atomic_store(&dtd->in_flight_state, 0);
 
 	dtd->bloom_filter_bits = bloom_filter_bits;
 	dtd->bucket_count_bits = bucket_count_bits;
@@ -337,8 +406,10 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
 	size_t bucket_count, bucket_used;
-	struct fy_dedup_tag_data *dtd, *new_dtd = NULL;
+	struct fy_dedup_tag_data *dtd, *new_dtd = NULL, *expected_dtd;
 	float occupancy_ratio;
+	uint32_t in_flight;
+	bool swapped FY_DEBUG_UNUSED;	/* this is unused on non-debug builds */
 	int rc;
 
 	rc = -1;
@@ -350,7 +421,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	if (!dtd)
 		return -1;
 
-	if (!fy_atomic_flag_test_and_set(&dt->growing)) {
+	if (fy_atomic_flag_test_and_set(&dt->growing)) {
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "grow: abort due another grow in progress\n");
 #endif
@@ -401,15 +472,26 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	}
 #endif
 
-	/* try to add it, if the head changed, then drop our stuff and pretend nothing happened */
+	/* Freeze the current head so no NEW publisher can acquire a slot,
+	 * then drain any in-flight publishers. After both loops, no publisher
+	 * can land an entry into @dtd: the existing ones have all returned,
+	 * and new ones bounce off the FROZEN bit in fy_dedup_drain_acquire().
+	 */
+	in_flight = fy_atomic_load(&dtd->in_flight_state);
+	while (!fy_atomic_compare_exchange_weak(&dtd->in_flight_state, &in_flight, in_flight | FY_DEDUP_FROZEN_BIT))
+		fy_cpu_relax();
+	while ((fy_atomic_load(&dtd->in_flight_state) & FY_DEDUP_INFLIGHT_MASK) != 0)
+		fy_cpu_relax();
+
 	new_dtd->next = dtd;
-	if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, new_dtd)) {
-#ifdef DEBUG_GROWS
-		fprintf(stderr, "grow: Update cancelled, someone beat us to it\n");
-#endif
-		fy_dedup_tag_data_cleanup(new_dtd);
-		fy_parent_allocator_free(&da->a, new_dtd);
-	}
+	/* The @growing mutex above serializes resize, so the tag_datas swap
+	 * below is uncontested by other resizers - the CAS therefore cannot
+	 * lose. An assert documents the invariant; if a future change allows
+	 * concurrent resizers, the swap will need a loser-path that unfreezes
+	 * @dtd before backing off. */
+	expected_dtd = dtd;
+	swapped = fy_atomic_compare_exchange_strong(&dt->tag_datas, &expected_dtd, new_dtd);
+	assert(swapped);	/* @growing serializes resize; the swap is uncontested */
 
 out_ok:
 	rc = 0;
@@ -736,15 +818,159 @@ static int fy_dedup_update_stats(struct fy_allocator *a, int tag, struct fy_allo
 	return 0;
 }
 
-/* we can lookup! */
-static const void *fy_dedup_lookupv(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static inline bool fy_dedup_entry_match_after_hash(const struct fy_dedup_entry *de,
+					const struct iovec *iov, int iovcnt,
+					size_t size, size_t align)
 {
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
+	return size == de->size &&				/* size match */
+	       ((uintptr_t)de->mem & (align - 1)) == 0 &&	/* align match */
+	       !fy_iovec_cmp(iov, iovcnt, de->mem);		/* content match */
+}
+
+static inline bool fy_dedup_entry_match(const struct fy_dedup_entry *de,
+					const struct iovec *iov, int iovcnt,
+					size_t size, size_t align, uint64_t hash)
+{
+	return de->hash == hash &&				/* hash match */
+	       fy_dedup_entry_match_after_hash(de, iov, iovcnt, size, align);
+}
+
+static void fy_dedup_trace(struct fy_allocator *a,
+		           const struct fy_dedup_entry *de,
+			   const struct iovec *iov, int iovcnt,
+			   const char *banner)
+{
+	int i;
+	size_t total_size, j;
+	uint64_t hash;
+
+	total_size = fy_iovec_size(iov, iovcnt);
+	assert(total_size != SIZE_MAX);
+
+	hash = fy_iovec_xxhash64(iov, iovcnt);
+
+	printf("%p: %s %p 0x%016"PRIx64" %zx:",
+			a, banner, de ? de->mem : NULL, hash, total_size);
+	for (i = 0; i < iovcnt; i++) {
+		for (j = 0; j < iov[i].iov_len; j++) {
+			printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
+		}
+	}
+	printf("\n");
+}
+
+/*
+ * Store @iov content into the dedup index, returning a stable canonical
+ * pointer: storing equal content always yields the SAME pointer, so value
+ * equality is pointer equality - even across threads (and, over a durable
+ * arena, across processes). That invariant is the whole point of the dedup
+ * allocator, and it must hold without locks on the read path.
+ *
+ * Data model. A tag is a singly linked list of "tag-data" layers
+ * (@dt->tag_datas, newest first). Each layer is an open-addressed bucket array
+ * of entry chains plus a bloom filter. Entries are immutable and only ever
+ * prepended to a bucket; they are never moved or unlinked. The index grows by
+ * prepending a new, empty layer at the head (fy_dedup_tag_adjust()); the head
+ * pointer therefore changes ONLY on a resize.
+ *
+ * Lookup. Hash the content, then walk every layer newest->oldest: a bloom miss
+ * skips a layer cheaply; a bloom hit scans that bucket's chain for a byte-equal
+ * entry. The first match is returned (a dedup hit; the common, lock-free path).
+ *
+ * Insert (content not found). Correctness hinges on funnelling all racers that
+ * store the same new value through ONE bucket-head compare-and-swap - the only
+ * point that can pick a single winner. To guarantee that:
+ *
+ *   - Target the newest WRITABLE layer (normally the list head), never a
+ *     "least full" layer. All racers for a value thus pick the same bucket.
+ *   - Snapshot the target bucket head (@de_head) at scan time. The publishing
+ *     CAS expects @de_head, so any prepend since the scan - an equal racer's
+ *     entry or an unrelated one - makes the CAS fail and we restart, this
+ *     time finding and returning the existing entry.
+ *   - Set the bloom / in-use bits BEFORE linking, so a concurrent scan that can
+ *     reach the entry through the chain is guaranteed to also see the bloom bit
+ *     (a re-scan can never false-miss an already-linked entry).
+ *
+ * Drain quiescence vs. resize. The hard race used to be a publisher whose
+ * bucket-head CAS landed into a layer that was demoted by a concurrent
+ * resize: the entry stayed linked in the now-stale layer, and scanners that
+ * bloom-missed the new head fell through and returned a different @mem from
+ * scanners that bloom-hit it. We close this race by making resize
+ * cooperative rather than reactive:
+ *
+ *   - Each layer holds an atomic @in_flight_state (high bit FY_DEDUP_FROZEN_BIT,
+ *     low bits in-flight publisher count). Every storev call begins with
+ *     fy_dedup_drain_acquire(), which CAS-bumps the head layer's counter -
+ *     refusing if FROZEN is set - and returns the captured head as @drain_head.
+ *     Every return path calls fy_dedup_drain_release() exactly once via the
+ *     @out label.
+ *   - fy_dedup_tag_adjust() CAS-sets FROZEN on the current head, spins until
+ *     the in-flight count drains to zero, and only then CAS-swaps tag_datas
+ *     to prepend the new (empty) head. While we hold a slot, the head we
+ *     captured cannot be demoted, so @head0 == fy_atomic_load(&dt->tag_datas)
+ *     holds throughout this function and no post-CAS recheck is needed.
+ *   - If storev itself fires the chain-length grow trigger at the end, it
+ *     decrements its own slot before calling fy_dedup_tag_adjust() to avoid
+ *     self-deadlocking against the drain spin.
+ *   - Note that this only happens when the first _non_ locking scan of an
+ *     existing entry fails, so the contention on the atomic cache lines is
+ *     only when there is a very high probability of an insert. So lookups
+ *     are _non_ locking for the vast majority of cases.
+ *
+ * A lost race may leave a redundant equal copy in the arena (an append-only
+ * arena cannot reclaim it; GC does so later) - that is accepted. What is NOT
+ * accepted, and what the above guarantees, is two callers ever returning
+ * different pointers for the same value.
+ *
+ * Sub-threshold content (< dedup_threshold) is not indexed at all: it is just
+ * copied into the parent allocator and returned, since deduplicating tiny
+ * values costs more than it saves. This path returns before acquiring a
+ * drain slot, since it doesn't touch the dedup index at all.
+ */
+
+/* dedup store action flags */
+#define FYDSAF_NEEDS_ADJUST		FY_BIT(0)	/* insert over the chain length limit */
+#define FYDSAF_DUPLICATE		FY_BIT(1)	/* duplicate found, not inserted */
+#define FYDASF_DUPLICATE_RETRIED	FY_BIT(2)	/* duplicate found on retry */
+#define FYDSAF_WAIT_ON_FROZEN		FY_BIT(3)	/* hit a frozen layer and had to reload */
+#define FYDASF_HASH_COLISSION		FY_BIT(4)	/* insert caused a hash colision */
+#define FYDASF_LOST_ENTRY		FY_BIT(5)	/* entry allocated but lost due to a race */
+#define FYDASF_LINK_RETRIED		FY_BIT(6)	/* times that entry link had to be retried */
+
+static inline const struct fy_dedup_entry *
+fy_dedup_tag_lookupv_internal(struct fy_dedup_tag *dt,
+			      const struct iovec *iov, int iovcnt,
+			      const size_t total_size, const size_t align,
+			      const uint64_t hash)
+{
 	struct fy_dedup_tag_data *dtd;
 	struct fy_dedup_entry *de;
 	int bloom_pos, bucket_pos;
 	bool bloom_hit;
+
+	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
+		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
+		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
+		if (!bloom_hit)
+			continue;
+
+		bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
+		for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = fy_atomic_load(&de->next)) {
+			if (fy_dedup_entry_match(de, iov, iovcnt, total_size, align, hash))
+				return de;
+		}
+	}
+
+	return NULL;
+}
+
+static const void *fy_dedup_lookupv(struct fy_allocator *a, int tag,
+				    const struct iovec *iov, int iovcnt,
+				    size_t align, uint64_t hash)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	const struct fy_dedup_entry *de;
 	size_t total_size;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
@@ -765,34 +991,178 @@ static const void *fy_dedup_lookupv(struct fy_allocator *a, int tag, const struc
 	if (!hash)
 		hash = fy_iovec_xxhash64(iov, iovcnt);
 
-	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
-		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
-		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
-		if (bloom_hit) {
-			bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
-			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
-				if (de->hash == hash && total_size == de->size &&
-						!fy_iovec_cmp(iov, iovcnt, de->mem) &&
-						((uintptr_t)de->mem & (align - 1)) == 0)
-					return de->mem;
-			}
-		}
-	}
-	return NULL;
+	de = fy_dedup_tag_lookupv_internal(dt, iov, iovcnt, total_size, align, hash);
+
+	return de ? de->mem : NULL;
 }
 
-static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct iovec *iov, int iovcnt, size_t align, uint64_t hash)
+static inline const struct fy_dedup_entry *
+fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
+			     const struct iovec *iov, const int iovcnt,
+			     const size_t total_size, const size_t align, const uint64_t hash,
+			     struct fy_allocator *parent_allocator,
+			     unsigned int *action_flagsp)
 {
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
-	struct fy_dedup_tag_data *dtd, *dtd_best;
-	struct fy_dedup_entry *de, *de_head;
+	struct fy_dedup_tag_data *head0, *head_lucky;
+	struct fy_dedup_entry *de = NULL, *de_head, *de_iter;
+	const struct fy_dedup_entry *de_lookup;
+	FY_ATOMIC(struct fy_dedup_entry *) *de_headp;
 	int bloom_pos, bucket_pos;
 	bool bloom_hit;
 	unsigned int chain_length;
-	void *mem = NULL;
-	size_t total_size, de_offset, max_align;
-	bool at_head;
+	void *mem;
+	size_t de_offset, max_align;
+	uint32_t in_flight;
+	unsigned int aflags;
+
+	/* try the lucky path, without any reservation. This is the best hit case */
+	head_lucky = fy_atomic_load(&dt->tag_datas);
+	assert(head_lucky);	/* this must never be NULL, means we haven't initialized properly */
+
+	de_lookup = fy_dedup_tag_lookupv_internal(dt, iov, iovcnt, total_size, align, hash);
+	if (de_lookup) {
+		*action_flagsp |= FYDSAF_DUPLICATE;
+		return de_lookup;
+	}
+
+	aflags = *action_flagsp;
+
+	head0 = head_lucky;
+
+	/* Acquire an in-flight slot on the current head.
+	 * Resize can never demote the current head, it will set frozen and then
+	 * will loop draining any holders.
+	 */
+	for (;;) {
+		in_flight = fy_atomic_load(&head0->in_flight_state);
+		if (in_flight & FY_DEDUP_FROZEN_BIT) {
+			aflags |= FYDSAF_WAIT_ON_FROZEN;
+			head0 = fy_atomic_load(&dt->tag_datas); /* reload */
+		} else if (fy_atomic_compare_exchange_weak(&head0->in_flight_state, &in_flight, in_flight + 1))
+			break;
+		fy_cpu_relax();
+	}
+
+	/* head changed, perform a lookup in case a racer inserted our value. */
+	if (head0 != head_lucky) {
+		de_lookup = fy_dedup_tag_lookupv_internal(dt, iov, iovcnt, total_size, align, hash);
+		if (de_lookup) {
+			aflags |= FYDSAF_DUPLICATE | FYDASF_DUPLICATE_RETRIED;
+			de = (struct fy_dedup_entry *)de_lookup;
+			goto out;
+		}
+	}
+
+	/* those are fixed for our run */
+	bloom_pos = (int)(hash & (uint64_t)head0->bloom_filter_mask);
+	bucket_pos = (int)(hash & (uint64_t)head0->bucket_count_mask);
+	de_headp = &head0->buckets[bucket_pos];
+
+	de_head = fy_atomic_load(de_headp);
+	for (;;) {
+		/* try again; someone might have raced and inserted our data (but only on this layer) */
+		bloom_hit = fy_id_is_used(head0->bloom_id, head0->bloom_id_count, bloom_pos);
+		if (bloom_hit) {
+			for (de_iter = fy_atomic_load(de_headp); de_iter; de_iter = fy_atomic_load(&de_iter->next)) {
+				if (fy_dedup_entry_match(de_iter, iov, iovcnt, total_size, align, hash)) {
+					aflags |= FYDSAF_DUPLICATE;
+
+					/* if there's a held entry means we lose track of it */
+					if (de)
+						aflags |= FYDASF_LOST_ENTRY;
+					de = de_iter;
+					goto out;
+				}
+			}
+		}
+
+		/* we might be retrying; don't allocate and copy again */
+		if (!de) {
+			/* place the dedup entry at the aligned offset after the data */
+
+			if (dt->content_tag == dt->entries_tag) {
+				/* we don't have seperate content and entries */
+				de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
+				max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
+				mem = fy_allocator_alloc_nocheck(parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
+				if (!mem)
+					goto out;
+
+				/* zero the content->entry alignment padding so nothing
+				 * uninitialised is persisted into a durable arena */
+				if (de_offset > total_size)
+					memset((char *)mem + total_size, 0, de_offset - total_size);
+
+				de = (void *)((char *)mem + de_offset);
+			} else {
+				/* separate content and entries */
+				mem = fy_allocator_alloc_nocheck(parent_allocator, dt->content_tag,
+								 total_size, align);
+				if (!mem)
+					goto out;
+
+				de = fy_allocator_alloc_nocheck(parent_allocator, dt->entries_tag,
+								sizeof(struct fy_dedup_entry), _Alignof(struct fy_dedup_entry));
+				if (!de)
+					goto out;
+			}
+
+			/* verify it's aligned correctly */
+			assert(((uintptr_t)mem & (align - 1)) == 0);
+
+			de->hash = hash;
+			de->size = total_size;
+			de->mem = mem;
+
+			/* and copy the data */
+			fy_iovec_copy_from(iov, iovcnt, de->mem);
+		}
+
+		/* Publish presence in the bloom / in-use bitmaps BEFORE linking */
+		fy_id_set_used(head0->buckets_in_use, head0->bucket_id_count, bucket_pos);
+		fy_id_set_used(head0->bloom_id, head0->bloom_id_count, bloom_pos);
+
+		/* always update the next entry with it */
+		fy_atomic_store(&de->next, de_head);
+
+		/* prepend; if the CAS fails @de_head is reloaded and we retry.
+		 * deliberately strong, do not change to weak.
+		 */
+		if (fy_atomic_compare_exchange_strong(de_headp, &de_head, de))
+			break;
+
+		/* mark that this happened for statistics */
+		aflags |= FYDASF_LINK_RETRIED;
+	}
+
+	/* walk the new chain; if larger mark it as needing adjust */
+	chain_length = 1;
+	for (de_iter = fy_atomic_load(&de->next); de_iter; de_iter = fy_atomic_load(&de_iter->next)) {
+		if (de_iter->hash == hash)
+			aflags |= FYDASF_HASH_COLISSION;
+		chain_length++;
+	}
+	if (chain_length > head0->chain_length_grow_trigger)
+		aflags |= FYDSAF_NEEDS_ADJUST;
+
+out:
+	/* release */
+	fy_atomic_fetch_sub(&head0->in_flight_state, 1);
+
+	*action_flagsp = aflags;
+
+	return de;
+}
+
+static const void *fy_dedup_storev(struct fy_allocator *a, int tag,
+				   const struct iovec *iov, int iovcnt,
+				   size_t align, uint64_t hash)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	const struct fy_dedup_entry *de;
+	size_t total_size;
+	unsigned int action_flags;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 	dt = fy_dedup_tag_from_tag(da, tag);
@@ -820,141 +1190,43 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag, const struct
 	if (!hash)
 		hash = fy_iovec_xxhash64(iov, iovcnt);
 
-again:
-	de = NULL;
-	chain_length = 0;
+	action_flags = 0;
+	de = fy_dedup_tag_storev_internal(dt, iov, iovcnt, total_size, align, hash,
+					  da->parent_allocator, &action_flags);
 
-	at_head = true;
-	dtd_best = NULL;
-	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
-
-		/* first check in the bloom filter */
-		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
-		bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
-
-		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
-		if (bloom_hit) {
-			for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = de->next) {
-				if (de->hash == hash) {
-				       	if (total_size == de->size && !fy_iovec_cmp(iov, iovcnt, de->mem) &&
-							((uintptr_t)de->mem & (align - 1)) == 0) {
-
-						/* only update stats if someone asked for it */
-						if (a->flags & FYAF_KEEP_STATS)
-							fy_atomic_fetch_add(&dt->dup_stores, 1);
-
-						if (a->flags & FYAF_TRACE) {
-							int i;
-							size_t j;
-							printf("%s: %p: dup-store %p 0x%016"PRIx64" %zx:", __func__,
-									a, de->mem, hash, total_size);
-							for (i = 0; i < iovcnt; i++) {
-								for (j = 0; j < iov[i].iov_len; j++) {
-									printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
-								}
-							}
-							printf("\n");
-						}
-
-						return de->mem;
-					}
-
-					/* mark that we had a collision here */
-					if (a->flags & FYAF_KEEP_STATS)
-						fy_atomic_fetch_add(&dt->collisions, 1);
-				}
-
-				if (at_head)
-					chain_length++;
-			}
-		} else {
-			if (!dtd_best)
-				dtd_best = dtd;	/* keep whenever we had a empty bloom slot */
-		}
-		at_head = false;
-	}
-
-	/* use the one that had space, otherwise the top */
-	if (dtd_best)
-		dtd = dtd_best;
-	else
-		dtd = fy_atomic_load(&dt->tag_datas);
-
-	/* recalc positions for the delected dtd */
-	bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
-	bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
-
-	/* we might be retrying; don't allocate and copy again */
-	if (!mem) {
-		/* place the dedup entry at the aligned offset after the data */
-
-		if (dt->content_tag == dt->entries_tag) {
-			/* we don't have seperate content and entries */
-			de_offset = fy_size_t_align(total_size, _Alignof(struct fy_dedup_entry));
-			max_align = align > _Alignof(struct fy_dedup_entry) ? align : _Alignof(struct fy_dedup_entry);
-			mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag, de_offset + sizeof(*de), max_align);
-			if (!mem)
-				return NULL;
-
-			de = (void *)((char *)mem + de_offset);
-		} else {
-			/* separate content and entries */
-			mem = fy_allocator_alloc_nocheck(da->parent_allocator, dt->content_tag,
-							 total_size, align);
-			if (!mem)
-				return NULL;
-
-			de = fy_allocator_alloc_nocheck(da->parent_allocator, dt->entries_tag,
-							sizeof(struct fy_dedup_entry), _Alignof(struct fy_dedup_entry));
-			if (!de)
-				return NULL;
-		}
-
-		/* verify it's aligned correctly */
-		assert(((uintptr_t)mem & (align - 1)) == 0);
-
-		de->hash = hash;
-		de->size = total_size;
-		de->mem = mem;
-
-		/* and copy the data */
-		fy_iovec_copy_from(iov, iovcnt, de->mem);
-	}
-
-	/* set this bucket to used */
-	fy_id_set_used(dtd->buckets_in_use, dtd->bucket_id_count, bucket_pos);
-
-	/* turn the update bit for the bloom position */
-	fy_id_set_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
-
-	/* add to the bucket last atomically */
-	de_head = fy_atomic_load(&dtd->buckets[bucket_pos]);
-	de->next = de_head;
-	if (!fy_atomic_compare_exchange_strong(&dtd->buckets[bucket_pos], &de_head, de))
-		goto again;	// we're leaking the entry, but that's fine
-
-	/* adjust by one bit, if we've hit the trigger */
-	if (chain_length > dtd->chain_length_grow_trigger)
+	if (action_flags & FYDSAF_NEEDS_ADJUST)
 		fy_dedup_tag_adjust(da, dt, 1, 1);
 
-	/* only update stats if someone asked for it */
-	if (a->flags & FYAF_KEEP_STATS)
-		fy_atomic_fetch_add(&dt->unique_stores, 1);
+	/* update flags only if keeping statistics */
+	if (a->flags & FYAF_KEEP_STATS) {
+		if (!de)
+			fy_atomic_fetch_add(&dt->failures, 1);
+		else if (action_flags & FYDSAF_DUPLICATE)
+			fy_atomic_fetch_add(&dt->dup_stores, 1);
+		else
+			fy_atomic_fetch_add(&dt->unique_stores, 1);
 
-	if (a->flags & FYAF_TRACE) {
-		int i;
-		size_t j;
-		printf("%s: %p: new-store %p 0x%016"PRIx64" %zx:", __func__,
-				a, de->mem, hash, total_size);
-		for (i = 0; i < iovcnt; i++) {
-			for (j = 0; j < iov[i].iov_len; j++) {
-				printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
-			}
-		}
-		printf("\n");
+		if (action_flags & FYDASF_LINK_RETRIED)
+			fy_atomic_fetch_add(&dt->retries, 1);
+		if (action_flags & FYDASF_DUPLICATE_RETRIED)
+			fy_atomic_fetch_add(&dt->dup_retries, 1);
+		if (action_flags & FYDASF_LOST_ENTRY)
+			fy_atomic_fetch_add(&dt->lost_entries, 1);
+		if (action_flags & FYDASF_HASH_COLISSION)
+			fy_atomic_fetch_add(&dt->collisions, 1);
+		if (action_flags & FYDSAF_WAIT_ON_FROZEN)
+			fy_atomic_fetch_add(&dt->waits_on_frozen, 1);
+		if (action_flags & FYDSAF_NEEDS_ADJUST)
+			fy_atomic_fetch_add(&dt->adjustments, 1);
 	}
 
-	return de->mem;
+	if (a->flags & FYAF_TRACE) {
+		fy_dedup_trace(a, de, iov, iovcnt,
+			!de ? "fail" :
+				((action_flags & FYDSAF_DUPLICATE) ? "dup" : "unique"));
+	}
+
+	return de ? de->mem : NULL;
 }
 
 static void fy_dedup_release(struct fy_allocator *a FY_UNUSED,
