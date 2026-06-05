@@ -24,6 +24,7 @@
 #include "fy-list.h"
 #include "fy-utils.h"
 #include "fy-win32.h"
+#include "xxhash.h"
 
 #include "fy-allocator-dedup.h"
 

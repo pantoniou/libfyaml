@@ -14,7 +14,6 @@
 
 #include "fy-typelist.h"
 #include "fy-id.h"
-#include "xxhash.h"
 
 #include "fy-atomics.h"
 #include "fy-allocator.h"
