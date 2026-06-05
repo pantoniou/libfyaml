@@ -178,6 +178,13 @@ fy_check_testcase_get_TCase(struct fy_check_testcase *ctc)
 }
 
 static inline void
+fy_check_testcase_set_timeout(struct fy_check_testcase *ctc, double timeout)
+{
+	if (ctc)
+		tcase_set_timeout(ctc->testcase, timeout);
+}
+
+static inline void
 fy_check_suite_destroy(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *tc;
