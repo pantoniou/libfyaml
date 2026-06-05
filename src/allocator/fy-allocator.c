@@ -761,6 +761,49 @@ void fy_early_parent_allocator_free(struct fy_allocator *parent, int parent_tag,
 		fy_align_free(ptr);
 }
 
+const struct fy_arena_reloc *
+fy_arena_locate_by_src(const struct fy_arena_reloc *arenas, unsigned int count, const void *ptr)
+{
+	uintptr_t p = (uintptr_t)ptr;
+	unsigned int mid;
+
+	while (count > 0) {
+		mid = count / 2;
+		if (p >= arenas[mid].src.i) {
+			if (p < arenas[mid].srce.i)
+				return &arenas[mid];
+			arenas += mid + 1;
+			count -= mid + 1;
+		} else
+			count = mid;
+	}
+
+	return NULL;
+}
+
+void *fy_arena_reloc_ptr(const struct fy_arena_reloc *arenas, unsigned int count,
+			 const void *start, size_t size, const void *ptr)
+{
+	const struct fy_arena_reloc *arena;
+	uintptr_t off;
+
+	if (!ptr)
+		return NULL;
+
+	arena = fy_arena_locate_by_src(arenas, count, ptr);
+	if (arena) {
+		off = (uintptr_t)ptr - arena->src.i;
+		return (void *)(arena->dst.i + off);
+	}
+
+	/* already pointing at the destination image (fixed-base no-op) */
+	if (ptr >= start && ptr < (const void *)((const char *)start + size))
+		return (void *)(uintptr_t)ptr;
+
+	/* not in any source range and not in the destination - error */
+	return NULL;
+}
+
 /* respects the parent allocator (or uses posix_memalign if NULL) */
 void *fy_parent_allocator_alloc(struct fy_allocator *a, size_t size, size_t align)
 {

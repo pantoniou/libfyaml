@@ -97,6 +97,42 @@ struct fy_allocator_info {
 	struct fy_allocator_tag_info *tag_infos;
 };
 
+/*
+ * Arena relocation primitive.
+ *
+ * Describes a contiguous source memory range and where it has been (or will be)
+ * copied to. A sorted array of these is used to rebase pointers that point into
+ * the source ranges to their corresponding destination ranges. Used by the
+ * generic value relocator and by allocators (e.g. dedup) that need to relocate
+ * their own internal pointers when an arena image is saved/restored.
+ */
+union fy_arena_reloc_ptr {
+	void *p;
+	uintptr_t i;
+};
+
+struct fy_arena_reloc {
+	union fy_arena_reloc_ptr src;
+	union fy_arena_reloc_ptr srce;
+	union fy_arena_reloc_ptr dst;
+	size_t size;
+};
+
+/* binary search a sorted-by-src reloc array for the range containing ptr */
+const struct fy_arena_reloc *
+fy_arena_locate_by_src(const struct fy_arena_reloc *arenas, unsigned int count, const void *ptr);
+
+/*
+ * Rebase a raw pointer through the reloc array.
+ *
+ * Returns the rebased pointer if it falls within one of the source ranges.
+ * If it does not, but lies within [start, start+size) (i.e. already points at
+ * the destination image - the fixed-base no-op case), it is returned unchanged.
+ * Otherwise NULL is returned to signal an error. A NULL input returns NULL.
+ */
+void *fy_arena_reloc_ptr(const struct fy_arena_reloc *arenas, unsigned int count,
+			 const void *start, size_t size, const void *ptr);
+
 enum fy_allocator_flags {
 	FYAF_KEEP_STATS = FY_BIT(0),
 	FYAF_TRACE	= FY_BIT(1),

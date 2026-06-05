@@ -29,19 +29,10 @@
 #include "fy-event.h"
 #include "fy-token.h"
 
+/* struct fy_arena_reloc and the arena relocation primitives live here */
+#include "fy-allocator.h"
+
 struct fy_generic_iterator;
-
-union fy_arena_reloc_ptr {
-	void *p;
-	uintptr_t i;
-};
-
-struct fy_arena_reloc {
-	union fy_arena_reloc_ptr src;
-	union fy_arena_reloc_ptr srce;
-	union fy_arena_reloc_ptr dst;
-	size_t size;
-};
 
 struct fy_generic_builder {
 	struct fy_generic_builder_cfg cfg;

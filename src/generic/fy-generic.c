@@ -42,26 +42,6 @@ static int fy_arena_reloc_src_compare(const void *va, const void *vb)
 	       a->src.i > b->src.i ?  1 : 0;
 }
 
-static const struct fy_arena_reloc *
-fy_arena_locate_by_src(const struct fy_arena_reloc *arenas, unsigned int count, const void *ptr)
-{
-	uintptr_t p = (uintptr_t)ptr;
-	unsigned int mid;
-
-	while (count > 0) {
-		mid = count / 2;
-		if (p >= arenas[mid].src.i) {
-			if (p < arenas[mid].srce.i)
-				return &arenas[mid];
-			arenas += mid + 1;
-			count -= mid + 1;
-		} else
-			count = mid;
-	}
-
-	return NULL;
-}
-
 static fy_generic
 fy_generic_arena_relocate_ptr_internal(const struct fy_arena_reloc *arenas,
 				       unsigned int num_arenas, fy_generic v,
