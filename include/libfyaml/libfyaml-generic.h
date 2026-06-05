@@ -2736,6 +2736,51 @@ static inline int fy_generic_compare(fy_generic a, fy_generic b)
 }
 
 /**
+ * struct fy_generic_storage_stats - Storage effectiveness report for a value tree.
+ *
+ * Produced by fy_generic_generate_storage_stats()
+ *
+ * @unique_values:         Out-of-place nodes seen for the first time.
+ * @duplicate_values:      Out-of-place nodes equal to one already seen.
+ * @inplace_values:        Number of in-place nodes
+ * @unique_bytes:          Total node footprint of the unique nodes.
+ * @duplicate_bytes:       Node footprint reclaimable by sharing the duplicates.
+ * @inplace_bytes:         Total footprint of in-place nodes
+ * @total_bytes:           Total footprint with dedup
+ * @total_non_dedup_bytes: Footprint if no dedup was used
+ */
+struct fy_generic_storage_stats {
+	size_t unique_values;
+	size_t duplicate_values;
+	size_t inplace_values;
+	size_t unique_bytes;
+	size_t duplicate_bytes;
+	size_t inplace_bytes;
+	size_t total_bytes;
+	size_t total_non_dedup_bytes;
+};
+
+/**
+ * fy_generic_calc_storage_stats() - Produce storage effectiveness statistics
+ *
+ * Traverses @v, treating each out-of-place value's generic value as its key.
+ *
+ * This is an analysis helper that allocates a temporary set; it is intended for
+ * tooling rather than hot paths.
+ *
+ * @v:        The root generic value to analyse.
+ * @est_size: Estimated input size in bytes, used only to size the hash table
+ *            (the slot count is roughly @est_size / 4096).  Pass 0 if unknown.
+ * @stats:    Receives the report.  Zeroed first; never NULL.
+ *
+ * Returns:
+ * 0 on success, -1 on allocation failure or if @v is invalid.
+ */
+int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
+				  struct fy_generic_storage_stats *stats)
+	FY_EXPORT;
+
+/**
  * fy_generic_mappingp_get_at_keyp() - Get a pointer to a key at a given index (mapping pointer).
  *
  * @mapp: Pointer to a &fy_generic_mapping (may be NULL).

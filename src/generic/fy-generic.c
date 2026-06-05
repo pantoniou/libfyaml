@@ -25,6 +25,8 @@
 #include "fy-allocator.h"
 #include "fy-thread.h"
 
+#include "xxhash.h"
+
 #include "fy-generic.h"
 #include "fy-generic-encoder.h"
 #include "fy-generic-decoder.h"
@@ -172,6 +174,316 @@ fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_
 	default:
 		return fy_invalid;
 	}
+}
+
+#define FY_STORAGE_STATS_BUCKET_SIZE	4096
+#define FY_STORAGE_STATS_DEFAULT_HEADS	512
+
+struct fy_storage_stat_entry {
+	fy_generic_value key;
+	size_t size;
+};
+
+struct fy_storage_stats_bucket {
+	struct fy_storage_stats_bucket *next;
+	size_t count;
+	struct fy_storage_stat_entry entries[];
+};
+
+#define FY_STORAGE_STATS_BUCKET_CAP \
+	((FY_STORAGE_STATS_BUCKET_SIZE - sizeof(struct fy_storage_stats_bucket)) / \
+	 sizeof(struct fy_storage_stat_entry))
+
+struct fy_storage_stats_set {
+	struct fy_storage_stats_bucket **heads;
+	size_t nheads;
+};
+
+static int
+fy_storage_stats_set_setup(struct fy_storage_stats_set *set, size_t est_size)
+{
+	size_t nheads;
+
+	nheads = est_size ? est_size / FY_STORAGE_STATS_BUCKET_SIZE :
+			    FY_STORAGE_STATS_DEFAULT_HEADS;
+	if (nheads < 1)
+		nheads = 1;
+
+	set->nheads = nheads;
+	set->heads = calloc(nheads, sizeof(*set->heads));
+	return set->heads ? 0 : -1;
+}
+
+static void
+fy_storage_stats_set_cleanup(struct fy_storage_stats_set *set)
+{
+	struct fy_storage_stats_bucket *b, *next;
+	size_t i;
+
+	if (!set->heads)
+		return;
+	for (i = 0; i < set->nheads; i++) {
+		for (b = set->heads[i]; b; b = next) {
+			next = b->next;
+			free(b);
+		}
+	}
+	free(set->heads);
+	set->heads = NULL;
+}
+
+/* binary search a sorted bucket run; returns true if found, *idxp = slot */
+static inline bool
+fy_storage_stats_bucket_find(const struct fy_storage_stats_bucket *b,
+			   fy_generic_value key, size_t *idxp)
+{
+	size_t lo, mid, hi;
+	fy_generic_value k;
+
+	lo = 0;
+	hi = b->count;
+
+	while (lo < hi) {
+		mid = lo + (hi - lo) / 2;
+		k = b->entries[mid].key;
+		if (k == key) {
+			*idxp = mid;
+			return true;
+		}
+		if (key < k)
+			hi = mid;
+		else
+			lo = mid + 1;
+	}
+	*idxp = lo;
+	return false;
+}
+
+/* returns 1 if duplicate, 0 if newly inserted (unique), -1 on allocation failure */
+static int
+fy_storage_stats_set_add(struct fy_storage_stats_set *set, fy_generic_value key,
+			 size_t *sizep)
+{
+	size_t head;
+	struct fy_storage_stats_bucket **lastp;
+	struct fy_storage_stats_bucket *b, *last;
+	size_t idx;
+
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	lastp = &set->heads[head];
+	idx = 0;
+	last = NULL;
+	*sizep = 0;
+
+	/* walk the chain; a hit in any bucket is a duplicate */
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_storage_stats_bucket_find(b, key, &idx)) {
+			*sizep = b->entries[idx].size;
+			return 1;
+		}
+		lastp = &b->next;
+		last = b;
+	}
+
+	/* not found: insert into the last bucket, or a fresh one if needed */
+	if (!last || last->count >= FY_STORAGE_STATS_BUCKET_CAP) {
+		b = malloc(FY_STORAGE_STATS_BUCKET_SIZE);
+		if (!b)
+			return -1;
+		b->next = NULL;
+		b->count = 0;
+		*lastp = b;
+		last = b;
+		idx = 0;
+	} else {
+		/* re-find the sorted insertion slot within the last bucket */
+		(void)fy_storage_stats_bucket_find(last, key, &idx);
+	}
+
+	if (idx < last->count)
+		memmove(&last->entries[idx + 1], &last->entries[idx],
+			(last->count - idx) * sizeof(last->entries[0]));
+	last->entries[idx].key = key;
+	last->entries[idx].size = 0;	/* not calculated yet */
+	last->count++;
+	return 0;
+}
+
+static size_t *
+fy_storage_stats_set_get_sizep(struct fy_storage_stats_set *set, fy_generic_value key)
+{
+	struct fy_storage_stats_bucket *b;
+	size_t head, idx;
+
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_storage_stats_bucket_find(b, key, &idx))
+			return &b->entries[idx].size;
+	}
+	return NULL;
+}
+
+static void
+fy_storage_stats_set_set_size(struct fy_storage_stats_set *set, fy_generic_value key, size_t size)
+{
+	size_t *sizep;
+
+	sizep = fy_storage_stats_set_get_sizep(set, key);
+	if (!sizep)
+		return;
+	*sizep = size;
+}
+
+static size_t
+fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
+			       struct fy_generic_storage_stats *stats,
+			       fy_generic v)
+{
+	enum fy_generic_type type;
+	size_t i, count, len, tsize;
+	const fy_generic *items;
+	fy_generic vt;
+	fy_generic_indirect gi;
+	uint64_t flags;
+	const void *colp;
+	size_t size;
+	const uint8_t *str, *sp;
+	int rc;
+	bool is_dup;
+
+	if (fy_generic_is_invalid(v))
+		return (size_t)-1;
+
+	/* in-place values carry no out-of-place storage */
+	if (fy_generic_is_in_place(v)) {
+		stats->inplace_values++;
+		stats->inplace_bytes += sizeof(fy_generic);
+		return sizeof(fy_generic);
+	}
+
+	rc = fy_storage_stats_set_add(set, v.v, &size);
+	if (rc < 0)
+		return (size_t)-1;
+
+	is_dup = rc == 1;
+
+	/* if it's a duplicate we can stop now */
+	if (is_dup) {
+		stats->duplicate_values++;
+		stats->duplicate_bytes += sizeof(fy_generic);
+
+		/* the size must have been updated */
+		return size;
+	}
+
+	size = 0;
+	stats->unique_values++;
+
+	type = fy_generic_is_indirect(v) ? FYGT_INDIRECT : fy_generic_get_type(v);
+
+	tsize = 0;
+	switch (type) {
+	case FYGT_INT:
+		tsize = sizeof(fy_generic) + sizeof(fy_generic_decorated_int);
+		stats->unique_bytes += tsize;
+		size += tsize;
+		break;
+
+	case FYGT_FLOAT:
+		tsize = sizeof(fy_generic) + sizeof(double);
+		stats->unique_bytes += tsize;
+		size += tsize;
+		break;
+
+	case FYGT_STRING:
+		sp = fy_generic_resolve_ptr(v);
+		str = fy_decode_size(sp, FYGT_SIZE_ENCODING_MAX, &len);
+		assert(str);
+
+		tsize = sizeof(fy_generic) + (size_t)(str - sp) + len + 1;
+		stats->unique_bytes += tsize;
+		size += tsize;
+		break;
+
+	case FYGT_BOOL:
+	case FYGT_NULL:
+		tsize = sizeof(fy_generic);
+		stats->unique_bytes += tsize;
+		size += tsize;
+		break;
+
+	case FYGT_SEQUENCE:
+	case FYGT_MAPPING:
+		tsize = sizeof(fy_generic) + sizeof(size_t);
+		stats->unique_bytes += tsize;
+		size += tsize;
+
+		colp = fy_generic_resolve_collection_ptr(v);
+		items = fy_generic_collectionp_get_items(type, colp, &count);
+		for (i = 0; i < count; i++) {
+			vt = items[i];
+			tsize = fy_generic_storage_stats_visit(set, stats, vt);
+			if (tsize == (size_t)-1)
+				return (size_t)-1;
+			size += tsize;
+		}
+		break;
+
+	case FYGT_ALIAS:
+	case FYGT_INDIRECT:
+		tsize = sizeof(fy_generic) + sizeof(fy_generic_value);
+		stats->unique_bytes += tsize;
+		size += tsize;
+
+		fy_generic_indirect_get(v, &gi);
+		flags = (uint64_t)(gi.flags & FYGIF_CONTENT_MASK);
+		while (flags) {
+			i = fy_bit64_lowest(flags);
+			flags &= ~FY_BIT64(i);
+
+			vt = gi.vindirect[i];
+			tsize = fy_generic_storage_stats_visit(set, stats, vt);
+			if (tsize == (size_t)-1)
+				return (size_t)-1;
+			size += tsize;
+		}
+		break;
+
+	default:
+		return (size_t)-1;
+	}
+
+	/* store the size */
+	fy_storage_stats_set_set_size(set, v.v, size);
+
+	return size;
+}
+
+int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
+				  struct fy_generic_storage_stats *stats)
+{
+	struct fy_storage_stats_set set = { 0 };
+	size_t size;
+	int rc;
+
+	if (!stats)
+		return -1;
+	memset(stats, 0, sizeof(*stats));
+
+	if (fy_storage_stats_set_setup(&set, est_size) != 0)
+		return -1;
+
+	size = fy_generic_storage_stats_visit(&set, stats, v);
+	rc = size != (size_t)-1 ? 0 : -1;
+	if (!rc) {
+		stats->total_non_dedup_bytes = size;
+		stats->total_bytes = stats->inplace_bytes +
+				     stats->unique_bytes +
+				     stats->duplicate_bytes;
+	}
+
+	fy_storage_stats_set_cleanup(&set);
+	return rc;
 }
 
 enum fy_generic_type fy_generic_get_type_indirect(fy_generic v)
