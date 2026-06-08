@@ -27,6 +27,8 @@
 
 #include "xxhash.h"
 
+#include <libfyaml/libfyaml-blake3.h>
+
 #include "fy-generic.h"
 #include "fy-generic-encoder.h"
 #include "fy-generic-decoder.h"
@@ -483,6 +485,185 @@ int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
 	}
 
 	fy_storage_stats_set_cleanup(&set);
+	return rc;
+}
+
+/* one-byte stream tags; kept distinct from any pointer/layout artefact */
+#define FY_SIG_TAG_NULL		0x00
+#define FY_SIG_TAG_BOOL		0x01
+#define FY_SIG_TAG_INT		0x02
+#define FY_SIG_TAG_FLOAT	0x03
+#define FY_SIG_TAG_STRING	0x04
+#define FY_SIG_TAG_SEQUENCE	0x05
+#define FY_SIG_TAG_MAPPING	0x06
+#define FY_SIG_TAG_ALIAS	0x07
+#define FY_SIG_TAG_INDIRECT	0x08
+
+static inline void
+fy_sig_update_u8(struct fy_blake3_hasher *h, uint8_t b)
+{
+	fy_blake3_hasher_update(h, &b, 1);
+}
+
+static inline void
+fy_sig_update_u64(struct fy_blake3_hasher *h, uint64_t v)
+{
+	uint8_t b[8];
+	unsigned int i;
+
+	for (i = 0; i < 8; i++)
+		b[i] = (uint8_t)(v >> (i * 8));
+	fy_blake3_hasher_update(h, b, sizeof(b));
+}
+
+static int
+fy_generic_signature_visit(struct fy_blake3_hasher *h, fy_generic v,
+			   enum fy_generic_signature_flags sflags)
+{
+	enum fy_generic_type type;
+	const fy_generic *items;
+	fy_generic anchor;
+	size_t i, count, len;
+	const char *str;
+	fy_generic_indirect gi;
+	uint64_t flags;
+	int rc;
+
+	/* invalid values are not permitted in a signature */
+	if (fy_generic_is_invalid(v))
+		return -1;
+
+	if (fy_generic_is_indirect(v)) {
+		if (sflags & FYGSF_WITH_INDIRECTS) {
+			fy_generic_indirect_get(v, &gi);
+			fy_sig_update_u8(h, FY_SIG_TAG_INDIRECT);
+			fy_sig_update_u64(h, (uint64_t)gi.flags);
+			flags = (uint64_t)gi.flags & FYGIF_CONTENT_MASK;
+			while (flags) {
+				i = fy_bit64_lowest(flags);
+				flags &= ~FY_BIT64(i);
+				rc = fy_generic_signature_visit(h, gi.vindirect[i], sflags);
+				if (rc != 0)
+					return rc;
+			}
+			return 0;
+		}
+
+		/* content only: aliases stay structural, all else is stripped */
+		if (fy_generic_is_alias(v)) {
+			anchor = fy_generic_indirect_get_anchor(v);
+
+			fy_sig_update_u8(h, FY_SIG_TAG_ALIAS);
+			str = fy_generic_get_string_size_alloca(anchor, &len);
+			fy_sig_update_u64(h, (uint64_t)len);
+			if (str && len)
+				fy_blake3_hasher_update(h, str, len);
+			return 0;
+		}
+
+		v = fy_generic_indirect_get_value(v);
+		if (fy_generic_is_invalid(v))
+			return -1;
+	}
+
+	type = fy_generic_get_type(v);
+	switch (type) {
+	case FYGT_NULL:
+		fy_sig_update_u8(h, FY_SIG_TAG_NULL);
+		break;
+
+	case FYGT_BOOL:
+		fy_sig_update_u8(h, FY_SIG_TAG_BOOL);
+		fy_sig_update_u8(h, fy_generic_get_bool_type_no_check(v) ? 1 : 0);
+		break;
+
+	case FYGT_INT:
+		fy_sig_update_u8(h, FY_SIG_TAG_INT);
+		fy_sig_update_u64(h, (uint64_t)fy_generic_get_int_type_no_check(v));
+		break;
+
+	case FYGT_FLOAT: {
+		union { double d; uint64_t u; } fu;
+
+		fu.d = fy_generic_get_float_type_no_check(v);
+		fy_sig_update_u8(h, FY_SIG_TAG_FLOAT);
+		fy_sig_update_u64(h, fu.u);
+		break;
+	}
+
+	case FYGT_STRING:
+		str = fy_generic_get_string_size_alloca(v, &len);
+		fy_sig_update_u8(h, FY_SIG_TAG_STRING);
+		fy_sig_update_u64(h, (uint64_t)len);
+		if (str && len)
+			fy_blake3_hasher_update(h, str, len);
+		break;
+
+	case FYGT_SEQUENCE:
+		items = fy_generic_sequence_get_items(v, &count);
+		fy_sig_update_u8(h, FY_SIG_TAG_SEQUENCE);
+		fy_sig_update_u64(h, (uint64_t)count);
+		for (i = 0; i < count; i++) {
+			rc = fy_generic_signature_visit(h, items[i], sflags);
+			if (rc != 0)
+				return rc;
+		}
+		break;
+
+	case FYGT_MAPPING:
+		items = fy_generic_mapping_get_items(v, &count);	/* 2 * pairs */
+		fy_sig_update_u8(h, FY_SIG_TAG_MAPPING);
+		fy_sig_update_u64(h, (uint64_t)(count / 2));
+		for (i = 0; i < count; i++) {
+			rc = fy_generic_signature_visit(h, items[i], sflags);
+			if (rc != 0)
+				return rc;
+		}
+		break;
+
+	default:
+		/* unreachable for a valid value (indirect/alias handled above) */
+		return -1;
+	}
+
+	return 0;
+}
+
+int fy_generic_signature(fy_generic v, enum fy_generic_signature_flags flags,
+			 uint8_t out[FY_BLAKE3_OUT_LEN])
+{
+	struct fy_blake3_hasher_cfg hcfg;
+	struct fy_blake3_hasher *h;
+	const uint8_t *digest;
+	int rc;
+
+	if (!out)
+		return -1;
+
+	/* invalid values are not permitted in a signature */
+	if (fy_generic_is_invalid(v))
+		return -1;
+
+	memset(&hcfg, 0, sizeof(hcfg));
+	h = fy_blake3_hasher_create(&hcfg);
+	if (!h)
+		return -1;
+
+	/* domain separation between the two signature variants */
+	fy_blake3_hasher_update(h, "libfyaml-generic-signature",
+				sizeof("libfyaml-generic-signature") - 1);
+	fy_sig_update_u8(h, (flags & FYGSF_WITH_INDIRECTS) ? 1 : 0);
+
+	rc = fy_generic_signature_visit(h, v, flags);
+	if (rc == 0) {
+		digest = fy_blake3_hasher_finalize(h);
+		if (digest)
+			memcpy(out, digest, FY_BLAKE3_OUT_LEN);
+		else
+			rc = -1;
+	}
+
+	fy_blake3_hasher_destroy(h);
 	return rc;
 }
 

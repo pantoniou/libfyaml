@@ -18,6 +18,7 @@
 #include <libfyaml/libfyaml-vlsize.h>
 #include <libfyaml/libfyaml-atomics.h>
 #include <libfyaml/libfyaml-dociter.h>
+#include <libfyaml/libfyaml-blake3.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -2778,6 +2779,36 @@ struct fy_generic_storage_stats {
  */
 int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
 				  struct fy_generic_storage_stats *stats)
+	FY_EXPORT;
+
+/**
+ * enum fy_generic_signature_flags - Control what a generic signature covers.
+ *
+ * Controls the generation of the generic signature
+ *
+ * @FYGSF_CONTENT_ONLY:   Hash only the underlying data and structure
+ * @FYGSF_WITH_INDIRECTS: Hash indirect metadata as well
+ */
+enum fy_generic_signature_flags {
+	FYGSF_CONTENT_ONLY	= 0,
+	FYGSF_WITH_INDIRECTS	= FY_BIT(0),
+};
+
+/**
+ * fy_generic_signature() - Compute a BLAKE3 signature of a generic value tree.
+ *
+ * Walks @v in a fixed canonical order, feeding a type-tagged, length-prefixed
+ * byte stream into BLAKE3, and writes the resulting digest to @out.
+ *
+ * @v:     The root generic value to sign.
+ * @flags: Bitmask of &enum fy_generic_signature_flags.
+ * @out:   Receives the FY_BLAKE3_OUT_LEN-byte digest.  Must not be NULL.
+ *
+ * Returns:
+ * 0 on success, -1 on error
+ */
+int fy_generic_signature(fy_generic v, enum fy_generic_signature_flags flags,
+			 uint8_t out[FY_BLAKE3_OUT_LEN])
 	FY_EXPORT;
 
 /**
