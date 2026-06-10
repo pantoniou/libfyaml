@@ -32,6 +32,7 @@ struct fy_allocator_stats;
 
 struct fy_allocator_stats;
 struct fy_allocator_info;
+struct fy_allocator_snapshot;
 
 struct fy_allocator_ops {
 	int (*setup)(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg);
@@ -54,6 +55,18 @@ struct fy_allocator_ops {
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 	enum fy_allocator_cap_flags (*get_caps)(struct fy_allocator *a);	/* Get capability flags (FYACF_*) */
 	bool (*contains)(struct fy_allocator *a, int tag, const void *ptr);
+	/* durable snapshot support (optional; NULL if unsupported) */
+	int (*snapshot)(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap);
+	void (*snapshot_release)(struct fy_allocator *a, struct fy_allocator_snapshot *snap);
+};
+
+/* a durable snapshot of an allocator */
+struct fy_allocator_snapshot {
+	int tag;		/* the tag captured */
+	int content_tag;	/* parent tag holding the content (values) */
+	int index_tag;		/* parent tag holding the merged self-contained index */
+	void *root;		/* merged tag-data within the index region */
+	struct fy_allocator_info *info;	/* content + index regions; freed by snapshot_release */
 };
 
 struct fy_allocator_stats {
@@ -326,6 +339,37 @@ static inline bool
 fy_allocator_contains_nocheck(struct fy_allocator *a, int tag, const void *ptr)
 {
 	return a->ops->contains(a, tag, ptr);
+}
+
+static inline int
+fy_allocator_snapshot_nocheck(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap)
+{
+	if (!a->ops->snapshot)
+		return -1;
+	return a->ops->snapshot(a, tag, snap);
+}
+
+static inline void
+fy_allocator_snapshot_release_nocheck(struct fy_allocator *a, struct fy_allocator_snapshot *snap)
+{
+	if (a->ops->snapshot_release)
+		a->ops->snapshot_release(a, snap);
+}
+
+static inline int
+fy_allocator_snapshot(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap)
+{
+	if (!a || !snap)
+		return -1;
+	return fy_allocator_snapshot_nocheck(a, tag, snap);
+}
+
+static inline void
+fy_allocator_snapshot_release(struct fy_allocator *a, struct fy_allocator_snapshot *snap)
+{
+	if (!a || !snap)
+		return;
+	fy_allocator_snapshot_release_nocheck(a, snap);
 }
 
 #endif
