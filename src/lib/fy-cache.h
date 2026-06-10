@@ -31,7 +31,18 @@ struct fy_parse_cache_entry {
 	void *map;
 	size_t map_size;
 	bool mmaped;
+	struct fy_allocator *restored;		/* the mutable one */
+	struct fy_allocator *restored_backing;	/* when dedup a read-only */
+	void *index_map;
+	size_t index_map_size;
+	bool index_mmaped;
 };
+
+struct fy_parse_cache_entry *
+fy_parse_cache_load_restore_cfg(const struct fy_parse_cfg *cfg, const char *file);
+struct fy_parse_cache_entry *
+fy_parse_cache_load_restore_data_cfg(const struct fy_parse_cfg *cfg,
+				     const void *data, size_t size);
 
 bool fy_parse_cache_enabled(const struct fy_parser *fyp, const char *file);
 void fy_parse_cache_build_cleanup(struct fy_parser *fyp);

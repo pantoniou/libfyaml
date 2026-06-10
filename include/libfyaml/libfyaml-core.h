@@ -7629,6 +7629,10 @@ fy_parse_event_vcreate(struct fy_parser *fyp, enum fy_event_type type, va_list a
  * @arena_size: Size in bytes of the serialized arena
  * @map_size: Total mapped payload size in bytes
  * @header_size: Total header size in bytes, including stored source name
+ * @index_root: Merged dedup tag-data pointer recorded in the header, or 0 if
+ *              no dedup index was persisted (see @has_dedup_index)
+ * @has_dedup_index: True if a dedup index was persisted with this cache entry
+ *                   (so a load+restore can keep deduplicating against it)
  *
  * This structure is filled by fy_parse_cache_file_info_load() and by
  * callbacks passed to fy_parse_cache_walk().
@@ -7651,6 +7655,8 @@ struct fy_parse_cache_file_info {
 	size_t arena_size;
 	size_t map_size;
 	size_t header_size;
+	uint64_t index_root;
+	bool has_dedup_index;
 };
 
 /**

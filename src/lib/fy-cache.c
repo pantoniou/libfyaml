@@ -35,6 +35,7 @@
 #ifdef HAVE_GENERIC
 #include "fy-generic.h"
 #include "fy-generic-decoder.h"
+#include "fy-allocator-dedup.h"
 
 #if !defined(_WIN32) && !defined(MAP_FIXED_NOREPLACE)
 #define MAP_FIXED_NOREPLACE 0
@@ -43,7 +44,7 @@
 #define RENAME_NOREPLACE (1U << 0)
 #endif
 
-#define FY_PARSE_CACHE_VERSION 4u
+#define FY_PARSE_CACHE_VERSION 6u
 #define FY_PARSE_CACHE_ENDIAN 0x12345678u
 #define FY_PARSE_CACHE_MIN_FILE_SIZE_ENV "FY_PARSE_CACHE_MIN_FILE_SIZE"
 #define FY_PARSE_CACHE_FORCE_RELOCATE_ENV "FY_PARSE_CACHE_FORCE_RELOCATE"
@@ -66,6 +67,10 @@ static const uint8_t fy_parse_cache_magic[8] = {
 	0xff, 'F', 'Y', 'G', 'C', 'H', '0', '1'
 };
 
+static const uint8_t fy_parse_cache_index_magic[8] = {
+	0xff, 'F', 'Y', 'G', 'I', 'H', '0', '1'
+};
+
 struct fy_parse_cache_header {
 	char magic[8];
 	uint32_t version;
@@ -82,13 +87,30 @@ struct fy_parse_cache_header {
 	uint64_t map_size;
 	uint64_t arena_file_offset;
 	uint64_t source_name_size;
+	uint64_t has_index;
+};
+
+struct fy_parse_cache_index_header {
+	char magic[8];
+	uint32_t version;
+	uint32_t endian;
+	uint32_t ptr_size;
+	uint32_t header_size;
+	uint8_t b3sum[FY_BLAKE3_OUT_LEN];
+	uint64_t index_root;	/* store-time absolute addr of merged tag-data in the blob */
+	uint64_t arena_base;	/* index blob base */
+	uint64_t arena_size;
+	uint64_t map_base;
+	uint64_t map_size;
+	uint64_t arena_file_offset;
 };
 
 static struct fy_parse_cache_entry *
 fy_parse_cache_load_file_with_validation(const char *file,
 					 bool validate_cfg,
 					 enum fy_parse_cfg_flags expect_flags,
-					 enum fy_generic_decoder_parse_flags expect_dflags);
+					 enum fy_generic_decoder_parse_flags expect_dflags,
+					 bool restore);
 
 static void fy_parse_cache_bytes_to_hex(const uint8_t *data, size_t len, char *hex)
 {
@@ -447,6 +469,23 @@ static const char *fy_parse_cache_path_from_hex(char *buf, size_t len, const cha
 	return buf;
 }
 
+static const char *
+fy_parse_cache_index_path(const char *content_path, char *buf, size_t len)
+{
+	size_t n;
+
+	if (!content_path)
+		return NULL;
+	n = strlen(content_path);
+	if (n < 5 || strcmp(content_path + n - 5, ".fygc"))
+		return NULL;
+	if (n + 1 > len)
+		return NULL;
+	memcpy(buf, content_path, n - 4);
+	memcpy(buf + n - 4, "fygi", 5);	/* incl. NUL */
+	return buf;
+}
+
 static const char *fy_parse_cache_stage_path(char *buf, size_t len, bool mkdirs)
 {
 	char dirbuf[PATH_MAX];
@@ -494,6 +533,50 @@ static bool fy_parse_cache_align_payload(uintptr_t arena_base, size_t arena_size
 	*map_sizep = map_size;
 	*arena_file_offsetp = arena_file_offset;
 	return true;
+}
+
+/* allocate a writable, page-granular buffer to relocate cache data into and freeze */
+static void *
+fy_cache_reloc_buf(size_t size, size_t *alloc_size_out, bool *mmaped_out)
+{
+	void *p;
+	size_t pgsz;
+	size_t asz;
+
+	pgsz = (size_t)sysconf(_SC_PAGESIZE);
+	asz = fy_size_t_align(size, pgsz);
+#ifndef _WIN32
+	p = mmap(NULL, asz, PROT_READ | PROT_WRITE,
+		       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	if (p != MAP_FAILED) {
+		*alloc_size_out = asz;
+		*mmaped_out = true;
+		return p;
+	}
+#endif
+	p = fy_align_alloc(pgsz, asz);
+	if (p) {
+		*alloc_size_out = asz;
+		*mmaped_out = false;
+		return p;
+	}
+
+	return NULL;
+}
+
+/* freeze a relocated buffer/mapping read-only (no-op for plain malloc) */
+static void
+fy_cache_freeze_buf(void *p, size_t alloc_size, bool mmaped)
+{
+#ifndef _WIN32
+	if (mmaped)
+		mprotect(p, alloc_size, PROT_READ);
+#else
+	(void)p;
+	(void)alloc_size;
+	(void)mmaped;
+#endif
 }
 
 bool fy_parse_cache_is_cache_file(const char *file)
@@ -551,6 +634,18 @@ void fy_parse_cache_entry_destroy(struct fy_parse_cache_entry *entry)
 {
 	if (!entry)
 		return;
+	/* tear down the restored allocator before its mapped base disappears */
+	if (entry->restored)
+		fy_allocator_destroy(entry->restored);
+	if (entry->restored_backing)
+		fy_allocator_destroy(entry->restored_backing);
+	/* the restored read-only layer pointed into the index blob: free it next */
+	if (entry->index_map) {
+		if (entry->index_mmaped)
+			munmap(entry->index_map, entry->index_map_size);
+		else
+			free(entry->index_map);
+	}
 	fy_generic_iterator_destroy(entry->fygi);
 	if (entry->mmaped)
 		munmap(entry->map, entry->map_size);
@@ -578,7 +673,7 @@ struct fy_parse_cache_entry *fy_parse_cache_load(struct fy_parser *fyp, const ch
 	flags = fyp->cfg.flags & ~FYPCF_ENABLE_CACHE;
 	dflags = fy_parse_cache_decoder_flags(flags);
 
-	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags);
+	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags, false);
 }
 
 struct fy_parse_cache_entry *fy_parse_cache_load_cfg(const struct fy_parse_cfg *cfg, const char *file)
@@ -616,14 +711,292 @@ struct fy_parse_cache_entry *fy_parse_cache_load_data_cfg(const struct fy_parse_
 	flags = cfg->flags & ~FYPCF_ENABLE_CACHE;
 	dflags = fy_parse_cache_decoder_flags(flags);
 
-	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags);
+	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags, false);
+}
+
+struct fy_parse_cache_entry *
+fy_parse_cache_load_restore_cfg(const struct fy_parse_cfg *cfg, const char *file)
+{
+	char pathbuf[PATH_MAX];
+	const char *path;
+	char hex[65];
+	enum fy_parse_cfg_flags flags;
+	enum fy_generic_decoder_parse_flags dflags;
+
+	if (!fy_parse_cache_cfg_enabled(cfg, file) ||
+	    !fy_parse_cache_key_flags(cfg->flags, file, hex))
+		return NULL;
+
+	path = fy_parse_cache_path_from_hex(pathbuf, sizeof(pathbuf), hex, false);
+	if (!path)
+		return NULL;
+
+	flags = cfg->flags & ~FYPCF_ENABLE_CACHE;
+	dflags = fy_parse_cache_decoder_flags(flags);
+
+	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags, true);
+}
+
+struct fy_parse_cache_entry *
+fy_parse_cache_load_restore_data_cfg(const struct fy_parse_cfg *cfg,
+				     const void *data, size_t size)
+{
+	char pathbuf[PATH_MAX];
+	const char *path;
+	char hex[65];
+	enum fy_parse_cfg_flags flags;
+	enum fy_generic_decoder_parse_flags dflags;
+
+	if (!fy_parse_cache_cfg_enabled_for_data(cfg, size) ||
+	    !fy_parse_cache_key_bytes_flags(cfg->flags, data, size, hex))
+		return NULL;
+
+	path = fy_parse_cache_path_from_hex(pathbuf, sizeof(pathbuf), hex, false);
+	if (!path)
+		return NULL;
+
+	flags = cfg->flags & ~FYPCF_ENABLE_CACHE;
+	dflags = fy_parse_cache_decoder_flags(flags);
+
+	return fy_parse_cache_load_file_with_validation(path, true, flags, dflags, true);
+}
+
+static int
+fy_parse_cache_entry_attach_restore(struct fy_parse_cache_entry *entry, void *index_root)
+{
+	struct fy_dedup_restore_cfg rcfg;
+	struct fy_allocator *backing, *restored;
+	struct fy_dedup_tag_data *dtd;
+
+	if (!index_root)
+		return -1;
+
+	dtd = index_root;
+
+	backing = fy_allocator_create("mremap", NULL);
+	if (!backing)
+		return -1;
+
+	memset(&rcfg, 0, sizeof(rcfg));
+	rcfg.base.parent_allocator = backing;
+	rcfg.base.dedup_threshold = dtd->dedup_threshold;
+	rcfg.root = index_root;
+
+	restored = fy_dedup_restore(FY_PARENT_ALLOCATOR_MALLOC, FY_ALLOC_TAG_NONE, &rcfg);
+	if (!restored) {
+		fy_allocator_destroy(backing);
+		return -1;
+	}
+
+	entry->restored = restored;
+	entry->restored_backing = backing;
+	return 0;
+}
+
+/* fill a combined 2-entry reloc (content + index ranges), sorted by src */
+static void
+fy_cache_index_reloc(struct fy_arena_reloc rl[2],
+		     const struct fy_parse_cache_header *chdr, void *content_dst,
+		     const struct fy_parse_cache_index_header *ihdr, void *index_dst)
+{
+	struct fy_arena_reloc tmp;
+
+	rl[0].src.i = (uintptr_t)chdr->arena_base;
+	rl[0].srce.i = (uintptr_t)chdr->arena_base + (size_t)chdr->arena_size;
+	rl[0].dst.p = content_dst;
+	rl[0].size = (size_t)chdr->arena_size;
+	rl[1].src.i = (uintptr_t)ihdr->arena_base;
+	rl[1].srce.i = (uintptr_t)ihdr->arena_base + (size_t)ihdr->arena_size;
+	rl[1].dst.p = index_dst;
+	rl[1].size = (size_t)ihdr->arena_size;
+	if (rl[1].src.i < rl[0].src.i) {	/* sort by src (only two entries) */
+		tmp = rl[0];
+		rl[0] = rl[1];
+		rl[1] = tmp;
+	}
+}
+
+/*
+ * Load the sibling dedup-index file for @content_path and attach it to @entry so
+ * it can keep deduplicating against the cached set.
+ *
+ * Map the index private+writable at its stored base. If it lands there its internal
+ * pointers are already valid, and if the content also loaded
+ * at its base (de->mem targets) no relocation is needed at all.
+ *
+ * If only the content moved, de->mem are rebased in place (copy-on-write touches
+ * just those pages).
+ *
+ * If the base is unavailable (or a forced relocate / Windows) it falls back to
+ * copying the index and relocating through a combined reloc spanning both the content
+ * and index ranges.
+ */
+static void
+fy_cache_restore_index(struct fy_parse_cache_entry *entry, const char *content_path,
+		       const struct fy_parse_cache_header *chdr)
+{
+	char ipathbuf[PATH_MAX];
+	const char *ipath;
+	struct fy_parse_cache_index_header ihdr;
+	struct fy_arena_reloc rl[2];
+	uintptr_t map_base;
+	size_t file_size, map_size, arena_file_offset, copy_size = 0;
+	void *map = NULL, *copy = NULL, *iroot;
+	bool content_at_base, force_reloc, copy_mmaped = false;
+	int fd = -1, prot;
+#ifdef _WIN32
+	off_t read_off;
+#endif
+
+	ipath = fy_parse_cache_index_path(content_path, ipathbuf, sizeof(ipathbuf));
+	if (!ipath)
+		return;
+
+	file_size = fy_parse_cache_regular_file_size(ipath);
+	if (!file_size)
+		return;
+
+	fd = open(ipath, O_RDONLY);
+	if (fd < 0)
+		return;
+	if (read(fd, &ihdr, sizeof(ihdr)) != sizeof(ihdr))
+		goto out;
+
+	if (memcmp(ihdr.magic, fy_parse_cache_index_magic, sizeof(ihdr.magic)) ||
+	    ihdr.version != FY_PARSE_CACHE_VERSION ||
+	    ihdr.endian != FY_PARSE_CACHE_ENDIAN ||
+	    ihdr.ptr_size != sizeof(void *) ||
+	    ihdr.header_size < sizeof(ihdr) ||
+	    ihdr.arena_size == 0 || ihdr.arena_size > SIZE_MAX ||
+	    ihdr.map_size == 0 || ihdr.map_size > SIZE_MAX ||
+	    ihdr.arena_file_offset > SIZE_MAX ||
+	    ihdr.arena_file_offset + ihdr.map_size < ihdr.arena_file_offset ||
+	    ihdr.arena_file_offset + ihdr.map_size > (uint64_t)file_size ||
+	    memcmp(ihdr.b3sum, chdr->b3sum, sizeof(ihdr.b3sum)))	/* must pair the content file */
+		goto out;
+
+	if (!fy_parse_cache_align_payload((uintptr_t)ihdr.arena_base, (size_t)ihdr.arena_size,
+					  (size_t)ihdr.header_size, &map_base, &map_size,
+					  &arena_file_offset) ||
+	    ihdr.map_base != (uint64_t)map_base ||
+	    ihdr.map_size != (uint64_t)map_size ||
+	    ihdr.arena_file_offset != (uint64_t)arena_file_offset)
+		goto out;
+
+	content_at_base = (uintptr_t)entry->arena == (uintptr_t)chdr->arena_base;
+	force_reloc = fy_parse_cache_force_relocate();
+#ifdef _WIN32
+	force_reloc = true;	/* no fixed mmap; use the copy path below */
+#endif
+
+	if (!force_reloc) {
+		/*
+		 * If the content also loaded at its base, an at-base index needs no
+		 * relocation at all - map it read-only to enforce immutability. If only
+		 * the content moved we must rebase de->mem in place, so map it
+		 * writable (copy-on-write touches just those pages).
+		 */
+		prot = content_at_base ? PROT_READ : (PROT_READ | PROT_WRITE);
+
+#ifdef MAP_FIXED_NOREPLACE
+		map = mmap((void *)map_base, map_size, prot,
+			   MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, (off_t)arena_file_offset);
+#else
+		map = mmap((void *)map_base, map_size, prot,
+			   MAP_PRIVATE, fd, (off_t)arena_file_offset);
+#endif
+		if (map == MAP_FAILED)
+			map = NULL;
+		else if (map != (void *)map_base) {
+			munmap(map, map_size);
+			map = NULL;
+		}
+	}
+
+	if (map) {
+		/* index sits at its stored base: its own pointers are valid */
+		iroot = (void *)(uintptr_t)ihdr.index_root;
+		if (!content_at_base) {
+			/* content moved: rebase de->mem in place (COW); the index
+			 * range is an identity entry (already at base) */
+			fy_cache_index_reloc(rl, chdr, entry->arena, &ihdr,
+					     (void *)(uintptr_t)ihdr.arena_base);
+			if (fy_dedup_index_relocate(rl, 2, (void *)(uintptr_t)ihdr.arena_base,
+						    (size_t)ihdr.arena_size, iroot))
+				goto out;
+			/* relocated in place; now immutable -> enforce read-only */
+			fy_cache_freeze_buf(map, map_size, true);
+		}
+		if (fy_parse_cache_entry_attach_restore(entry, iroot) == 0) {
+			entry->index_map = map;		/* owned by the entry now */
+			entry->index_map_size = map_size;
+			entry->index_mmaped = true;
+			map = NULL;
+		}
+		goto out;
+	}
+
+	/*
+	 * fallback: copy the index into a private, page-granular buffer, relocate
+	 * it, then freeze it read-only (it is a quiescent read-only base).
+	 */
+	copy = fy_cache_reloc_buf((size_t)ihdr.arena_size, &copy_size, &copy_mmaped);
+	if (!copy)
+		goto out;
+#ifdef _WIN32
+	read_off = (off_t)arena_file_offset +
+		(off_t)((uintptr_t)ihdr.arena_base - (uintptr_t)map_base);
+
+	if (lseek(fd, read_off, SEEK_SET) < 0 ||
+	    read(fd, copy, (size_t)ihdr.arena_size) != (ssize_t)ihdr.arena_size)
+		goto out;
+#else
+	map = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, (off_t)arena_file_offset);
+	if (map == MAP_FAILED) {
+		map = NULL;
+		goto out;
+	}
+	memcpy(copy, (char *)map + ((uintptr_t)ihdr.arena_base - (uintptr_t)map_base),
+	       (size_t)ihdr.arena_size);
+	munmap(map, map_size);
+	map = NULL;
+#endif
+
+	fy_cache_index_reloc(rl, chdr, entry->arena, &ihdr, copy);
+	iroot = fy_arena_reloc_ptr(rl, 2, copy, (size_t)ihdr.arena_size,
+				   (void *)(uintptr_t)ihdr.index_root);
+	if (!iroot)
+		goto out;
+	if (fy_dedup_index_relocate(rl, 2, copy, (size_t)ihdr.arena_size, iroot))
+		goto out;
+	fy_cache_freeze_buf(copy, copy_size, copy_mmaped);
+
+	if (fy_parse_cache_entry_attach_restore(entry, iroot) == 0) {
+		entry->index_map = copy;	/* owned by the entry now */
+		entry->index_map_size = copy_size;
+		entry->index_mmaped = copy_mmaped;
+		copy = NULL;
+	}
+
+out:
+	if (map)
+		munmap(map, map_size);
+	if (copy) {
+		if (copy_mmaped)
+			munmap(copy, copy_size);
+		else
+			free(copy);
+	}
+	if (fd >= 0)
+		close(fd);
 }
 
 static struct fy_parse_cache_entry *
 fy_parse_cache_load_file_with_validation(const char *file,
 					 bool validate_cfg,
 					 enum fy_parse_cfg_flags expect_flags,
-					 enum fy_generic_decoder_parse_flags expect_dflags)
+					 enum fy_generic_decoder_parse_flags expect_dflags,
+					 bool restore)
 {
 	int fd = -1;
 	struct fy_parse_cache_header hdr;
@@ -636,11 +1009,11 @@ fy_parse_cache_load_file_with_validation(const char *file,
 	off_t read_off;
 #endif
 	uintptr_t map_base;
-	size_t file_size, map_size, arena_file_offset;
+	size_t file_size, map_size, arena_file_offset, copy_size = 0;
 	fy_generic vdir;
 	struct fy_arena_reloc reloc;
 	struct fy_parse_cache_entry *entry = NULL;
-	bool force_reloc;
+	bool force_reloc, copy_mmaped = false;
 
 	if (!file)
 		return NULL;
@@ -693,11 +1066,11 @@ fy_parse_cache_load_file_with_validation(const char *file,
 
 	if (!force_reloc) {
 #ifdef MAP_FIXED_NOREPLACE
-		map = mmap((void *)map_base, map_size, PROT_READ | PROT_WRITE,
+		map = mmap((void *)map_base, map_size, PROT_READ,
 			   MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, (off_t)arena_file_offset);
 #else
 		/* no FIXED_NOREPLACE, make one last attempt by providing a base */
-		map = mmap((void *)map_base, map_size, PROT_READ | PROT_WRITE,
+		map = mmap((void *)map_base, map_size, PROT_READ,
 			   MAP_PRIVATE, fd, (off_t)arena_file_offset);
 #endif
 
@@ -712,8 +1085,11 @@ fy_parse_cache_load_file_with_validation(const char *file,
 		vdir.v = (fy_generic_value)hdr.root;
 		entry = fy_parse_cache_entry_create(vdir, (void *)(uintptr_t)hdr.arena_base,
 						    (size_t)hdr.arena_size, map, map_size, true);
-		if (entry)
+		if (entry) {
 			map = NULL;
+			if (restore && hdr.has_index)
+				fy_cache_restore_index(entry, file, &hdr);
+		}
 		goto out;
 	}
 #ifdef _WIN32
@@ -724,15 +1100,12 @@ fy_parse_cache_load_file_with_validation(const char *file,
 	read_off = (off_t)arena_file_offset +
 		   (off_t)((uintptr_t)hdr.arena_base - (uintptr_t)map_base);
 
-	copy = malloc((size_t)hdr.arena_size);
+	copy = fy_cache_reloc_buf((size_t)hdr.arena_size, &copy_size, &copy_mmaped);
 	if (!copy)
 		goto out;
 	if (lseek(fd, read_off, SEEK_SET) < 0 ||
-	    read(fd, copy, (size_t)hdr.arena_size) != (ssize_t)hdr.arena_size) {
-		free(copy);
-		copy = NULL;
+	    read(fd, copy, (size_t)hdr.arena_size) != (ssize_t)hdr.arena_size)
 		goto out;
-	}
 #else
 	map = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, (off_t)arena_file_offset);
 	if (map == MAP_FAILED) {
@@ -740,7 +1113,7 @@ fy_parse_cache_load_file_with_validation(const char *file,
 		goto out;
 	}
 	arena = (char *)map + ((uintptr_t)hdr.arena_base - (uintptr_t)hdr.map_base);
-	copy = malloc((size_t)hdr.arena_size);
+	copy = fy_cache_reloc_buf((size_t)hdr.arena_size, &copy_size, &copy_mmaped);
 	if (!copy)
 		goto out;
 	memcpy(copy, arena, (size_t)hdr.arena_size);
@@ -751,23 +1124,33 @@ fy_parse_cache_load_file_with_validation(const char *file,
 	reloc.dst.p = copy;
 	reloc.size = (size_t)hdr.arena_size;
 	vdir = fy_generic_arena_relocate(&reloc, 1, copy, (size_t)hdr.arena_size, vdir);
+	/* relocated; the content is now immutable -> enforce read-only */
+	fy_cache_freeze_buf(copy, copy_size, copy_mmaped);
 	entry = fy_parse_cache_entry_create(vdir, copy,
-					    (size_t)hdr.arena_size, copy, (size_t)hdr.arena_size, false);
-	if (entry)
+					    (size_t)hdr.arena_size, copy, copy_size, copy_mmaped);
+	if (entry) {
 		copy = NULL;
+		if (restore && hdr.has_index)
+			fy_cache_restore_index(entry, file, &hdr);
+	}
 
 out:
 	if (fd >= 0)
 		close(fd);
 	if (map)
 		munmap(map, map_size);
-	free(copy);
+	if (copy) {
+		if (copy_mmaped)
+			munmap(copy, copy_size);
+		else
+			free(copy);
+	}
 	return entry;
 }
 
 struct fy_parse_cache_entry *fy_parse_cache_load_file(const char *file)
 {
-	return fy_parse_cache_load_file_with_validation(file, false, 0, 0);
+	return fy_parse_cache_load_file_with_validation(file, false, 0, 0, false);
 }
 
 int fy_parse_cache_file_info_load(const char *file, struct fy_parse_cache_file_info *info)
@@ -833,6 +1216,8 @@ int fy_parse_cache_file_info_load(const char *file, struct fy_parse_cache_file_i
 	info->arena_size = (size_t)hdr.arena_size;
 	info->map_size = (size_t)hdr.map_size;
 	info->header_size = (size_t)hdr.header_size;
+	info->index_root = 0;	/* index now lives in the sibling .fygi file */
+	info->has_dedup_index = hdr.has_index != 0;
 	close(fd);
 	return 0;
 err_out:
@@ -841,25 +1226,259 @@ err_out:
 	return -1;
 }
 
+static int fy_cache_reloc_src_cmp(const void *va, const void *vb)
+{
+	const struct fy_arena_reloc *a = va, *b = vb;
+
+	return a->src.i < b->src.i ? -1 : a->src.i > b->src.i ? 1 : 0;
+}
+
+/* count arenas (and total bytes) across all tags in @info */
+static unsigned int
+fy_cache_count_arenas(const struct fy_allocator_info *info)
+{
+	unsigned int i, j, n = 0;
+
+	for (i = 0; i < info->num_tag_infos; i++)
+		n += info->tag_infos[i].num_arena_infos;
+	(void)j;
+	return n;
+}
+
+/* pack every arena whose parent tag == @want_tag into a fresh malloc'd image */
+static void *
+fy_cache_pack_tag(const struct fy_allocator_info *info, int want_tag,
+		  struct fy_arena_reloc *reloc, unsigned int *ridx, size_t *size_out)
+{
+	size_t total = 0, off = 0;
+	unsigned int i, j;
+	void *image;
+	struct fy_allocator_arena_info *arena;
+
+	for (i = 0; i < info->num_tag_infos; i++) {
+		if (info->tag_infos[i].tag != want_tag)
+			continue;
+		for (j = 0; j < info->tag_infos[i].num_arena_infos; j++) {
+			total = fy_size_t_align(total, FY_GENERIC_CONTAINER_ALIGN);
+			total += info->tag_infos[i].arena_infos[j].size;
+		}
+	}
+	*size_out = 0;
+	if (!total)
+		return NULL;
+
+	image = malloc(total);
+	if (!image)
+		return NULL;
+
+	for (i = 0; i < info->num_tag_infos; i++) {
+		if (info->tag_infos[i].tag != want_tag)
+			continue;
+		for (j = 0; j < info->tag_infos[i].num_arena_infos; j++) {
+			arena = &info->tag_infos[i].arena_infos[j];
+
+			off = fy_size_t_align(off, FY_GENERIC_CONTAINER_ALIGN);
+			memcpy((char *)image + off, arena->data, arena->size);
+			reloc[*ridx].src.p = arena->data;
+			reloc[*ridx].srce.p = (char *)arena->data + arena->size;
+			reloc[*ridx].dst.p = (char *)image + off;
+			reloc[*ridx].size = arena->size;
+			(*ridx)++;
+			off += arena->size;
+		}
+	}
+	*size_out = total;
+	return image;
+}
+
+/* build two separate images from @snap: the content and dedup-index arenas */
+static int
+fy_cache_build_split_images(const struct fy_allocator_snapshot *snap, fy_generic vdir,
+			    fy_generic *content_root_out,
+			    void **content_img_out, size_t *content_size_out,
+			    void **index_img_out, size_t *index_size_out,
+			    void **index_root_out)
+{
+	struct fy_arena_reloc *reloc;
+	void *content_img = NULL, *index_img = NULL, *iroot = NULL;
+	size_t content_size = 0, index_size = 0;
+	unsigned int nar, ridx = 0;
+	fy_generic rv;
+
+	nar = fy_cache_count_arenas(snap->info);
+	if (!nar)
+		return -1;
+	reloc = malloc(sizeof(*reloc) * nar);
+	if (!reloc)
+		return -1;
+
+	content_img = fy_cache_pack_tag(snap->info, snap->content_tag, reloc, &ridx, &content_size);
+	if (!content_img)
+		goto err_out;	/* content is mandatory */
+	index_img = fy_cache_pack_tag(snap->info, snap->index_tag, reloc, &ridx, &index_size);
+	/* index may legitimately be empty; that is not an error */
+
+	qsort(reloc, ridx, sizeof(*reloc), fy_cache_reloc_src_cmp);
+
+	/* value tree lives in the content image; rebase through the combined map */
+	rv = fy_generic_arena_relocate(reloc, ridx, content_img, content_size, vdir);
+	if (fy_generic_is_invalid(rv))
+		goto err_out;
+
+	if (index_img) {
+		iroot = fy_arena_reloc_ptr(reloc, ridx, NULL, 0, snap->root);
+		if (!iroot)
+			goto err_out;
+		/* de->mem resolves via content reloc entries, index pointers via
+		 * the index entries - all present in the combined array */
+		if (fy_dedup_index_relocate(reloc, ridx, index_img, index_size, iroot))
+			goto err_out;
+	}
+
+	free(reloc);
+	*content_root_out = rv;
+	*content_img_out = content_img;
+	*content_size_out = content_size;
+	*index_img_out = index_img;
+	*index_size_out = index_size;
+	*index_root_out = iroot;
+	return 0;
+
+err_out:
+	free(reloc);
+	free(content_img);
+	free(index_img);
+	return -1;
+}
+
+static int fy_cache_write_pad(FILE *fp, size_t pad)
+{
+	static const char zeros[4096];
+
+	while (pad) {
+		size_t chunk = pad < sizeof(zeros) ? pad : sizeof(zeros);
+
+		if (fwrite(zeros, 1, chunk, fp) != chunk)
+			return -1;
+		pad -= chunk;
+	}
+	return 0;
+}
+
+static int
+fy_cache_write_payload_file(const char *path, const void *hdr, size_t hdr_size,
+			    const void *extra, size_t extra_size,
+			    uintptr_t arena_base, uintptr_t map_base, size_t map_size,
+			    size_t arena_file_offset, const void *blob, size_t blob_size)
+{
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	size_t header_size = hdr_size + extra_size;
+	size_t page_delta = arena_base - map_base;
+	FILE *fp = NULL;
+	int fd = -1, rc = -1;
+
+	tmp = fy_parse_cache_stage_path(tmpbuf, sizeof(tmpbuf), true);
+	if (!tmp)
+		return -1;
+	fd = fy_mkstemp(tmpbuf);
+	if (fd < 0)
+		return -1;
+	fp = fdopen(fd, "wb");
+	if (!fp) {
+		close(fd);
+		unlink(tmpbuf);
+		return -1;
+	}
+
+	if (fwrite(hdr, 1, hdr_size, fp) != hdr_size)
+		goto out;
+	if (extra_size && fwrite(extra, 1, extra_size, fp) != extra_size)
+		goto out;
+	if (fy_cache_write_pad(fp, arena_file_offset + page_delta - header_size))
+		goto out;
+	if (fwrite(blob, 1, blob_size, fp) != blob_size)
+		goto out;
+	if (fy_cache_write_pad(fp, map_size - page_delta - blob_size))
+		goto out;
+	if (fflush(fp))
+		goto out;
+	if (fclose(fp)) {
+		fp = NULL;
+		goto out;
+	}
+	fp = NULL;
+	if (fy_parse_cache_publish(tmpbuf, path) >= 0) {
+		unlink(tmpbuf);
+		rc = 0;
+	}
+
+out:
+	if (fp)
+		fclose(fp);
+	if (rc != 0)
+		unlink(tmpbuf);
+	return rc;
+}
+
+/* fill the geometry + write the sibling dedup-index file (<hash>.fygi) */
+static int
+fy_cache_write_index_file(const char *content_path, const char *hex,
+			  const void *index_img, size_t index_size, void *index_root)
+{
+	char ipathbuf[PATH_MAX];
+	const char *ipath;
+	struct fy_parse_cache_index_header ihdr;
+	uintptr_t arena_base, map_base;
+	size_t map_size, arena_file_offset;
+
+	ipath = fy_parse_cache_index_path(content_path, ipathbuf, sizeof(ipathbuf));
+	if (!ipath)
+		return -1;
+
+	arena_base = (uintptr_t)index_img;
+	if (!fy_parse_cache_align_payload(arena_base, index_size, sizeof(ihdr),
+					  &map_base, &map_size, &arena_file_offset))
+		return -1;
+
+	memset(&ihdr, 0, sizeof(ihdr));
+	memcpy(ihdr.magic, fy_parse_cache_index_magic, sizeof(ihdr.magic));
+	ihdr.version = FY_PARSE_CACHE_VERSION;
+	ihdr.endian = FY_PARSE_CACHE_ENDIAN;
+	ihdr.ptr_size = sizeof(void *);
+	ihdr.header_size = sizeof(ihdr);
+	if (!fy_parse_cache_hex_to_digest(hex, ihdr.b3sum))
+		return -1;
+	ihdr.index_root = (uint64_t)(uintptr_t)index_root;
+	ihdr.arena_base = (uint64_t)arena_base;
+	ihdr.arena_size = (uint64_t)index_size;
+	ihdr.map_base = (uint64_t)map_base;
+	ihdr.map_size = (uint64_t)map_size;
+	ihdr.arena_file_offset = (uint64_t)arena_file_offset;
+
+	return fy_cache_write_payload_file(ipath, &ihdr, sizeof(ihdr), NULL, 0,
+					   arena_base, map_base, map_size,
+					   arena_file_offset, index_img, index_size);
+}
+
 static void fy_parse_cache_store_generic_keyed(const struct fy_parse_cfg *cfg,
 					       const char *hex,
 					       const char *source_text,
 					       struct fy_generic_builder *gb,
 					       fy_generic vdir)
 {
-	char pathbuf[PATH_MAX], tmpbuf[PATH_MAX];
-	const char *path, *tmp;
+	char pathbuf[PATH_MAX];
+	const char *path;
 	enum fy_parse_cfg_flags cache_flags;
 	enum fy_generic_decoder_parse_flags dflags;
-	fy_generic linear_v;
-	const void *linear;
-	size_t linear_size, map_size, arena_file_offset, page_delta, pad;
+	fy_generic content_root;
+	void *content_img = NULL, *index_img = NULL, *index_root = NULL;
+	size_t content_size = 0, index_size = 0, map_size, arena_file_offset;
 	uintptr_t arena_base, map_base;
-	bool aligned;
-	FILE *fp = NULL;
-	int fd = -1;
 	struct fy_parse_cache_header hdr;
 	size_t source_name_size, header_size;
+	struct fy_allocator_snapshot snap;
+	bool have_split = false;
 
 	if (!cfg || !hex || !source_text)
 		return;
@@ -868,98 +1487,78 @@ static void fy_parse_cache_store_generic_keyed(const struct fy_parse_cfg *cfg,
 	if (!path)
 		return;
 
-	tmp = fy_parse_cache_stage_path(tmpbuf, sizeof(tmpbuf), true);
-	if (!tmp)
-		return;
-
 	cache_flags = cfg->flags & ~FYPCF_ENABLE_CACHE;
 	dflags = fy_parse_cache_decoder_flags(cache_flags);
-	linear_v = vdir;
-	linear = fy_generic_builder_linearize(gb, &linear_v, &linear_size);
-	if (!linear || !linear_size || fy_generic_is_invalid(linear_v))
-		return;
+	content_root = vdir;
+
+	/* if the builder's allocator can snapshot its dedup index, split it into
+	 * a content image and an index image. */
+	if (fy_allocator_snapshot(gb->allocator, gb->alloc_tag, &snap) == 0) {
+		have_split = fy_cache_build_split_images(&snap, vdir, &content_root,
+							 &content_img, &content_size,
+							 &index_img, &index_size,
+							 &index_root) == 0;
+		fy_allocator_snapshot_release(gb->allocator, &snap);
+	}
+
+	if (!have_split) {
+		content_root = vdir;
+		/* builder owns this buffer - do not free it (unlike the split images) */
+		content_img = (void *)fy_generic_builder_linearize(gb, &content_root, &content_size);
+		index_img = NULL;
+		index_root = NULL;
+	}
+	if (!content_img || !content_size || fy_generic_is_invalid(content_root))
+		goto out;
 
 	source_name_size = strlen(source_text) + 1;
 	header_size = sizeof(hdr) + source_name_size;
-	arena_base = (uintptr_t)linear;
-	aligned = fy_parse_cache_align_payload(arena_base, linear_size, header_size,
-					  &map_base, &map_size,
-					  &arena_file_offset);
-	if (!aligned)
-		return;
+	arena_base = (uintptr_t)content_img;
+	if (!fy_parse_cache_align_payload(arena_base, content_size, header_size,
+					  &map_base, &map_size, &arena_file_offset))
+		goto out;
 
-	page_delta = arena_base - map_base;
-	fd = fy_mkstemp(tmpbuf);
-	if (fd < 0)
-		goto out;
-	fp = fdopen(fd, "wb");
-	if (!fp)
-		goto out;
-	fd = -1;
 	memset(&hdr, 0, sizeof(hdr));
 	memcpy(hdr.magic, fy_parse_cache_magic, sizeof(hdr.magic));
 	hdr.version = FY_PARSE_CACHE_VERSION;
 	hdr.endian = FY_PARSE_CACHE_ENDIAN;
 	hdr.ptr_size = sizeof(void *);
-	hdr.header_size = sizeof(hdr);
 	if (!fy_parse_cache_hex_to_digest(hex, hdr.b3sum))
 		goto out;
 	hdr.parser_flags = (uint64_t)cache_flags;
 	hdr.decoder_flags = (uint64_t)dflags;
-	hdr.root = (uint64_t)linear_v.v;
-	hdr.arena_base = (uint64_t)(uintptr_t)linear;
-	hdr.arena_size = (uint64_t)linear_size;
+	hdr.root = (uint64_t)content_root.v;
+	hdr.arena_base = (uint64_t)arena_base;
+	hdr.arena_size = (uint64_t)content_size;
 	hdr.map_base = (uint64_t)map_base;
 	hdr.map_size = (uint64_t)map_size;
 	hdr.arena_file_offset = (uint64_t)arena_file_offset;
 	hdr.source_name_size = (uint64_t)source_name_size;
 	hdr.header_size = (uint32_t)header_size;
-	if (fwrite(&hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
-		goto out;
-	if (fwrite(source_text, 1, source_name_size, fp) != source_name_size)
-		goto out;
+	hdr.has_index = index_img ? 1 : 0;
 
-	pad = arena_file_offset + page_delta - header_size;
-	while (pad) {
-		static const char zeros[4096];
-		size_t chunk = pad < sizeof(zeros) ? pad : sizeof(zeros);
+	/* write the index first: if it fails, fall back to a content-only file */
+	if (index_img &&
+	    fy_cache_write_index_file(path, hex, index_img, index_size, index_root) != 0)
+		hdr.has_index = 0;
 
-		if (fwrite(zeros, 1, chunk, fp) != chunk)
-			goto out;
-		pad -= chunk;
-	}
-
-	if (fwrite(linear, 1, linear_size, fp) != linear_size)
-		goto out;
-
-	pad = map_size - page_delta - linear_size;
-	while (pad) {
-		static const char zeros[4096];
-		size_t chunk = pad < sizeof(zeros) ? pad : sizeof(zeros);
-
-		if (fwrite(zeros, 1, chunk, fp) != chunk)
-			goto out;
-		pad -= chunk;
-	}
-	if (fflush(fp))
-		goto out;
-	if (fclose(fp)) {
-		fp = NULL;
-		goto out;
-	}
-	fp = NULL;
-	if (fy_parse_cache_publish(tmp, path) >= 0) {
-		unlink(tmp);
-		tmp = NULL;
+	if (fy_cache_write_payload_file(path, &hdr, sizeof(hdr),
+					source_text, source_name_size,
+					arena_base, map_base, map_size,
+					arena_file_offset, content_img, content_size) != 0) {
+		/* content failed: drop any orphaned index file we just wrote */
+		if (hdr.has_index) {
+			char ipathbuf[PATH_MAX];
+			const char *ipath = fy_parse_cache_index_path(path, ipathbuf, sizeof(ipathbuf));
+			if (ipath)
+				unlink(ipath);
+		}
 	}
 
 out:
-	if (fd >= 0)
-		close(fd);
-	if (fp)
-		fclose(fp);
-	if (tmp)
-		unlink(tmp);
+	if (have_split)
+		free(content_img);	/* split image is malloc'd; linearize buffer is builder-owned */
+	free(index_img);
 }
 
 void fy_parse_cache_store_generic(const struct fy_parse_cfg *cfg, const char *file,
