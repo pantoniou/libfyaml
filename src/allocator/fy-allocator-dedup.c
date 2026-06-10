@@ -572,6 +572,16 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 
 	da = container_of(a, struct fy_dedup_allocator, a);
 
+	/*
+	 * External mode: the tag/index lives in caller-owned (arena) memory shared
+	 * across processes - never tear it down here. Only the per-process control
+	 * (the id bitmap, heap-allocated) is released; da->tags is not ours to free.
+	 */
+	if (da->external) {
+		fy_align_free((void *)da->ids);
+		return;
+	}
+
 	for (i = 0; i < da->tag_count; i++) {
 		dt = fy_dedup_tag_from_tag(da, i);
 		if (!dt)
@@ -583,27 +593,28 @@ static void fy_dedup_cleanup(struct fy_allocator *a)
 	fy_parent_allocator_free(&da->a, da->tags);
 }
 
-static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
+/*
+ * Common setup shared by the owning (fy_dedup_setup) and external
+ * (fy_dedup_create_external) paths: derive geometry, init the allocator fields,
+ * and allocate the per-process id bitmap. Does NOT allocate the tag array or set
+ * up tag 0 - the caller does that according to ownership. When @external, the id
+ * bitmap is heap-allocated (per-process) rather than from @parent.
+ */
+static int fy_dedup_setup_core(struct fy_dedup_allocator *da, struct fy_allocator *parent,
+			       int parent_tag, const struct fy_dedup_allocator_cfg *cfg,
+			       bool external)
 {
-	struct fy_dedup_allocator *da = NULL;
-	const struct fy_dedup_allocator_cfg *cfg;
 	unsigned int bloom_filter_bits, bucket_count_bits;
 	unsigned int bit_shift, chain_length_grow_trigger;
 	size_t dedup_threshold, tmpsz;
 	bool has_estimate;
-	struct fy_dedup_tag *dt;
 	int rc;
 
-	if (!a || !cfg_data)
-		return -1;
-
-	cfg = cfg_data;
 	if (!cfg->parent_allocator)
 		return -1;
 
 	has_estimate = cfg->estimated_content_size && cfg->estimated_content_size != SIZE_MAX;
 
-	/* power of two so ffs = log2 */
 	bit_shift = (unsigned int)fy_id_ffs(FY_ID_BITS_BITS);
 
 	bucket_count_bits = cfg->bucket_count_bits;
@@ -611,14 +622,9 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 		bucket_count_bits = 1;
 		while (((size_t)1 << bucket_count_bits) < (cfg->estimated_content_size / BUCKET_ESTIMATE_DIV))
 			bucket_count_bits++;
-#ifdef DEBUG_GROWS
-		fprintf(stderr, "bucket_count_bits %u\n", bucket_count_bits);
-#endif
 	}
-	/* at least that amount */
 	if (bucket_count_bits < bit_shift)
 		bucket_count_bits = bit_shift;
-	/* keep the bucket count bits in signed int range */
 	if (bucket_count_bits > (sizeof(int) * 8 - 1))
 		bucket_count_bits = (sizeof(int) * 8) - 1;
 
@@ -627,28 +633,22 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 		bloom_filter_bits = 1;
 		while (((size_t)1 << bloom_filter_bits) < (cfg->estimated_content_size / BLOOM_ESTIMATE_DIV))
 			bloom_filter_bits++;
-#ifdef DEBUG_GROWS
-		fprintf(stderr, "bloom_filter_bits %u\n", bloom_filter_bits);
-#endif
 	}
-	/* must be more than bucket count bits */
 	if (bloom_filter_bits < bucket_count_bits)
-		bloom_filter_bits = bucket_count_bits + 3;	/* minimum fanout */
-	/* keep the bloom filter bits in signed int range */
+		bloom_filter_bits = bucket_count_bits + 3;
 	if (bloom_filter_bits > (sizeof(int) * 8 - 1))
 		bloom_filter_bits = (sizeof(int) * 8) - 1;
 
 	dedup_threshold = cfg->dedup_threshold;
 	chain_length_grow_trigger = cfg->chain_length_grow_trigger;
 
-	da = container_of(a, struct fy_dedup_allocator, a);
 	memset(da, 0, sizeof(*da));
-
 	da->a.name = "dedup";
 	da->a.ops = &fy_dedup_allocator_ops;
 	da->a.parent = parent;
 	da->a.parent_tag = parent_tag;
 	da->cfg = *cfg;
+	da->external = external;
 
 	da->parent_allocator = cfg->parent_allocator;
 	da->parent_caps = fy_allocator_get_caps(da->parent_allocator);
@@ -658,25 +658,45 @@ static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, i
 	da->dedup_threshold = dedup_threshold;
 	da->chain_length_grow_trigger = chain_length_grow_trigger;
 
-	/* we use as many tags as the parent allocator */
 	rc = fy_allocator_get_tag_count(da->parent_allocator);
 	if (rc <= 0)
-		goto err_out;
+		return -1;
 	da->tag_count = (unsigned int)rc;
 	da->tag_id_count = (da->tag_count + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 
 	tmpsz = da->tag_id_count * sizeof(*da->ids);
-	da->ids = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
+	da->ids = external ? fy_align_alloc(_Alignof(fy_id_bits), tmpsz)
+			   : fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(fy_id_bits));
 	if (!da->ids)
-		goto err_out;
+		return -1;
 	fy_id_reset(da->ids, da->tag_id_count);
 
+	return 0;
+}
+
+static int fy_dedup_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
+{
+	struct fy_dedup_allocator *da = NULL;
+	const struct fy_dedup_allocator_cfg *cfg;
+	size_t tmpsz;
+	struct fy_dedup_tag *dt;
+	int rc;
+
+	if (!a || !cfg_data)
+		return -1;
+
+	cfg = cfg_data;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	if (fy_dedup_setup_core(da, parent, parent_tag, cfg, false) != 0)
+		goto err_out;
+
+	/* owning layer: allocate the tag array from the parent and set up tag 0 */
 	tmpsz = da->tag_count * sizeof(*da->tags);
 	da->tags = fy_parent_allocator_alloc(&da->a, tmpsz, _Alignof(struct fy_dedup_tag));
 	if (!da->tags)
 		goto err_out;
 
-	/* start with tag 0 as general use */
 	fy_id_set_used(da->ids, da->tag_id_count, 0);
 	dt = fy_dedup_tag_from_tag(da, 0);
 	rc = fy_dedup_tag_setup(da, dt);
@@ -716,7 +736,11 @@ void fy_dedup_destroy(struct fy_allocator *a)
 	da = container_of(a, struct fy_dedup_allocator, a);
 	fy_dedup_cleanup(a);
 
-	fy_parent_allocator_free(a, da);
+	/* external control objects are heap-allocated (per-process), not from parent */
+	if (da->external)
+		fy_align_free(da);
+	else
+		fy_parent_allocator_free(a, da);
 }
 
 void fy_dedup_dump(struct fy_allocator *a)

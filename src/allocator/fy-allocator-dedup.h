@@ -85,6 +85,7 @@ struct fy_dedup_allocator {
 	struct fy_dedup_allocator_cfg cfg;
 	struct fy_allocator *parent_allocator;
 	enum fy_allocator_cap_flags parent_caps;
+	bool external;		/* index/tag owned by an external (arena) root; control is per-process */
 	int entries_tag;
 	unsigned int bloom_filter_bits;
 	unsigned int bucket_count_bits;
