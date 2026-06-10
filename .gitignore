@@ -71,5 +71,7 @@ debian/control
 debian/copyright
 artifacts/
 build
+build*/
+.cache/
 __pycache__/
 .*.swp
