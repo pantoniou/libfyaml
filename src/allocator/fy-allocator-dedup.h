@@ -59,6 +59,7 @@ struct fy_dedup_tag_data {
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 	FY_ATOMIC(uint32_t) in_flight_state;
+	bool read_only;	/* restored base layer: lookup-only, memory owned by a mapping */
 };
 
 #define FY_DEDUP_FROZEN_BIT  ((uint32_t)1 << 31)

@@ -271,6 +271,13 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 				fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count));
 #endif
 
+		/*
+		 * A restored read-only base layer lives in a mapping owned by
+		 * the caller (e.g. the parse cache entry); we only unlink it.
+		 */
+		if (dtd->read_only)
+			continue;
+
 		fy_dedup_tag_data_destroy(da, dtd);
 	}
 
