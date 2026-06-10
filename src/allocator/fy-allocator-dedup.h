@@ -29,9 +29,13 @@ struct fy_dedup_entry {
 
 struct fy_dedup_tag;
 
+/*
+ * Pure scalar configuration for a tag-data version. Deliberately holds no
+ * process-local pointers (da/dt) so a tag-data living in shared/durable memory
+ * is valid across processes; da/dt are passed explicitly to the functions that
+ * need them.
+ */
 struct fy_dedup_tag_data_cfg {
-	struct fy_dedup_allocator *da;
-	struct fy_dedup_tag *dt;
 	unsigned int bloom_filter_bits;
 	unsigned int bucket_count_bits;
 	size_t dedup_threshold;

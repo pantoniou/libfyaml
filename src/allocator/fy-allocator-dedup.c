@@ -151,7 +151,7 @@ static const unsigned int bit_to_chain_length_map[] = {
 	[23] = INT_MAX	/* infinite from now on */
 };
 
-void fy_dedup_tag_data_destroy(struct fy_dedup_tag_data *dtd);
+void fy_dedup_tag_data_destroy(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd);
 
 static inline struct fy_dedup_tag *
 fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
@@ -168,19 +168,17 @@ fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 	return &da->tags[tag];
 }
 
-static void fy_dedup_tag_data_cleanup(struct fy_dedup_tag_data *dtd)
+static void fy_dedup_tag_data_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd)
 {
-	struct fy_dedup_allocator *da = dtd->cfg.da;
-
 	fy_parent_allocator_free(&da->a, (void *)dtd->buckets);
 	fy_parent_allocator_free(&da->a, (void *)dtd->bloom_id);
 	fy_parent_allocator_free(&da->a, (void *)dtd->buckets_in_use);
 }
 
-static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
+static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
+				   struct fy_dedup_tag_data *dtd,
 				   const struct fy_dedup_tag_data_cfg *cfg)
 {
-	struct fy_dedup_allocator *da;
 	unsigned int bloom_filter_bits, bucket_count_bits, chain_length_grow_trigger;
 	size_t dedup_threshold;
 	size_t tmpsz;
@@ -189,14 +187,14 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	assert(dtd);
 	assert(cfg);
 
-	da = cfg->da;
-
 	bloom_filter_bits = cfg->bloom_filter_bits;
 	bucket_count_bits = cfg->bucket_count_bits;
 	dedup_threshold = cfg->dedup_threshold;
 	chain_length_grow_trigger = cfg->chain_length_grow_trigger;
 
 	memset(dtd, 0, sizeof(*dtd));
+	/* @cfg is fully initialised by callers (padding included), so a struct
+	 * copy persists no uninitialised bytes into an arena-resident dtd. */
 	dtd->cfg = *cfg;
 	atomic_store(&dtd->in_flight_state, 0);
 
@@ -246,7 +244,7 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_tag_data *dtd,
 	return 0;
 
 err_out:
-	fy_dedup_tag_data_cleanup(dtd);
+	fy_dedup_tag_data_cleanup(da, dtd);
 	return -1;
 }
 
@@ -273,7 +271,7 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 				fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count));
 #endif
 
-		fy_dedup_tag_data_destroy(dtd);
+		fy_dedup_tag_data_destroy(da, dtd);
 	}
 
 	/* we just release the tags, the underlying allocator should free everything */
@@ -286,9 +284,8 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 }
 
 struct fy_dedup_tag_data *
-fy_dedup_tag_data_create(const struct fy_dedup_tag_data_cfg *cfg)
+fy_dedup_tag_data_create(struct fy_dedup_allocator *da, const struct fy_dedup_tag_data_cfg *cfg)
 {
-	struct fy_dedup_allocator *da = cfg->da;
 	struct fy_dedup_tag_data *dtd;
 	int ret;
 
@@ -296,7 +293,7 @@ fy_dedup_tag_data_create(const struct fy_dedup_tag_data_cfg *cfg)
 	if (!dtd)
 		return NULL;
 
-	ret = fy_dedup_tag_data_setup(dtd, cfg);
+	ret = fy_dedup_tag_data_setup(da, dtd, cfg);
 	if (ret)
 		goto err_out;
 
@@ -307,21 +304,18 @@ err_out:
 	return NULL;
 }
 
-void fy_dedup_tag_data_destroy(struct fy_dedup_tag_data *dtd)
+void fy_dedup_tag_data_destroy(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd)
 {
-	struct fy_dedup_allocator *da;
-
 	if (!dtd)
 		return;
 
-	da = dtd->cfg.da;
-
-	fy_dedup_tag_data_cleanup(dtd);
+	fy_dedup_tag_data_cleanup(da, dtd);
 	fy_parent_allocator_free(&da->a, dtd);
 }
 
 static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
 {
+	struct fy_dedup_tag_data_cfg dcfg;
 	struct fy_dedup_tag_data *dtd;
 
 	assert(da);
@@ -344,15 +338,14 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 
 	fy_atomic_store(&dt->tag_datas, NULL);
 
-	dtd = fy_dedup_tag_data_create(
-			&(struct fy_dedup_tag_data_cfg) {
-				.da = da,
-				.dt = dt,
-				.bloom_filter_bits = da->bloom_filter_bits,
-				.bucket_count_bits = da->bucket_count_bits,
-				.dedup_threshold = da->dedup_threshold,
-				.chain_length_grow_trigger = da->chain_length_grow_trigger
-			});
+	/* fully zero (padding included) so nothing uninitialised reaches the dtd */
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.bloom_filter_bits = da->bloom_filter_bits;
+	dcfg.bucket_count_bits = da->bucket_count_bits;
+	dcfg.dedup_threshold = da->dedup_threshold;
+	dcfg.chain_length_grow_trigger = da->chain_length_grow_trigger;
+
+	dtd = fy_dedup_tag_data_create(da, &dcfg);
 	if (!dtd)
 		goto err_out;
 
@@ -367,10 +360,12 @@ err_out:
 }
 
 static int
-fy_dedup_tag_prepare_new(struct fy_dedup_tag_data *dtd, struct fy_dedup_tag_data *new_dtd,
+fy_dedup_tag_prepare_new(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd,
+			 struct fy_dedup_tag_data *new_dtd,
 			 int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
 	unsigned int bit_shift, new_bucket_count_bits, new_bloom_filter_bits;
+	struct fy_dedup_tag_data_cfg dcfg;
 	int rc;
 
 	bit_shift = (unsigned int)fy_id_ffs(FY_ID_BITS_BITS);
@@ -387,16 +382,14 @@ fy_dedup_tag_prepare_new(struct fy_dedup_tag_data *dtd, struct fy_dedup_tag_data
 	else if (new_bloom_filter_bits < new_bucket_count_bits)
 		new_bloom_filter_bits = new_bucket_count_bits;
 
-	/* setup the new data */
-	rc = fy_dedup_tag_data_setup(new_dtd,
-			&(struct fy_dedup_tag_data_cfg) {
-				.da = dtd->cfg.da,
-				.dt = dtd->cfg.dt,
-				.bloom_filter_bits = new_bloom_filter_bits,
-				.bucket_count_bits = new_bucket_count_bits,
-				.dedup_threshold = dtd->cfg.da->dedup_threshold,
-				.chain_length_grow_trigger = dtd->cfg.da->chain_length_grow_trigger
-			});
+	/* setup the new data; fully zero cfg (padding included) for an arena dtd */
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.bloom_filter_bits = new_bloom_filter_bits;
+	dcfg.bucket_count_bits = new_bucket_count_bits;
+	dcfg.dedup_threshold = da->dedup_threshold;
+	dcfg.chain_length_grow_trigger = da->chain_length_grow_trigger;
+
+	rc = fy_dedup_tag_data_setup(da, new_dtd, &dcfg);
 	return rc;
 }
 
@@ -447,7 +440,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		goto err_out;
 
 	/* prepare the new one */
-	rc = fy_dedup_tag_prepare_new(dtd, new_dtd, bloom_filter_adjust_bits, bucket_adjust_bits);
+	rc = fy_dedup_tag_prepare_new(da, dtd, new_dtd, bloom_filter_adjust_bits, bucket_adjust_bits);
 	if (rc)
 		goto err_out;
 
@@ -544,7 +537,7 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		if (!dtd_head)
 			dtd_head = dtd;
 		else
-			fy_dedup_tag_data_destroy(dtd);
+			fy_dedup_tag_data_destroy(da, dtd);
 	}
 
 	if (dtd_head) {
