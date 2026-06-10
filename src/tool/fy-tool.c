@@ -1419,6 +1419,7 @@ static int cache_remove_cb(const char *path,
 			   void *userdata)
 {
 	struct cache_remove_ctx *ctx = userdata;
+	char *index, *s;
 
 	if (!ctx)
 		return -1;
@@ -1429,6 +1430,18 @@ static int cache_remove_cb(const char *path,
 		return 0;
 	if (unlink(path))
 		return -1;
+
+	if (info->has_dedup_index) {
+		index = strdupa(path);
+		s = strrchr(index, '.');
+		if (s && !strcmp(s, ".fygc")) {
+			/* replace .fygc with fygi */
+			strcpy(s, ".fygi");
+		}
+		/* removing index is fine if it fails */
+		(void)unlink(index);
+	}
+
 	ctx->removed++;
 	return 0;
 }
@@ -1478,7 +1491,9 @@ static int cache_info_cb(const char *path,
 			  "source_name_size: %s, "
 			  "parser_flags: %s, "
 			  "decoder_flags: %s, "
-			  "root: %s }",
+			  "root: %s, "
+			  "dedup_index: %s, "
+			  "index_root: %s }",
 			info->magic,
 			info->b3sum,
 			path_quoted,
@@ -1496,7 +1511,9 @@ static int cache_info_cb(const char *path,
 			fy_sprintfa("%" PRIu64, info->source_name_size),
 			fy_sprintfa("0x%016" PRIx64, info->parser_flags),
 			fy_sprintfa("0x%016" PRIx64, info->decoder_flags),
-			fy_sprintfa("0x%016" PRIx64, info->root));
+			fy_sprintfa("0x%016" PRIx64, info->root),
+			info->has_dedup_index ? "true" : "false",
+			fy_sprintfa("0x%016" PRIx64, info->index_root));
 	if (!fyd)
 		goto out;
 	if (fy_emit_document_to_fp(fyd, FYECF_MODE_BLOCK | FYECF_DOC_START_MARK_OFF, stdout))
