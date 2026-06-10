@@ -7,6 +7,7 @@
 #define LIBFYAML_ALLOCATOR_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 /* pull in common definitions and platform abstraction macros */
 #include <libfyaml/libfyaml-util.h>
@@ -414,6 +415,9 @@ fy_allocator_dump(struct fy_allocator *a)
  * @FYACF_HAS_EFFICIENT_CONTAINS: Allocator can report if it contains a pointer (efficiently)
  * @FYACF_HAS_TAGS: Allocator has individual tags or not
  * @FYACF_CAN_LOOKUP: Allocator supports lookup for content
+ * @FYACF_DURABLE: Allocations persist at stable addresses across processes and
+ *                 sessions (memory-mapped, fixed-base, never relocated). Pointer
+ *                 identity is therefore a durable canonical identity.
  *
  * These flags describe what operations an allocator supports.
  */
@@ -425,6 +429,7 @@ enum fy_allocator_cap_flags {
 	FYACF_HAS_EFFICIENT_CONTAINS		= FY_BIT(4),
 	FYACF_HAS_TAGS				= FY_BIT(5),
 	FYACF_CAN_LOOKUP			= FY_BIT(6),
+	FYACF_DURABLE				= FY_BIT(7),
 };
 
 /**
@@ -601,6 +606,58 @@ enum fy_auto_allocator_scenario_type {
 struct fy_auto_allocator_cfg {
 	enum fy_auto_allocator_scenario_type scenario;
 	size_t estimated_max_size;
+};
+
+/**
+ * DOC: Durable allocator ("durable")
+ *
+ * The "durable" allocator is an on-disk, content-addressed allocation region
+ * made of fixed-size chunk files mapped at a *fixed* virtual base address that
+ * is identical across every process and every session. Because the base never
+ * changes, an in-arena pointer is a stable canonical identity.
+ *
+ * Its durable-only operations are exposed as generic allocator calls that other
+ * allocators do not support: fy_allocator_sync(), fy_allocator_refs_get() /
+ * fy_allocator_refs_publish(), fy_allocator_generation(),
+ * fy_allocator_chunk_count(), fy_allocator_region_base() and
+ * fy_allocator_index_region_base().
+ *
+ * On systems that support this allocator a local filesystem is required and will
+ * refuse to operate on network filesystems (NFS/SMB/FUSE), due to cross-process atomic
+ * semantics.
+ */
+
+/* fy_durable_allocator_cfg.flags */
+#define FY_DURABLE_ARENA_CREATE		(1u << 0)	/* create the directory/chunk 0 if absent */
+#define FY_DURABLE_ARENA_READONLY	(1u << 1)	/* map read-only; no allocation/grow */
+#define FY_DURABLE_ARENA_SPARSE		(1u << 2)	/* ftruncate chunks instead of fallocate */
+#define FY_DURABLE_ARENA_DEDUP		(1u << 3)	/* content-address (dedup) allocations in-arena */
+#define FY_DURABLE_ARENA_SEPARATE_INDEX	(1u << 4)	/* put the dedup index in its own file series (index-N.bin) */
+
+/**
+ * struct fy_durable_allocator_cfg - durable allocator configuration
+ *
+ * @dir:         Path to the arena directory (holds arena-{N}.bin chunk files).
+ * @region_base: Fixed virtual base address for the whole region. 0 selects the
+ *               default base of the platform.
+ * @region_size: Total reserved virtual size. 0 selects the default size of the platform.
+ * @chunk_size:  Size of each chunk file. 0 selects the default
+ * @flags:       FY_DURABLE_ARENA_* bits.
+ * @index_region_base: With FY_DURABLE_ARENA_SEPARATE_INDEX, the fixed virtual
+ *               base of the separate dedup-index region (index-N.bin). 0 selects
+ *               a default.
+ * @index_region_size: Reserved virtual size of the index region. 0 -> default.
+ * @index_chunk_size:  Size of each index chunk file. 0 -> default.
+ */
+struct fy_durable_allocator_cfg {
+	const char *dir;
+	uint64_t region_base;
+	uint64_t region_size;
+	uint64_t chunk_size;
+	unsigned int flags;
+	uint64_t index_region_base;
+	uint64_t index_region_size;
+	uint64_t index_chunk_size;
 };
 
 #ifdef __cplusplus

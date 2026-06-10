@@ -58,6 +58,17 @@ struct fy_allocator_ops {
 	/* durable snapshot support (optional; NULL if unsupported) */
 	int (*snapshot)(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap);
 	void (*snapshot_release)(struct fy_allocator *a, struct fy_allocator_snapshot *snap);
+	/* durable arena operations */
+	int (*sync)(struct fy_allocator *a);				/* flush dirty content to durable storage */
+	uint64_t (*refs_get)(struct fy_allocator *a);			/* read the persistent refs head word */
+	int (*refs_publish)(struct fy_allocator *a, uint64_t expected,	/* CAS-publish the refs head word */
+			    uint64_t desired, unsigned int flags);
+	uint64_t (*generation)(struct fy_allocator *a);			/* chunk generation counter */
+	unsigned int (*chunk_count)(struct fy_allocator *a);		/* live published chunk count */
+	uint64_t (*region_base)(struct fy_allocator *a);		/* fixed region base, or 0 */
+	uint64_t (*region_size)(struct fy_allocator *a);		/* reserved region size, or 0 */
+	uint64_t (*index_region_base)(struct fy_allocator *a);		/* separate dedup-index base, or 0 */
+	uint64_t (*index_region_size)(struct fy_allocator *a);		/* separate dedup-index size, or 0 */
 };
 
 /* a durable snapshot of an allocator */
@@ -370,6 +381,73 @@ fy_allocator_snapshot_release(struct fy_allocator *a, struct fy_allocator_snapsh
 	if (!a || !snap)
 		return;
 	fy_allocator_snapshot_release_nocheck(a, snap);
+}
+
+/* flags for fy_allocator_refs_publish() */
+#define FY_ALLOC_REFS_CHECKPOINT	(1u << 0)	/* enforce the durability ordering barrier */
+
+static inline int fy_allocator_sync(struct fy_allocator *a)
+{
+	if (!a || !a->ops->sync)
+		return -1;
+	return a->ops->sync(a);
+}
+
+static inline uint64_t fy_allocator_refs_get(struct fy_allocator *a)
+{
+	if (!a || !a->ops->refs_get)
+		return 0;
+	return a->ops->refs_get(a);
+}
+
+static inline int fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
+					    uint64_t desired, unsigned int flags)
+{
+	if (!a || !a->ops->refs_publish)
+		return -1;
+	return a->ops->refs_publish(a, expected, desired, flags);
+}
+
+static inline uint64_t fy_allocator_generation(struct fy_allocator *a)
+{
+	if (!a || !a->ops->generation)
+		return 0;
+	return a->ops->generation(a);
+}
+
+static inline unsigned int fy_allocator_chunk_count(struct fy_allocator *a)
+{
+	if (!a || !a->ops->chunk_count)
+		return 0;
+	return a->ops->chunk_count(a);
+}
+
+static inline uint64_t fy_allocator_region_base(struct fy_allocator *a)
+{
+	if (!a || !a->ops->region_base)
+		return 0;
+	return a->ops->region_base(a);
+}
+
+static inline uint64_t fy_allocator_region_size(struct fy_allocator *a)
+{
+	if (!a || !a->ops->region_size)
+		return 0;
+	return a->ops->region_size(a);
+}
+
+static inline uint64_t fy_allocator_index_region_base(struct fy_allocator *a)
+{
+	if (!a || !a->ops->index_region_base)
+		return 0;
+	return a->ops->index_region_base(a);
+}
+
+static inline uint64_t fy_allocator_index_region_size(struct fy_allocator *a)
+{
+	if (!a || !a->ops->index_region_size)
+		return 0;
+	return a->ops->index_region_size(a);
 }
 
 #endif
