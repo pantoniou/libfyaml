@@ -136,6 +136,7 @@ void *fy_arena_reloc_ptr(const struct fy_arena_reloc *arenas, unsigned int count
 enum fy_allocator_flags {
 	FYAF_KEEP_STATS = FY_BIT(0),
 	FYAF_TRACE	= FY_BIT(1),
+	FYAF_OWNS_PARENT = FY_BIT(2),
 };
 
 struct fy_allocator {
@@ -208,7 +209,14 @@ fy_allocator_create_internal(const char *name, struct fy_allocator *parent, int 
 
 static inline void fy_allocator_destroy_nocheck(struct fy_allocator *a)
 {
+	struct fy_allocator *parent_to_destroy = NULL;
+
+	parent_to_destroy = (a->flags & FYAF_OWNS_PARENT) ? fy_allocator_get_parent(a) : NULL;
+
 	a->ops->destroy(a);
+
+	if (parent_to_destroy)
+		fy_allocator_destroy_nocheck(parent_to_destroy);
 }
 
 static inline void fy_allocator_dump_nocheck(struct fy_allocator *a)
