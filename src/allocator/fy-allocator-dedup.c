@@ -324,7 +324,11 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	memset(dt, 0, sizeof(*dt));
 
 	fy_atomic_flag_clear(&dt->growing);
-	if (da->parent_caps & FYACF_CAN_FREE_TAG) {
+	if (da->cfg.use_explicit_tags) {
+		/* caller pins the parent tags (e.g. durable separate-index region) */
+		dt->content_tag = da->cfg.content_tag;
+		dt->entries_tag = da->cfg.entries_tag;
+	} else if (da->parent_caps & FYACF_CAN_FREE_TAG) {
 		dt->content_tag = fy_allocator_get_tag(da->parent_allocator);
 		if (dt->content_tag == FY_ALLOC_TAG_ERROR)
 			goto err_out;

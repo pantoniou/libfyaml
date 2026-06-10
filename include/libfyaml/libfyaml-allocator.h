@@ -561,6 +561,16 @@ struct fy_dedup_allocator_cfg {
 	unsigned int chain_length_grow_trigger;
 	size_t estimated_content_size;
 	float minimum_bucket_occupancy;
+	/*
+	 * Route content and index allocations to explicit parent tags rather than
+	 * deriving them from the parent's tag capability. Used when the parent is
+	 * a durable arena with a separate dedup-index region: @content_tag selects
+	 * the content file series, @entries_tag the index file series. Ignored
+	 * unless @use_explicit_tags is set.
+	 */
+	bool use_explicit_tags;
+	int content_tag;
+	int entries_tag;
 };
 
 /**
