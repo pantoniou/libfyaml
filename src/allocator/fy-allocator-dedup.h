@@ -100,6 +100,21 @@ struct fy_dedup_allocator {
 
 extern const struct fy_allocator_ops fy_dedup_allocator_ops;
 
+int fy_dedup_index_relocate(const struct fy_arena_reloc *arenas, unsigned int num_arenas,
+			    void *start, size_t size, struct fy_dedup_tag_data *dtd);
+
+struct fy_dedup_restore_cfg {
+	struct fy_dedup_allocator_cfg base;
+	struct fy_dedup_tag_data *root;
+};
+
+struct fy_allocator *fy_dedup_restore(struct fy_allocator *parent, int parent_tag,
+				      const struct fy_dedup_restore_cfg *cfg);
+
+struct fy_allocator *fy_dedup_create_external(struct fy_allocator *parent, int parent_tag,
+					      const struct fy_dedup_allocator_cfg *cfg,
+					      FY_ATOMIC(struct fy_dedup_tag *) *root_slot);
+
 #define FY_DEDUP_XXHASH64_SEED	FY_XXHASH64_SEED
 
 #endif

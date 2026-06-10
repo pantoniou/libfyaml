@@ -750,6 +750,96 @@ void fy_dedup_destroy(struct fy_allocator *a)
 		fy_parent_allocator_free(a, da);
 }
 
+struct fy_allocator *fy_dedup_create_external(struct fy_allocator *parent, int parent_tag,
+					      const struct fy_dedup_allocator_cfg *cfg,
+					      FY_ATOMIC(struct fy_dedup_tag *) *root_slot)
+{
+	struct fy_dedup_allocator *da = NULL;
+	struct fy_dedup_tag *dt;
+	struct fy_dedup_tag_data *head;
+
+	if (!cfg || !cfg->parent_allocator || !root_slot)
+		return NULL;
+
+	/* control object lives on the process heap, never in the (arena) parent */
+	da = fy_align_alloc(_Alignof(struct fy_dedup_allocator), sizeof(*da));
+	if (!da)
+		return NULL;
+
+	if (fy_dedup_setup_core(da, parent, parent_tag, cfg, true) != 0)
+		goto err_out;
+
+	dt = fy_atomic_load(root_slot);
+	if (dt) {
+		/* attach to the existing shared index (single tag 0) */
+		da->tags = dt;
+		fy_id_set_used(da->ids, da->tag_id_count, 0);
+		/* adopt the persisted threshold so all attachers agree */
+		head = fy_atomic_load(&dt->tag_datas);
+		if (head)
+			da->dedup_threshold = da->cfg.dedup_threshold = head->dedup_threshold;
+	} else {
+		/* create the shared tag + initial index in the (arena) parent */
+		da->tags = fy_parent_allocator_alloc(&da->a, sizeof(*da->tags),
+						     _Alignof(struct fy_dedup_tag));
+		if (!da->tags)
+			goto err_out;
+		fy_id_set_used(da->ids, da->tag_id_count, 0);
+		dt = fy_dedup_tag_from_tag(da, 0);
+		if (fy_dedup_tag_setup(da, dt) != 0)
+			goto err_out;
+		/* publish the shared root for other processes to attach to */
+		fy_atomic_store(root_slot, dt);
+	}
+
+	return &da->a;
+
+err_out:
+	fy_dedup_destroy(&da->a);
+	return NULL;
+}
+
+struct fy_allocator *fy_dedup_restore(struct fy_allocator *parent, int parent_tag,
+				      const struct fy_dedup_restore_cfg *cfg)
+{
+	struct fy_allocator *a;
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	struct fy_dedup_tag_data *head;
+
+	if (!cfg || !cfg->root)
+		return NULL;
+
+	/* fresh, fully-writable dedup layer for content stored after restore */
+	a = fy_dedup_create(parent, parent_tag, &cfg->base);
+	if (!a)
+		return NULL;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	dt = fy_dedup_tag_from_tag(da, 0);
+	if (!dt)
+		goto err_out;
+
+	head = fy_atomic_load(&dt->tag_datas);
+	if (!head)
+		goto err_out;
+
+	/* make the root read only */
+	if (!cfg->root->read_only)
+		cfg->root->read_only = true;
+
+	/* and chain */
+	if (cfg->root->next)
+		cfg->root->next = NULL;
+	head->next = cfg->root;
+
+	return a;
+
+err_out:
+	fy_dedup_destroy(a);
+	return NULL;
+}
+
 void fy_dedup_dump(struct fy_allocator *a)
 {
 	struct fy_dedup_allocator *da;
@@ -885,6 +975,72 @@ static void fy_dedup_trace(struct fy_allocator *a,
 		}
 	}
 	printf("\n");
+}
+
+int fy_dedup_index_relocate(const struct fy_arena_reloc *arenas, unsigned int num_arenas,
+			    void *start, size_t size, struct fy_dedup_tag_data *dtd)
+{
+	FY_ATOMIC(struct fy_dedup_entry *) *buckets;
+	struct fy_dedup_entry *de;
+	void *p;
+	size_t i;
+
+	if (!dtd || !arenas || !num_arenas)
+		return -1;
+
+	/* a relocated snapshot is a single, quiescent, read-only version. */
+	dtd->next = NULL;
+	dtd->bloom_update_id = NULL;
+	dtd->read_only = true;
+
+	/* rebase the index arrays - all must be present */
+	p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, dtd->bloom_id);
+	if (!p)
+		return -1;
+	dtd->bloom_id = p;
+
+	p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, dtd->buckets_in_use);
+	if (!p)
+		return -1;
+	dtd->buckets_in_use = p;
+
+	p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, dtd->buckets);
+	if (!p)
+		return -1;
+	dtd->buckets = p;
+	buckets = dtd->buckets;
+
+	/* rebase every non-empty bucket chain head and walk each chain */
+	for (i = 0; i < dtd->bucket_count; i++) {
+		de = fy_atomic_load(&buckets[i]);
+		if (!de)
+			continue;
+
+		p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, de);
+		if (!p)
+			return -1;
+		de = p;
+		fy_atomic_store(&buckets[i], de);
+
+		while (de) {
+			/* rebase content pointer (the canonical-identity pointer) */
+			p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, de->mem);
+			if (!p)
+				return -1;
+			de->mem = p;
+
+			/* rebase the chain link (NULL terminates the chain) */
+			if (de->next) {
+				p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, de->next);
+				if (!p)
+					return -1;
+				de->next = p;
+			}
+			de = de->next;
+		}
+	}
+
+	return 0;
 }
 
 /*
