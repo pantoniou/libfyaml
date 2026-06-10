@@ -34,6 +34,7 @@
 #include "fy-cache.h"
 #include "fy-parse.h"
 #include "fy-utf8.h"
+#include "fy-allocator.h"
 
 #include "fy-check.h"
 
@@ -302,6 +303,127 @@ START_TEST(parser_file_parse_cache_multi_document_lifecycle)
 	unlink(yaml_template);
 	fy_parse_cache_override(NULL);
 
+	remove_tmpdir(cache_dir, cache_dir);
+}
+END_TEST
+
+/*
+ * Persist the dedup index in the cache and restore a live dedup allocator from
+ * it, in both the fixed-base and forced-relocate load modes. Also verifies the
+ * v5 blob (content + concatenated index) still reads back intact.
+ */
+START_TEST(parser_file_parse_cache_restore)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_DEFAULT_DOC | FYPCF_ENABLE_CACHE,
+	};
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	char *cache_template, *yaml_template, *cache_dir;
+	ssize_t old_min_size;
+	struct fy_document *fyd1, *fydc;
+	char *out1, *outc, *cache_file;
+	int fd, pass;
+	static const char yaml[] =
+		"root:\n"
+		"  a: long-unique-scalar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+		"  b: long-unique-scalar-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+		"  c: long-unique-scalar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
+
+	tmp = fy_tmpdir(tmpbuf, sizeof(tmpbuf));
+	ck_assert_ptr_ne(tmp, NULL);
+	cache_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-restore-XXXXXX", tmp);
+	yaml_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-ryaml-XXXXXX", tmp);
+	cache_dir = fy_mkdtemp(cache_template);
+	ck_assert_ptr_ne(cache_dir, NULL);
+	old_min_size = fy_parse_cache_get_min_file_size();
+	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(0), 0);
+
+	fd = fy_mkstemp(yaml_template);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq((int)write(fd, yaml, sizeof(yaml) - 1), (int)sizeof(yaml) - 1);
+	ck_assert_int_eq(close(fd), 0);
+
+	/* first parse stores the cache including the dedup index */
+	fyd1 = fy_document_build_from_file(&cfg, yaml_template);
+	ck_assert_ptr_ne(fyd1, NULL);
+	out1 = fy_emit_document_to_string(fyd1, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(out1, NULL);
+	ck_assert_int_gt(cache_dir_entry_count(), 0);
+
+	/* the content file (.fygc) reads back unchanged on its own */
+	cache_file = cache_find_first_file();
+	ck_assert_ptr_ne(cache_file, NULL);
+	fydc = fy_document_build_from_file(NULL, cache_file);
+	ck_assert_ptr_ne(fydc, NULL);
+	outc = fy_emit_document_to_string(fydc, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(outc, NULL);
+	ck_assert_str_eq(out1, outc);
+	free(outc);
+	fy_document_destroy(fydc);
+
+	/* the dedup index was written to the sibling .fygi file */
+	{
+		char idxpath[PATH_MAX];
+		size_t n = strlen(cache_file);
+		struct stat sb;
+
+		ck_assert(n > 5 && !strcmp(cache_file + n - 5, ".fygc"));
+		snprintf(idxpath, sizeof(idxpath), "%.*sfygi", (int)(n - 4), cache_file);
+		ck_assert_int_eq(stat(idxpath, &sb), 0);
+	}
+	free(cache_file);
+
+	/* pass 0: fixed-base load, pass 1: forced relocation */
+	for (pass = 0; pass < 2; pass++) {
+		struct fy_parse_cache_entry *entry;
+		const void *p1, *p2;
+		static const char blob[] = "restored-allocator-liveness-probe-payload";
+
+		if (pass == 1)
+			setenv("FY_PARSE_CACHE_FORCE_RELOCATE", "1", 1);
+
+		entry = fy_parse_cache_load_restore_cfg(&cfg, yaml_template);
+		ck_assert_ptr_ne(entry, NULL);
+		ck_assert_ptr_ne(entry->restored, NULL);
+
+		/* the restored allocator is live: dedup returns a stable pointer */
+		p1 = fy_allocator_store(entry->restored, FY_ALLOC_TAG_DEFAULT, blob, sizeof(blob), 1);
+		ck_assert_ptr_ne(p1, NULL);
+		p2 = fy_allocator_store(entry->restored, FY_ALLOC_TAG_DEFAULT, blob, sizeof(blob), 1);
+		ck_assert_ptr_eq(p1, p2);
+
+		fy_parse_cache_entry_destroy(entry);
+
+		if (pass == 1)
+			unsetenv("FY_PARSE_CACHE_FORCE_RELOCATE");
+	}
+
+	/* deleting the sibling index degrades a restore load to content-only */
+	{
+		struct fy_parse_cache_entry *entry;
+		char idxpath[PATH_MAX];
+		size_t n;
+
+		cache_file = cache_find_first_file();
+		ck_assert_ptr_ne(cache_file, NULL);
+		n = strlen(cache_file);
+		snprintf(idxpath, sizeof(idxpath), "%.*sfygi", (int)(n - 4), cache_file);
+		ck_assert_int_eq(unlink(idxpath), 0);
+
+		entry = fy_parse_cache_load_restore_cfg(&cfg, yaml_template);
+		ck_assert_ptr_ne(entry, NULL);
+		ck_assert_ptr_eq(entry->restored, NULL);	/* no index -> content only */
+		fy_parse_cache_entry_destroy(entry);
+		free(cache_file);
+	}
+
+	free(out1);
+	fy_document_destroy(fyd1);
+	unlink(yaml_template);
+	fy_parse_cache_override(NULL);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size((ssize_t)old_min_size), 0);
 	remove_tmpdir(cache_dir, cache_dir);
 }
 END_TEST
@@ -2643,6 +2765,7 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, parser_file_parse_cache);
 	fy_check_testcase_add_test(ctc, parser_file_parse_cache_multi_document_lifecycle);
+	fy_check_testcase_add_test(ctc, parser_file_parse_cache_restore);
 #endif
 	fy_check_testcase_add_test(ctc, parser_parse_load_document);
 	fy_check_testcase_add_test(ctc, parser_document_resolve);
