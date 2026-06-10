@@ -1916,6 +1916,52 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return false;
 }
 
+static int fy_dedup_op_sync(struct fy_allocator *a)
+{
+	return fy_allocator_sync(fy_allocator_get_parent(a));
+}
+
+static uint64_t fy_dedup_op_refs_get(struct fy_allocator *a)
+{
+	return fy_allocator_refs_get(fy_allocator_get_parent(a));
+}
+
+static int fy_dedup_op_refs_publish(struct fy_allocator *a, uint64_t expected,
+				    uint64_t desired, unsigned int flags)
+{
+	return fy_allocator_refs_publish(fy_allocator_get_parent(a), expected, desired, flags);
+}
+
+static uint64_t fy_dedup_op_generation(struct fy_allocator *a)
+{
+	return fy_allocator_generation(fy_allocator_get_parent(a));
+}
+
+static unsigned int fy_dedup_op_chunk_count(struct fy_allocator *a)
+{
+	return fy_allocator_chunk_count(fy_allocator_get_parent(a));
+}
+
+static uint64_t fy_dedup_op_region_base(struct fy_allocator *a)
+{
+	return fy_allocator_region_base(fy_allocator_get_parent(a));
+}
+
+static uint64_t fy_dedup_op_region_size(struct fy_allocator *a)
+{
+	return fy_allocator_region_size(fy_allocator_get_parent(a));
+}
+
+static uint64_t fy_dedup_op_index_region_base(struct fy_allocator *a)
+{
+	return fy_allocator_index_region_base(fy_allocator_get_parent(a));
+}
+
+static uint64_t fy_dedup_op_index_region_size(struct fy_allocator *a)
+{
+	return fy_allocator_index_region_size(fy_allocator_get_parent(a));
+}
+
 const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.setup = fy_dedup_setup,
 	.cleanup = fy_dedup_cleanup,
@@ -1939,4 +1985,13 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.contains = fy_dedup_contains,
 	.snapshot = fy_dedup_snapshot,
 	.snapshot_release = fy_dedup_snapshot_release,
+	.sync = fy_dedup_op_sync,
+	.refs_get = fy_dedup_op_refs_get,
+	.refs_publish = fy_dedup_op_refs_publish,
+	.generation = fy_dedup_op_generation,
+	.chunk_count = fy_dedup_op_chunk_count,
+	.region_base = fy_dedup_op_region_base,
+	.region_size = fy_dedup_op_region_size,
+	.index_region_base = fy_dedup_op_index_region_base,
+	.index_region_size = fy_dedup_op_index_region_size,
 };
