@@ -249,6 +249,15 @@ int fy_win32_mktemp(char *tmpl, bool is_dir);
 int fy_mkstemp(char *tmpl);
 char *fy_mkdtemp(char *tmpl);
 
+/* default fixed virtual base for the @region'th large fixed-base mmap region. */
+uint64_t fy_default_fixed_vm_base(unsigned int region);
+
+/*default reserved size for the @region'th large fixed-base mmap region. */
+uint64_t fy_default_fixed_vm_size(unsigned int region);
+
+/* filesystem of @fd safe for cross-process, file-backed shared atomics check */
+bool fy_fd_fs_is_local(int fd);
+
 /* path separator */
 #ifndef _WIN32
 #define FY_PS	"/"

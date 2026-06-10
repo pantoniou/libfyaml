@@ -1510,3 +1510,92 @@ char *fy_mkdtemp(char *tmpl)
 	return rc ? NULL : tmpl;
 #endif
 }
+
+/* ------------------------------------------------------------------ */
+/* durable, fixed-base arena: platform-dependent helpers              */
+/* ------------------------------------------------------------------ */
+
+#if defined(__linux__)
+#include <sys/vfs.h>
+/* network filesystem magics we refuse (cross-process atomics not guaranteed) */
+#ifndef NFS_SUPER_MAGIC
+#define NFS_SUPER_MAGIC		0x6969
+#endif
+#ifndef SMB_SUPER_MAGIC
+#define SMB_SUPER_MAGIC		0x517b
+#endif
+#ifndef SMB2_MAGIC_NUMBER
+#define SMB2_MAGIC_NUMBER	0xfe534d42
+#endif
+#ifndef CIFS_MAGIC_NUMBER
+#define CIFS_MAGIC_NUMBER	0xff534d42
+#endif
+#ifndef FUSE_SUPER_MAGIC
+#define FUSE_SUPER_MAGIC	0x65735546
+#endif
+#elif defined(__APPLE__)
+#include <sys/param.h>
+#include <sys/mount.h>
+#endif
+
+/*
+ * Well-separated high canonical-VA bases for large fixed-base mmap regions.
+ * The addresses live in a free part of the 64-bit user address space on
+ * Linux/macOS; on a 32-bit target there is no room for a multi-GiB fixed
+ * reservation, so 0 ("unsupported") is returned. The 4 TiB stride keeps
+ * successive regions clear of each other for any practical region size.
+ */
+uint64_t fy_default_fixed_vm_base(unsigned int region)
+{
+#if UINTPTR_MAX > 0xffffffffULL
+	return 0x500000000000ULL + (uint64_t)region * 0x040000000000ULL;
+#else
+	(void)region;
+	return 0;
+#endif
+}
+
+uint64_t fy_default_fixed_vm_size(unsigned int region)
+{
+#if UINTPTR_MAX > 0xffffffffULL
+	/* region 0 (content) is large; secondary regions (index, ...) smaller */
+	return region == 0 ? (64ULL << 30) : (16ULL << 30);
+#else
+	(void)region;
+	return 0;
+#endif
+}
+
+bool fy_fd_fs_is_local(int fd)
+{
+#if defined(__linux__) || defined(__APPLE__)
+	struct statfs sfb;
+
+	if (fstatfs(fd, &sfb) != 0)
+		return true;	/* can't tell; allow */
+#endif
+
+#if defined(__linux__)
+	switch ((unsigned long)sfb.f_type) {
+	case NFS_SUPER_MAGIC:
+	case SMB_SUPER_MAGIC:
+	case (unsigned long)SMB2_MAGIC_NUMBER:
+	case (unsigned long)CIFS_MAGIC_NUMBER:
+	case FUSE_SUPER_MAGIC:
+		return false;
+	default:
+		return true;
+	}
+#elif defined(__APPLE__)
+	/* Darwin reports a filesystem type name rather than a magic number */
+	if (!strcmp(sfb.f_fstypename, "nfs") ||
+	    !strcmp(sfb.f_fstypename, "smbfs") ||
+	    !strcmp(sfb.f_fstypename, "webdav") ||
+	    strstr(sfb.f_fstypename, "fuse") != NULL)
+		return false;
+	return true;
+#else
+	(void)fd;
+	return true;	/* no query available; allow */
+#endif
+}
