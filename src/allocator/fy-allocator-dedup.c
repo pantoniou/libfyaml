@@ -1633,6 +1633,199 @@ static void fy_dedup_reset_tag(struct fy_allocator *a, int tag)
 	fy_dedup_tag_reset(da, dt);
 }
 
+/* build a single-allocation info covering the given parent tags */
+static struct fy_allocator_info *
+fy_dedup_build_combined_info(struct fy_dedup_allocator *da, const int *tags, unsigned int ntags)
+{
+	struct fy_allocator_info *pinfo[2] = { NULL, NULL };
+	struct fy_allocator_info *info = NULL;
+	struct fy_allocator_tag_info *ti, *sti;
+	struct fy_allocator_arena_info *ai;
+	unsigned int i, j, num_tags = 0, num_arenas = 0;
+	size_t size;
+
+	if (ntags > ARRAY_SIZE(pinfo))
+		return NULL;
+
+	/* gather per-tag info from the parent allocator */
+	for (i = 0; i < ntags; i++) {
+		pinfo[i] = fy_allocator_get_info(da->parent_allocator, tags[i]);
+		if (!pinfo[i])
+			goto err_out;
+		num_tags += pinfo[i]->num_tag_infos;
+		for (j = 0; j < pinfo[i]->num_tag_infos; j++)
+			num_arenas += pinfo[i]->tag_infos[j].num_arena_infos;
+	}
+
+	/* single contiguous allocation: info + tag_infos[] + arena_infos[] */
+	size = sizeof(*info) + sizeof(*ti) * num_tags + sizeof(*ai) * num_arenas;
+	info = malloc(size);
+	if (!info)
+		goto err_out;
+	memset(info, 0, sizeof(*info));
+	ti = (void *)(info + 1);
+	ai = (void *)(ti + num_tags);
+	info->tag_infos = ti;
+	info->num_tag_infos = 0;
+
+	for (i = 0; i < ntags; i++) {
+		for (j = 0; j < pinfo[i]->num_tag_infos; j++) {
+			sti = &pinfo[i]->tag_infos[j];
+			*ti = *sti;
+			ti->arena_infos = ai;
+			memcpy(ai, sti->arena_infos, sizeof(*ai) * sti->num_arena_infos);
+			ai += sti->num_arena_infos;
+			ti++;
+			info->num_tag_infos++;
+			info->free += sti->free;
+			info->used += sti->used;
+			info->total += sti->total;
+		}
+	}
+
+	for (i = 0; i < ntags; i++)
+		free(pinfo[i]);
+	return info;
+
+err_out:
+	for (i = 0; i < ntags; i++)
+		free(pinfo[i]);
+	free(info);
+	return NULL;
+}
+
+static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+	struct fy_dedup_tag_data *head, *dtd, *merged;
+	struct fy_dedup_entry *de, *nde;
+	int index_tag = FY_ALLOC_TAG_ERROR, tags[2];
+	unsigned int ntags;
+	size_t b, bucket_pos, bloom_pos;
+
+	if (!snap)
+		return -1;
+	memset(snap, 0, sizeof(*snap));
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	dt = fy_dedup_tag_from_tag(da, tag);
+	if (!dt)
+		return -1;
+
+	/* we need a dedicated, separately-freeable parent tag for the index */
+	if (!(da->parent_caps & FYACF_CAN_FREE_TAG))
+		return -1;
+
+	/*
+	 * Snapshot is single-threaded by contract: the caller must guarantee no
+	 * concurrent writer or resize on this tag (the cache store happens
+	 * single-threaded at the end of a parse). We therefore read the layer
+	 * chain directly without fencing against a grow.
+	 */
+	head = fy_atomic_load(&dt->tag_datas);
+	if (!head)
+		goto err_out;
+
+	index_tag = fy_allocator_get_tag(da->parent_allocator);
+	if (index_tag == FY_ALLOC_TAG_ERROR)
+		goto err_out;
+
+	/* merged tag-data, sized to the head (largest) geometry */
+	merged = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+					    sizeof(*merged), _Alignof(struct fy_dedup_tag_data));
+	if (!merged)
+		goto err_out;
+	memset(merged, 0, sizeof(*merged));
+	merged->bloom_filter_bits = head->bloom_filter_bits;
+	merged->bloom_filter_mask = head->bloom_filter_mask;
+	merged->bloom_id_count = head->bloom_id_count;
+	merged->bucket_count_bits = head->bucket_count_bits;
+	merged->bucket_count_mask = head->bucket_count_mask;
+	merged->bucket_count = head->bucket_count;
+	merged->bucket_id_count = head->bucket_id_count;
+	merged->dedup_threshold = head->dedup_threshold;
+	merged->chain_length_grow_trigger = head->chain_length_grow_trigger;
+
+	merged->bloom_id = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+			merged->bloom_id_count * sizeof(*merged->bloom_id), _Alignof(fy_id_bits));
+	merged->buckets = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+			merged->bucket_count * sizeof(*merged->buckets), _Alignof(struct fy_dedup_entry *));
+	merged->buckets_in_use = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+			merged->bucket_id_count * sizeof(*merged->buckets_in_use), _Alignof(fy_id_bits));
+	if (!merged->bloom_id || !merged->buckets || !merged->buckets_in_use)
+		goto err_out;
+
+	fy_id_reset(merged->bloom_id, merged->bloom_id_count);
+	fy_id_reset(merged->buckets_in_use, merged->bucket_id_count);
+	for (b = 0; b < merged->bucket_count; b++)
+		fy_atomic_store(&merged->buckets[b], NULL);
+
+	/*
+	 * Re-bucket every entry from every chain version into the merged
+	 * table. Entries are copied into the index tag (non-destructive to the
+	 * source, and keeps the index region self-contained). de->mem still
+	 * points into the content region.
+	 */
+	for (dtd = head; dtd; dtd = dtd->next) {
+		for (b = 0; b < dtd->bucket_count; b++) {
+			for (de = fy_atomic_load(&dtd->buckets[b]); de; de = de->next) {
+				nde = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+						sizeof(*nde), _Alignof(struct fy_dedup_entry));
+				if (!nde)
+					goto err_out;
+				nde->hash = de->hash;
+				nde->size = de->size;
+				nde->mem = de->mem;
+
+				bucket_pos = de->hash & merged->bucket_count_mask;
+				bloom_pos = de->hash & merged->bloom_filter_mask;
+				nde->next = fy_atomic_load(&merged->buckets[bucket_pos]);
+				fy_atomic_store(&merged->buckets[bucket_pos], nde);
+				fy_id_set_used(merged->buckets_in_use, merged->bucket_id_count, (int)bucket_pos);
+				fy_id_set_used(merged->bloom_id, merged->bloom_id_count, (int)bloom_pos);
+			}
+		}
+	}
+	merged->next = NULL;
+
+	snap->tag = tag;
+	snap->content_tag = dt->content_tag;
+	snap->index_tag = index_tag;
+	snap->root = merged;
+
+	/* regions to serialize: content + the self-contained index */
+	ntags = 0;
+	tags[ntags++] = dt->content_tag;
+	tags[ntags++] = index_tag;
+	snap->info = fy_dedup_build_combined_info(da, tags, ntags);
+	if (!snap->info)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	if (index_tag != FY_ALLOC_TAG_ERROR)
+		fy_allocator_release_tag(da->parent_allocator, index_tag);
+	memset(snap, 0, sizeof(*snap));
+	return -1;
+}
+
+static void fy_dedup_snapshot_release(struct fy_allocator *a, struct fy_allocator_snapshot *snap)
+{
+	struct fy_dedup_allocator *da;
+
+	if (!a || !snap)
+		return;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+
+	free(snap->info);
+	if (snap->index_tag != FY_ALLOC_TAG_ERROR && snap->index_tag != FY_ALLOC_TAG_NONE)
+		fy_allocator_release_tag(da->parent_allocator, snap->index_tag);
+	memset(snap, 0, sizeof(*snap));
+}
+
 static struct fy_allocator_info *
 fy_dedup_get_info(struct fy_allocator *a, int tag)
 {
@@ -1744,4 +1937,6 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.get_info = fy_dedup_get_info,
 	.get_caps = fy_dedup_get_caps,
 	.contains = fy_dedup_contains,
+	.snapshot = fy_dedup_snapshot,
+	.snapshot_release = fy_dedup_snapshot_release,
 };
