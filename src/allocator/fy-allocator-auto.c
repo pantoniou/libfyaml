@@ -375,6 +375,22 @@ static bool fy_auto_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return fy_allocator_contains_nocheck(aa->parent_allocator, tag, ptr);
 }
 
+static int fy_auto_snapshot(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap)
+{
+	struct fy_auto_allocator *aa;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	return fy_allocator_snapshot_nocheck(aa->parent_allocator, tag, snap);
+}
+
+static void fy_auto_snapshot_release(struct fy_allocator *a, struct fy_allocator_snapshot *snap)
+{
+	struct fy_auto_allocator *aa;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	fy_allocator_snapshot_release_nocheck(aa->parent_allocator, snap);
+}
+
 const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.setup = fy_auto_setup,
 	.cleanup = fy_auto_cleanup,
@@ -396,4 +412,6 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.get_info = fy_auto_get_info,
 	.get_caps = fy_auto_get_caps,
 	.contains = fy_auto_contains,
+	.snapshot = fy_auto_snapshot,
+	.snapshot_release = fy_auto_snapshot_release,
 };
