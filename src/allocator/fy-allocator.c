@@ -35,6 +35,7 @@
 #include "fy-allocator-mremap.h"
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-auto.h"
+#include "fy-allocator-durable.h"
 
 static struct fy_registered_allocator_entry_list allocator_registry_list;
 static bool allocator_registry_initialized = false;
@@ -154,6 +155,11 @@ static const struct {
 	}, {
 		.name = "auto",
 		.ops = &fy_auto_allocator_ops,
+#ifndef _WIN32
+	}, {
+		.name = "durable",
+		.ops = &fy_durable_allocator_ops,
+#endif
 	}
 };
 

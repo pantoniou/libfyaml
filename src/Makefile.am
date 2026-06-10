@@ -70,7 +70,8 @@ libfyaml_la_SOURCES += \
 	allocator/fy-allocator-malloc.c allocator/fy-allocator-malloc.h \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \
 	allocator/fy-allocator-dedup.c allocator/fy-allocator-dedup.h \
-	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h
+	allocator/fy-allocator-auto.c allocator/fy-allocator-auto.h \
+	allocator/fy-allocator-durable.c allocator/fy-allocator-durable.h
 
 # generic
 if HAVE_GENERIC

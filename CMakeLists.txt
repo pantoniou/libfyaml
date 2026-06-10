@@ -996,6 +996,7 @@ set(LIBSRCS
     src/allocator/fy-allocator-mremap.c
     src/allocator/fy-allocator-dedup.c
     src/allocator/fy-allocator-auto.c
+    src/allocator/fy-allocator-durable.c
     src/blake3/blake3_host_state.c
     src/blake3/blake3_backend.c
     src/blake3/blake3_be_cpusimd.c

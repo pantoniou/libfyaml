@@ -318,6 +318,7 @@ lib_sources: list[Path] = [
     src_dir / "allocator" / "fy-allocator-mremap.c",
     src_dir / "allocator" / "fy-allocator-dedup.c",
     src_dir / "allocator" / "fy-allocator-auto.c",
+    src_dir / "allocator" / "fy-allocator-durable.c",
     src_dir / "blake3" / "blake3_host_state.c",
     src_dir / "blake3" / "blake3_backend.c",
     src_dir / "blake3" / "blake3_be_cpusimd.c",

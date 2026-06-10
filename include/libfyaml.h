@@ -56,7 +56,7 @@ extern "C" {
  *   (``libfyaml/libfyaml-dociter.h``)
  * - Composer: callback-driven, path-aware event processing
  *   (``libfyaml/libfyaml-composer.h``)
- * - Pluggable memory allocators
+ * - Pluggable memory allocators, including the durable fixed-base arena
  *   (``libfyaml/libfyaml-allocator.h``)
  * - Thread pool for parallel work
  *   (``libfyaml/libfyaml-thread.h``)
