@@ -267,4 +267,7 @@ bool fy_fd_fs_is_local(int fd);
 #define FY_PSC	'\\'
 #endif
 
+/* portable file pre-allocation like posix_fallocate() */
+int fy_fallocate(int fd, off_t offset, off_t len);
+
 #endif

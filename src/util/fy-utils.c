@@ -1599,3 +1599,30 @@ bool fy_fd_fs_is_local(int fd)
 	return true;	/* no query available; allow */
 #endif
 }
+
+int fy_fallocate(int fd, off_t offset, off_t len)
+{
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__)
+	return posix_fallocate(fd, offset, len);
+#elif defined(__APPLE__)
+	fstore_t fst;
+
+	fst.fst_flags = F_ALLOCATECONTIG;
+	fst.fst_posmode = F_PEOFPOSMODE;
+	fst.fst_offset = 0;
+	fst.fst_length = offset + len;
+	fst.fst_bytesalloc = 0;
+	/* try contiguous, then fall back to any-space; ignore failure */
+	if (fcntl(fd, F_PREALLOCATE, &fst) < 0) {
+		fst.fst_flags = F_ALLOCATEALL;
+		(void)fcntl(fd, F_PREALLOCATE, &fst);
+	}
+	if (ftruncate(fd, offset + len) < 0)
+		return errno;
+	return 0;
+#else
+	/* not supported for anything else */
+	(void)fd; (void)offset; (void)len;
+	return ENOSYS;
+#endif
+}
