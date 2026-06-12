@@ -6201,6 +6201,102 @@ START_TEST(generic_linearize_many_chunks)
 }
 END_TEST
 
+START_TEST(generic_signature)
+{
+	struct fy_generic_builder_cfg gbcfg = { 0 };
+	struct fy_allocator *allocator;
+	struct fy_generic_builder *gb;
+	uint8_t a[FY_BLAKE3_OUT_LEN], b[FY_BLAKE3_OUT_LEN];
+	uint8_t c[FY_BLAKE3_OUT_LEN], d[FY_BLAKE3_OUT_LEN];
+	fy_generic m1, m2, s1, s2, s2t, vint, vstr, seq;
+	long long iv;
+	unsigned char ib[8];
+	int i, rc;
+
+	allocator = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(allocator, NULL);
+	gbcfg.allocator = allocator;
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* determinism: two structurally-equal trees hash identically */
+	m1 = fy_mapping(gb, fy_string("k"), fy_string("v"));
+	s1 = fy_sequence(gb, fy_int(1), fy_string("hi"), m1);
+	m2 = fy_mapping(gb, fy_string("k"), fy_string("v"));
+	s2 = fy_sequence(gb, fy_int(1), fy_string("hi"), m2);
+	rc = fy_generic_signature(s1, FYGSF_CONTENT_ONLY, a);
+	ck_assert_int_eq(rc, 0);
+	rc = fy_generic_signature(s2, FYGSF_CONTENT_ONLY, b);
+	ck_assert_int_eq(rc, 0);
+	ck_assert_int_eq(memcmp(a, b, sizeof(a)), 0);
+
+	/* content-only ignores a tag indirect; with-indirects reflects it */
+	s2t = fy_generic_set_tag(gb, s2, fy_string("!mytag"));
+	ck_assert(fy_generic_is_valid(s2t));
+	fy_generic_signature(s1,  FYGSF_CONTENT_ONLY,   a);
+	fy_generic_signature(s2t, FYGSF_CONTENT_ONLY,   b);
+	ck_assert_int_eq(memcmp(a, b, sizeof(a)), 0);	/* tag invisible to content */
+	fy_generic_signature(s1,  FYGSF_WITH_INDIRECTS, c);
+	fy_generic_signature(s2t, FYGSF_WITH_INDIRECTS, d);
+	ck_assert_int_ne(memcmp(c, d, sizeof(c)), 0);	/* tag visible with indirects */
+
+	/* invalid value is rejected; NULL output is rejected */
+	rc = fy_generic_signature(fy_invalid, FYGSF_CONTENT_ONLY, a);
+	ck_assert_int_eq(rc, -1);
+	rc = fy_generic_signature(s1, FYGSF_CONTENT_ONLY, NULL);
+	ck_assert_int_eq(rc, -1);
+
+	/*
+	 * Spoof resistance. Scalars may carry arbitrary binary data, so the
+	 * stream is a prefix-free TLV (tag, then length-delimited payload for
+	 * strings): a binary string whose bytes are the very encoding of
+	 * another value must not collide with that value.
+	 */
+
+	/* a string whose 8 bytes == int's little-endian payload vs that int */
+	iv = 0x0102030405060708LL;
+	for (i = 0; i < 8; i++)
+		ib[i] = (unsigned char)(iv >> (i * 8));
+	vint = fy_int(iv);
+	vstr = fy_gb_string_size_create(gb, (const char *)ib, 8);
+	fy_generic_signature(vint, FYGSF_CONTENT_ONLY, a);
+	fy_generic_signature(vstr, FYGSF_CONTENT_ONLY, b);
+	ck_assert_int_ne(memcmp(a, b, sizeof(a)), 0);
+
+	/* a string spelling out the sequence framing vs the real sequence */
+	seq = fy_sequence(gb, fy_int(1));
+	{
+		const char seqbytes[] = { 0x05, 1, 0, 0, 0, 0, 0, 0, 0 };
+		fy_generic sseq = fy_gb_string_size_create(gb, seqbytes,
+							   sizeof(seqbytes));
+		fy_generic_signature(seq,  FYGSF_CONTENT_ONLY, a);
+		fy_generic_signature(sseq, FYGSF_CONTENT_ONLY, b);
+		ck_assert_int_ne(memcmp(a, b, sizeof(a)), 0);
+	}
+
+	/*
+	 * Binary-safe: strings with embedded NULs and tag-like bytes are
+	 * length-delimited (never truncated at a NUL) and distinguished by
+	 * their true byte length.
+	 */
+	{
+		const char p1[] = { 0x04, 0x00, 0x02, 'x', 'y' };	/* len 5 */
+		const char p2[] = { 0x04, 0x00, 0x02, 'x', 'y', 0x00 };	/* len 6 */
+		fy_generic sb1 = fy_gb_string_size_create(gb, p1, sizeof(p1));
+		fy_generic sb2 = fy_gb_string_size_create(gb, p2, sizeof(p2));
+
+		fy_generic_signature(sb1, FYGSF_CONTENT_ONLY, a);
+		fy_generic_signature(sb2, FYGSF_CONTENT_ONLY, b);
+		ck_assert_int_ne(memcmp(a, b, sizeof(a)), 0);	/* differ by length */
+		fy_generic_signature(sb1, FYGSF_CONTENT_ONLY, c);
+		ck_assert_int_eq(memcmp(a, c, sizeof(a)), 0);	/* stable, not NUL-cut */
+	}
+
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(allocator);
+}
+END_TEST
+
 void libfyaml_case_generic(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -6333,6 +6429,8 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_linearize_single_chunk);
 	fy_check_testcase_add_test(ctc, generic_linearize_two_chunks);
 	fy_check_testcase_add_test(ctc, generic_linearize_many_chunks);
+
+	fy_check_testcase_add_test(ctc, generic_signature);
 }
 
 FY_DIAG_POP
