@@ -76,3 +76,9 @@ build*/
 __pycache__/
 .*.swp
 bench_alloc
+
+# profiling artifacts
+bench.er/
+bench_alloc_small.c
+callgrind.out
+gmon.out
