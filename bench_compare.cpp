@@ -50,9 +50,6 @@ extern "C" {
 #pragma pop_macro("atomic_compare_exchange_strong")
 #pragma pop_macro("atomic_compare_exchange_weak")
 
-extern "C" {
-#include <libpmemobj.h>
-}
 
 /* ---- benchmark parameters ---- */
 static constexpr long   NALLOCS   = 500000;
@@ -67,9 +64,6 @@ static constexpr uint64_t DURABLE_CHUNK_SZ   =  16ULL << 20;
 /* Metall geometry — initial segment size (grows automatically) */
 static constexpr size_t METALL_INIT_SZ = 256ULL << 20;
 
-/* libpmemobj pool size — must be at least PMEMOBJ_MIN_POOL (8 MiB);
-   we need 5 runs × 500k × ~42 B avg = ~105 MiB, so give it 256 MiB */
-static constexpr size_t PMEMOBJ_POOL_SZ = 1ULL << 30;  /* 1 GiB: pmemobj has ~140B/obj overhead */
 
 /* size distribution matches bench_alloc.c */
 static constexpr size_t SIZE_TABLE[] = { 8,8,16,8,64,8,32,256,8,16 };
@@ -309,111 +303,6 @@ static Result bench_raw_malloc_withfree()
     return r;
 }
 
-/* ---- libpmemobj driver: alloc-only (no individual frees, like durable) ---- */
-
-static Result bench_pmemobj_nofree(const char *dir)
-{
-    Result r;
-    r.name = "pmemobj (no-free)";
-
-    char path[256];
-    snprintf(path, sizeof(path), "%s/pool.obj", dir);
-
-    PMEMobjpool *pop = pmemobj_create(path, "bench", PMEMOBJ_POOL_SZ, 0600);
-    if (!pop) {
-        fprintf(stderr, "pmemobj_create failed: %s\n", pmemobj_errormsg());
-        return r;
-    }
-
-    /* warmup */
-    for (int i = 0; i < WARMUP; i++) {
-        PMEMoid oid;
-        size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
-        if (pmemobj_alloc(pop, &oid, sz, 0, nullptr, nullptr) == 0) {
-            volatile uint8_t *p = (volatile uint8_t *)pmemobj_direct(oid);
-            *p = (uint8_t)i;
-        }
-    }
-
-    for (int run = 0; run < RUNS; run++) {
-        uint64_t t0 = now_ns();
-        for (long i = 0; i < NALLOCS; i++) {
-            PMEMoid oid;
-            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
-            if (pmemobj_alloc(pop, &oid, sz, 0, nullptr, nullptr) != 0) {
-                fprintf(stderr, "pmemobj_alloc failed at i=%ld\n", i);
-                pmemobj_close(pop);
-                return r;
-            }
-            volatile uint8_t *p = (volatile uint8_t *)pmemobj_direct(oid);
-            *p = (uint8_t)i;
-        }
-        uint64_t elapsed = now_ns() - t0;
-
-        if (elapsed < r.min_ns) r.min_ns = elapsed;
-        r.total_ns += elapsed;
-        r.runs++;
-    }
-
-    pmemobj_close(pop);
-    return r;
-}
-
-/* ---- libpmemobj driver: alloc + free per run ---- */
-
-static Result bench_pmemobj_withfree(const char *dir)
-{
-    Result r;
-    r.name = "pmemobj (with-free)";
-
-    char path[256];
-    snprintf(path, sizeof(path), "%s/pool.obj", dir);
-
-    PMEMobjpool *pop = pmemobj_create(path, "bench", PMEMOBJ_POOL_SZ, 0600);
-    if (!pop) {
-        fprintf(stderr, "pmemobj_create failed: %s\n", pmemobj_errormsg());
-        return r;
-    }
-
-    std::vector<PMEMoid> oids(NALLOCS);
-
-    /* warmup */
-    {
-        std::vector<PMEMoid> wp(WARMUP);
-        for (int i = 0; i < WARMUP; i++) {
-            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
-            if (pmemobj_alloc(pop, &wp[i], sz, 0, nullptr, nullptr) == 0) {
-                volatile uint8_t *p = (volatile uint8_t *)pmemobj_direct(wp[i]);
-                *p = (uint8_t)i;
-            }
-        }
-        for (int i = 0; i < WARMUP; i++) pmemobj_free(&wp[i]);
-    }
-
-    for (int run = 0; run < RUNS; run++) {
-        uint64_t t0 = now_ns();
-        for (long i = 0; i < NALLOCS; i++) {
-            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
-            if (pmemobj_alloc(pop, &oids[i], sz, 0, nullptr, nullptr) != 0) {
-                pmemobj_close(pop);
-                return r;
-            }
-            volatile uint8_t *p = (volatile uint8_t *)pmemobj_direct(oids[i]);
-            *p = (uint8_t)i;
-        }
-        uint64_t t_alloc = now_ns() - t0;
-
-        for (long i = 0; i < NALLOCS; i++) pmemobj_free(&oids[i]);
-
-        if (t_alloc < r.min_ns) r.min_ns = t_alloc;
-        r.total_ns += t_alloc;
-        r.runs++;
-    }
-
-    pmemobj_close(pop);
-    return r;
-}
-
 /* ---- main ---- */
 
 int main()
@@ -496,26 +385,6 @@ int main()
     results.push_back(bench_raw_malloc_nofree());
     results.push_back(bench_raw_malloc_withfree());
 
-    /* ---- libpmemobj: no-free ---- */
-    {
-        char *tmpdir = make_tmpdir();
-        if (tmpdir) {
-            results.push_back(bench_pmemobj_nofree(tmpdir));
-            rm_rf(tmpdir);
-            free(tmpdir);
-        }
-    }
-
-    /* ---- libpmemobj: with-free ---- */
-    {
-        char *tmpdir = make_tmpdir();
-        if (tmpdir) {
-            results.push_back(bench_pmemobj_withfree(tmpdir));
-            rm_rf(tmpdir);
-            free(tmpdir);
-        }
-    }
-
     printf("Results:\n");
     for (auto &r : results) print_result(r);
 
@@ -526,7 +395,5 @@ int main()
            METALL_INIT_SZ >> 20);
     printf("  metall (with-free): Metall allocate_aligned + bulk deallocate per run (alloc time only)\n");
     printf("  Metall default chunk size: %llu MiB\n", (unsigned long long)(1ULL << 21) >> 20);
-    printf("  pmemobj pool size: %zu MiB (single file, no-free pool accumulates across runs)\n",
-           PMEMOBJ_POOL_SZ >> 20);
     return 0;
 }
