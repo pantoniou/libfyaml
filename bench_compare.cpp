@@ -233,6 +233,79 @@ static Result bench_metall_withfree(const char *dir)
     return r;
 }
 
+/* ---- alloc+release cycle: fy allocator (tag = O(1) bulk free) ---- */
+
+static Result bench_fy_cycle(struct fy_allocator *a, const char *label)
+{
+    Result r;
+    r.name = label;
+
+    /* warmup */
+    for (int i = 0; i < WARMUP; i++) {
+        int tag = fy_allocator_get_tag(a);
+        if (tag < 0) break;
+        void *p = fy_allocator_alloc(a, tag, SIZE_TABLE[i % SIZE_TABLE_LEN], 8);
+        if (p) *(volatile uint8_t *)p = (uint8_t)i;
+        fy_allocator_release_tag(a, tag);
+    }
+
+    for (int run = 0; run < RUNS; run++) {
+        int tag = fy_allocator_get_tag(a);
+        if (tag < 0) return r;
+
+        uint64_t t0 = now_ns();
+        for (long i = 0; i < NALLOCS; i++) {
+            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+            void *p = fy_allocator_alloc(a, tag, sz, 8);
+            if (!p) { fy_allocator_release_tag(a, tag); return r; }
+            *(volatile uint8_t *)p = (uint8_t)i;
+        }
+        fy_allocator_release_tag(a, tag);   /* O(1) bulk release */
+        uint64_t elapsed = now_ns() - t0;
+
+        if (elapsed < r.min_ns) r.min_ns = elapsed;
+        r.total_ns += elapsed;
+        r.runs++;
+    }
+    return r;
+}
+
+/* ---- alloc+release cycle: raw malloc (N individual free() calls) ---- */
+
+static Result bench_raw_malloc_cycle()
+{
+    Result r;
+    r.name = "raw malloc+N free";
+
+    std::vector<void *> ptrs(NALLOCS);
+
+    /* warmup */
+    {
+        std::vector<void *> wp(WARMUP);
+        for (int i = 0; i < WARMUP; i++) {
+            wp[i] = malloc(SIZE_TABLE[i % SIZE_TABLE_LEN]);
+            if (wp[i]) *(volatile uint8_t *)wp[i] = (uint8_t)i;
+        }
+        for (int i = 0; i < WARMUP; i++) free(wp[i]);
+    }
+
+    for (int run = 0; run < RUNS; run++) {
+        uint64_t t0 = now_ns();
+        for (long i = 0; i < NALLOCS; i++) {
+            ptrs[i] = malloc(SIZE_TABLE[i % SIZE_TABLE_LEN]);
+            if (!ptrs[i]) return r;
+            *(volatile uint8_t *)ptrs[i] = (uint8_t)i;
+        }
+        for (long i = 0; i < NALLOCS; i++) free(ptrs[i]);  /* N individual frees */
+        uint64_t elapsed = now_ns() - t0;
+
+        if (elapsed < r.min_ns) r.min_ns = elapsed;
+        r.total_ns += elapsed;
+        r.runs++;
+    }
+    return r;
+}
+
 /* ---- raw malloc: no-free ---- */
 
 static Result bench_raw_malloc_nofree()
@@ -381,12 +454,44 @@ int main()
         }
     }
 
-    /* ---- raw malloc ---- */
+    /* ---- raw malloc (alloc timing only) ---- */
     results.push_back(bench_raw_malloc_nofree());
     results.push_back(bench_raw_malloc_withfree());
 
-    printf("Results:\n");
+    printf("Results (alloc throughput only):\n");
     for (auto &r : results) print_result(r);
+
+    /* ---- full alloc+release cycle: arena tag vs N malloc frees ---- */
+    printf("\nFull cycle (alloc + release/free included in timing):\n");
+    {
+        auto *a = fy_allocator_create("mremap", nullptr);
+        if (a) { print_result(bench_fy_cycle(a, "fy-mremap cycle")); fy_allocator_destroy(a); }
+    }
+    {
+        const size_t bufsz = 128ULL << 20;
+        void *buf = mmap(nullptr, bufsz, PROT_READ|PROT_WRITE,
+                         MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE, -1, 0);
+        if (buf != MAP_FAILED) {
+            auto *a = fy_linear_allocator_create_in_place(buf, bufsz);
+            if (a) print_result(bench_fy_cycle(a, "fy-linear cycle"));
+            munmap(buf, bufsz);
+        }
+    }
+    {
+        char *tmpdir = make_tmpdir();
+        if (tmpdir) {
+            struct fy_durable_allocator_cfg cfg{};
+            cfg.dir         = tmpdir;
+            cfg.region_base = DURABLE_BASE;
+            cfg.region_size = DURABLE_REGION_SZ;
+            cfg.chunk_size  = DURABLE_CHUNK_SZ;
+            cfg.flags       = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_SPARSE;
+            auto *a = fy_allocator_create("durable", &cfg);
+            if (a) { print_result(bench_fy_cycle(a, "fy-durable cycle")); fy_allocator_destroy(a); }
+            rm_rf(tmpdir); free(tmpdir);
+        }
+    }
+    print_result(bench_raw_malloc_cycle());
 
     printf("\nNotes:\n");
     printf("  fy-linear/mremap : arena (no individual frees)\n");
@@ -394,6 +499,6 @@ int main()
     printf("  metall (no-free) : Metall persistent mmap, allocate_aligned only, %zu MiB initial\n",
            METALL_INIT_SZ >> 20);
     printf("  metall (with-free): Metall allocate_aligned + bulk deallocate per run (alloc time only)\n");
-    printf("  Metall default chunk size: %llu MiB\n", (unsigned long long)(1ULL << 21) >> 20);
+    printf("  Metall default chunk size: %llu MiB\n  'cycle' rows time alloc + release together; arena = 1 tag release, malloc = N free() calls\n", (unsigned long long)(1ULL << 21) >> 20);
     return 0;
 }
