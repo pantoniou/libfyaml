@@ -198,8 +198,8 @@ static void *fy_durable_arena_alloc(struct fy_durable_allocator *da,
 	if (da->read_only || !size || !rg->region)
 		return NULL;
 
-	if (align < 16)
-		align = 16;
+	if (align < 8)
+		align = 8;
 	/* larger than any fresh chunk can ever satisfy */
 	if (size + align > rg->max_alloc)
 		return NULL;
@@ -1245,7 +1245,7 @@ static int fy_durable_region_msync(struct fy_durable_region *rg)
 		hdr = fy_atomic_load(&rg->chunks[i]);
 		if (!hdr)
 			continue;
-		used = fy_durable_hdr_off(rg, i) + fy_atomic_load(&hdr->next);
+		used = fy_size_t_align(fy_durable_hdr_off(rg, i) + fy_atomic_load(&hdr->next), 64);
 		if (msync(fy_durable_chunk_base(rg, i), used, MS_SYNC) != 0)
 			rc = -1;
 	}
