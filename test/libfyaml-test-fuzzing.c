@@ -807,6 +807,33 @@ START_TEST(fuzz_issue_305_malloc_allocator_free_repro)
 }
 END_TEST
 
+START_TEST(fuzz_issue_309_scalar_path_key_repro)
+{
+	const char data[] = "\x32\x3a\x09\x2a\x30";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd;
+	FILE *f;
+
+	cfg.flags = FYPCF_QUIET |
+		    FYPCF_RESOLVE_DOCUMENT |
+		    FYPCF_DISABLE_MMAP_OPT |
+		    FYPCF_DEFAULT_VERSION_1_1 |
+		    FYPCF_PREFER_RECURSIVE |
+		    FYPCF_JSON_NONE |
+		    FYPCF_YPATH_ALIASES |
+		    FYPCF_ALLOW_DUPLICATE_KEYS |
+		    FYPCF_ENABLE_CACHE;
+
+	f = fmemopen((void *)data, sizeof(data) - 1, "r");
+	ck_assert_ptr_ne(f, NULL);
+
+	fyd = fy_document_build_from_fp(&cfg, f);
+
+	fclose(f);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(fuzz_resolve_document_ypath_null_alias)
 {
 	char buf[] = ":\n*.null";
@@ -1325,6 +1352,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_299_token_unref_uaf_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_300_token_unref_overflow_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_305_malloc_allocator_free_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_309_scalar_path_key_repro);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
