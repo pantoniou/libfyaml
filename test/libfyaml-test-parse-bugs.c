@@ -474,6 +474,33 @@ START_TEST(parse_bug_escaped_space_before_newline_with_content)
 }
 END_TEST
 
+START_TEST(parse_bug_ypath_alias_path_key_at_eof)
+{
+	const char data[] = "\x32\x3a\x09\x2a\x30";
+	struct fy_parse_cfg cfg = {0};
+	struct fy_document *fyd = NULL;
+	FILE *fp = NULL;
+
+	cfg.flags = FYPCF_QUIET |
+		    FYPCF_RESOLVE_DOCUMENT |
+		    FYPCF_DISABLE_MMAP_OPT |
+		    FYPCF_DEFAULT_VERSION_1_1 |
+		    FYPCF_PREFER_RECURSIVE |
+		    FYPCF_JSON_NONE |
+		    FYPCF_YPATH_ALIASES |
+		    FYPCF_ALLOW_DUPLICATE_KEYS |
+		    FYPCF_ENABLE_CACHE;
+
+	fp = fmemopen((void *)data, sizeof(data) - 1, "r");
+	ck_assert_ptr_ne(fp, NULL);
+
+	fyd = fy_document_build_from_fp(&cfg, fp);
+
+	fy_document_destroy(fyd);
+	fclose(fp);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
@@ -507,4 +534,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_with_content);
+
+	/* Issue #309: path key duplication must not read past direct token text */
+	fy_check_testcase_add_test(ctc, parse_bug_ypath_alias_path_key_at_eof);
 }
