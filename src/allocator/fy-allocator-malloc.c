@@ -15,6 +15,7 @@
 #include <time.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 /* for container_of */
 #include "fy-list.h"
@@ -22,7 +23,157 @@
 #include "fy-align.h"
 #include "fy-win32.h"
 
+#include "xxhash.h"
+
 #include "fy-allocator-malloc.h"
+
+#define FY_MALLOC_PTR_BUCKET_SIZE	4096
+#define FY_MALLOC_PTR_DEFAULT_HEADS	512
+
+#define FY_MALLOC_PTR_BUCKET_CAP \
+	((FY_MALLOC_PTR_BUCKET_SIZE - sizeof(struct fy_malloc_ptr_bucket)) / \
+	 sizeof(struct fy_malloc_entry))
+
+static int
+fy_malloc_ptr_set_setup(struct fy_malloc_ptr_set *set, size_t est_size)
+{
+	size_t nheads;
+
+	nheads = est_size ? est_size / FY_MALLOC_PTR_BUCKET_SIZE :
+			    FY_MALLOC_PTR_DEFAULT_HEADS;
+	if (nheads < 1)
+		nheads = 1;
+
+	set->nheads = nheads;
+	set->count = 0;
+	set->heads = calloc(nheads, sizeof(*set->heads));
+	return set->heads ? 0 : -1;
+}
+
+static void
+fy_malloc_ptr_set_cleanup(struct fy_malloc_ptr_set *set)
+{
+	struct fy_malloc_ptr_bucket *b, *next;
+	size_t i, j;
+
+	if (!set->heads)
+		return;
+
+	for (i = 0; i < set->nheads; i++) {
+		for (b = set->heads[i]; b; b = next) {
+			next = b->next;
+			for (j = 0; j < b->count; j++)
+				fy_align_free(b->entries[j].ptr);
+			free(b);
+		}
+	}
+	free(set->heads);
+	memset(set, 0, sizeof(*set));
+}
+
+static inline bool
+fy_malloc_ptr_bucket_find(const struct fy_malloc_ptr_bucket *b,
+			  void *ptr, size_t *idxp)
+{
+	uintptr_t key, k;
+	size_t lo, mid, hi;
+
+	key = (uintptr_t)ptr;
+	lo = 0;
+	hi = b->count;
+
+	while (lo < hi) {
+		mid = lo + (hi - lo) / 2;
+		k = (uintptr_t)b->entries[mid].ptr;
+		if (k == key) {
+			*idxp = mid;
+			return true;
+		}
+		if (key < k)
+			hi = mid;
+		else
+			lo = mid + 1;
+	}
+	*idxp = lo;
+	return false;
+}
+
+static int
+fy_malloc_ptr_set_add(struct fy_malloc_ptr_set *set, void *ptr, size_t size)
+{
+	struct fy_malloc_ptr_bucket **lastp;
+	struct fy_malloc_ptr_bucket *b, *last;
+	uintptr_t key;
+	size_t head, idx;
+
+	key = (uintptr_t)ptr;
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	lastp = &set->heads[head];
+	idx = 0;
+	last = NULL;
+
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_malloc_ptr_bucket_find(b, ptr, &idx))
+			return 1;
+		lastp = &b->next;
+		last = b;
+	}
+
+	if (!last || last->count >= FY_MALLOC_PTR_BUCKET_CAP) {
+		b = malloc(FY_MALLOC_PTR_BUCKET_SIZE);
+		if (!b)
+			return -1;
+		b->next = NULL;
+		b->count = 0;
+		*lastp = b;
+		last = b;
+		idx = 0;
+	} else {
+		(void)fy_malloc_ptr_bucket_find(last, ptr, &idx);
+	}
+
+	if (idx < last->count)
+		memmove(&last->entries[idx + 1], &last->entries[idx],
+			(last->count - idx) * sizeof(last->entries[0]));
+	last->entries[idx].ptr = ptr;
+	last->entries[idx].size = size;
+	last->count++;
+	set->count++;
+	return 0;
+}
+
+static bool
+fy_malloc_ptr_set_del(struct fy_malloc_ptr_set *set, void *ptr, size_t *sizep)
+{
+	struct fy_malloc_ptr_bucket **bp;
+	struct fy_malloc_ptr_bucket *b;
+	uintptr_t key;
+	size_t head, idx;
+
+	key = (uintptr_t)ptr;
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	bp = &set->heads[head];
+
+	for (b = *bp; b; bp = &b->next, b = b->next) {
+		if (!fy_malloc_ptr_bucket_find(b, ptr, &idx))
+			continue;
+
+		if (sizep)
+			*sizep = b->entries[idx].size;
+		if (idx + 1 < b->count)
+			memmove(&b->entries[idx], &b->entries[idx + 1],
+				(b->count - idx - 1) * sizeof(b->entries[0]));
+		b->count--;
+		set->count--;
+		if (!b->count) {
+			*bp = b->next;
+			free(b);
+		}
+		return true;
+	}
+
+	return false;
+}
 
 static inline void
 fy_malloc_tag_list_lock(struct fy_malloc_tag *mt)
@@ -58,21 +209,21 @@ fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 	return &ma->tags[tag];
 }
 
-static void fy_malloc_tag_setup(struct fy_malloc_allocator *ma FY_UNUSED,
-				struct fy_malloc_tag *mt)
+static int fy_malloc_tag_setup(struct fy_malloc_allocator *ma FY_UNUSED,
+			       struct fy_malloc_tag *mt)
 {
-	fy_malloc_entry_list_init(&mt->entries);
+	memset(mt, 0, sizeof(*mt));
+	if (fy_malloc_ptr_set_setup(&mt->ptrs, 0))
+		return -1;
 	atomic_flag_clear(&mt->lock);
+	return 0;
 }
 
 static void fy_malloc_tag_cleanup(struct fy_malloc_allocator *ma FY_UNUSED,
 				  struct fy_malloc_tag *mt)
 {
-	struct fy_malloc_entry *me;
-
 	/* cleanup should happen from a single thread */
-	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		fy_align_free(me->mem);
+	fy_malloc_ptr_set_cleanup(&mt->ptrs);
 }
 
 static void fy_malloc_cleanup(struct fy_allocator *a)
@@ -134,7 +285,8 @@ static int fy_malloc_setup(struct fy_allocator *a,
 	/* start with tag 0 as general use */
 	fy_id_set_used(ma->ids, ma->tag_id_count, 0);
 	mt = fy_malloc_tag_from_tag(ma, 0);
-	fy_malloc_tag_setup(ma, mt);
+	if (fy_malloc_tag_setup(ma, mt))
+		goto err_out;
 
 	return 0;
 
@@ -177,9 +329,9 @@ void fy_malloc_dump(struct fy_allocator *a)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
-	struct fy_malloc_entry *me;
 	unsigned int i;
-	size_t count, total, system_total;
+	size_t count, total, system_total, j;
+	struct fy_malloc_ptr_bucket *b;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -189,7 +341,7 @@ void fy_malloc_dump(struct fy_allocator *a)
 		if (!mt)
 			continue;
 		fy_malloc_tag_list_lock(mt);
-		fprintf(stderr, "%c", fy_malloc_entry_list_empty(&mt->entries) ? '.' : 'x');
+		fprintf(stderr, "%c", !mt->ptrs.count ? '.' : 'x');
 		fy_malloc_tag_list_unlock(mt);
 	}
 	fprintf(stderr, "\n");
@@ -199,12 +351,15 @@ void fy_malloc_dump(struct fy_allocator *a)
 		if (!mt)
 			continue;
 		fy_malloc_tag_list_lock(mt);
-		count = total = system_total = 0;
-		if (!fy_malloc_entry_list_empty(&mt->entries)) {
-			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
-				count++;
-				total += me->size;
-				system_total += sizeof(*me) + me->size;
+		count = mt->ptrs.count;
+		total = system_total = 0;
+		for (j = 0; j < mt->ptrs.nheads; j++) {
+			for (b = mt->ptrs.heads[j]; b; b = b->next) {
+				system_total += FY_MALLOC_PTR_BUCKET_SIZE;
+				for (size_t k = 0; k < b->count; k++) {
+					total += b->entries[k].size;
+					system_total += b->entries[k].size;
+				}
 			}
 		}
 		fy_malloc_tag_list_unlock(mt);
@@ -212,7 +367,7 @@ void fy_malloc_dump(struct fy_allocator *a)
 			continue;
 		fprintf(stderr, "  %d: count %zu total %zu system %zu overhead %zu (%2.2f%%)\n", i,
 				count, total, system_total, system_total - total,
-				100.0 * (double)(system_total - total) / (double)system_total);
+				system_total ? 100.0 * (double)(system_total - total) / (double)system_total : 0.0);
 	}
 }
 
@@ -220,41 +375,41 @@ static void *fy_malloc_tag_alloc(struct fy_malloc_allocator *ma FY_UNUSED,
 				 struct fy_malloc_tag *mt,
 				 size_t size, size_t align)
 {
-	struct fy_malloc_entry *me;
-	size_t me_offset, max_align;
+	size_t max_align;
 	void *mem;
+	int rc;
 
-	me_offset = fy_size_t_align(size, _Alignof(struct fy_malloc_entry));
-	max_align = align > _Alignof(struct fy_malloc_entry) ? align : _Alignof(struct fy_malloc_entry);
+	max_align = align > _Alignof(void *) ? align : _Alignof(void *);
 
-	mem = fy_align_alloc(max_align, me_offset + sizeof(*me));
+	mem = fy_align_alloc(max_align, size);
 	if (!mem)
 		return NULL;
 
-	me = (void *)((char *)mem + me_offset);
-
-	me->size = size;
 	fy_malloc_tag_list_lock(mt);
-	fy_malloc_entry_list_add_tail(&mt->entries, me);
+	rc = fy_malloc_ptr_set_add(&mt->ptrs, mem, size);
 	fy_malloc_tag_list_unlock(mt);
-	me->mem = mem;
+
+	if (rc) {
+		fy_align_free(mem);
+		return NULL;
+	}
 
 	return mem;
 }
 
 static void fy_malloc_tag_free(struct fy_malloc_allocator *ma FY_UNUSED,
-			       struct fy_malloc_tag *mt,
-			       void *data)
+				       struct fy_malloc_tag *mt,
+				       void *data)
 {
-	struct fy_malloc_entry *me;
-
-	me = container_of(data, struct fy_malloc_entry, mem);
+	bool found;
+	size_t size FY_UNUSED;
 
 	fy_malloc_tag_list_lock(mt);
-	fy_malloc_entry_list_del(&mt->entries, me);
+	found = fy_malloc_ptr_set_del(&mt->ptrs, data, &size);
 	fy_malloc_tag_list_unlock(mt);
 
-	fy_align_free(me->mem);
+	if (found)
+		fy_align_free(data);
 }
 
 static void *fy_malloc_alloc(struct fy_allocator *a, int tag, size_t size, size_t align)
@@ -416,10 +571,13 @@ static int fy_malloc_get_tag(struct fy_allocator *a)
 	if (!mt)
 		goto err_out;
 
-	fy_malloc_tag_setup(ma, mt);
+	if (fy_malloc_tag_setup(ma, mt))
+		goto err_free_id;
 
 	return (int)id;
 
+err_free_id:
+	fy_id_free(ma->ids, ma->tag_id_count, id);
 err_out:
 	return FY_ALLOC_TAG_ERROR;
 }
@@ -435,9 +593,10 @@ static int fy_malloc_get_tag_count(struct fy_allocator *a)
 static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_malloc_allocator *ma;
+	struct fy_malloc_tag *old_tags;
+	fy_id_bits *old_ids;
 	fy_id_bits *ids = NULL;
 	struct fy_malloc_tag *mt, *mt_new, *tags = NULL;
-	struct fy_malloc_entry *me;
 	unsigned int i, tag_count, tag_id_count;
 	size_t tmpsz;
 
@@ -474,6 +633,7 @@ static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 		tags = fy_parent_allocator_alloc(&ma->a, tmpsz, _Alignof(struct fy_malloc_tag));
 		if (!tags)
 			goto err_out;
+		memset(tags, 0, tmpsz);
 
 		/* copy over the old entries */
 		for (i = 0; i < ma->tag_count; i++) {
@@ -484,28 +644,22 @@ static int fy_malloc_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 			mt_new = &tags[i];
 
-			fy_malloc_tag_setup(ma, mt_new);
-			/* move the old entries over */
-			fy_malloc_tag_list_lock(mt);
-			while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-				fy_malloc_entry_list_add_tail(&mt_new->entries, me);
-			fy_malloc_tag_list_unlock(mt);
-			memcpy(&mt_new->stats, &mt->stats, sizeof(mt->stats));
-
-			/* clean the old entry */
-			fy_malloc_tag_cleanup(ma, mt);
+			*mt_new = *mt;
+			memset(mt, 0, sizeof(*mt));
 
 			fy_id_set_used(ids, tag_id_count, i);
 		}
 	}
 
+	old_tags = ma->tags;
+	old_ids = ma->ids;
 	if (ma->tags != tags) {
 		ma->tags = tags;
-		fy_parent_allocator_free(&ma->a, ma->tags);
+		fy_parent_allocator_free(&ma->a, old_tags);
 	}
 	if (ma->ids != ids) {
 		ma->ids = ids;
-		fy_parent_allocator_free(&ma->a, (void *)ma->ids);
+		fy_parent_allocator_free(&ma->a, (void *)old_ids);
 	}
 	ma->tag_count = tag_count;
 	ma->tag_id_count = tag_id_count;
@@ -527,7 +681,6 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
-	struct fy_malloc_entry *me;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
 
@@ -536,8 +689,8 @@ static void fy_malloc_reset_tag(struct fy_allocator *a, int tag)
 		return;
 
 	/* no lock, reset is single thread only */
-	while ((me = fy_malloc_entry_list_pop(&mt->entries)) != NULL)
-		fy_align_free(me);
+	fy_malloc_tag_cleanup(ma, mt);
+	fy_malloc_tag_setup(ma, mt);
 }
 
 static struct fy_allocator_info *
@@ -545,14 +698,15 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
-	struct fy_malloc_entry *me;
 	struct fy_allocator_info *info;
 	struct fy_allocator_tag_info *tag_info;
 	struct fy_allocator_arena_info *arena_info;
+	struct fy_malloc_ptr_bucket *b;
+	struct fy_malloc_entry *me;
 	size_t size, free, used, total;
 	size_t tag_free, tag_used, tag_total;
 	size_t arena_free, arena_used, arena_total;
-	unsigned int num_tags, num_arenas, i;
+	unsigned int num_tags, num_arenas, i, j, k;
 	int id;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
@@ -616,30 +770,36 @@ fy_malloc_get_info(struct fy_allocator *a, int tag)
 				tag_info->arena_infos = arena_info;
 			}
 
-			fy_malloc_tag_list_lock(mt);
+				fy_malloc_tag_list_lock(mt);
 
-			for (me = fy_malloc_entry_list_head(&mt->entries); me; me = fy_malloc_entry_next(&mt->entries, me)) {
-				arena_free = 0;
-				arena_used = me->size;
-				arena_total = sizeof(*me) + me->size;
+				for (j = 0; j < mt->ptrs.nheads; j++) {
+					for (b = mt->ptrs.heads[j]; b; b = b->next) {
+						tag_total += FY_MALLOC_PTR_BUCKET_SIZE;
+						for (k = 0; k < b->count; k++) {
+							me = &b->entries[k];
+							arena_free = 0;
+							arena_used = me->size;
+							arena_total = me->size;
 
-				tag_free += arena_free;
-				tag_used += arena_used;
-				tag_total += arena_total;
+							tag_free += arena_free;
+							tag_used += arena_used;
+							tag_total += arena_total;
 
-				if (!i) {
-					num_arenas++;
-				} else {
-					arena_info->free = arena_free;
-					arena_info->used = arena_used;
-					arena_info->total = arena_total;
-					arena_info->data = me->mem;
-					arena_info->size = me->size;
-					arena_info++;
-					tag_info->num_arena_infos++;
+							if (!i) {
+								num_arenas++;
+							} else {
+								arena_info->free = arena_free;
+								arena_info->used = arena_used;
+								arena_info->total = arena_total;
+								arena_info->data = me->ptr;
+								arena_info->size = me->size;
+								arena_info++;
+								tag_info->num_arena_infos++;
+							}
+						}
+					}
 				}
-			}
-			fy_malloc_tag_list_unlock(mt);
+				fy_malloc_tag_list_unlock(mt);
 
 			if (!i) {
 				num_tags++;
@@ -672,14 +832,14 @@ fy_malloc_get_caps(struct fy_allocator *a FY_UNUSED)
 	       FYACF_HAS_CONTAINS | FYACF_HAS_TAGS;
 }
 
-/* malloc allocator actually tracks allocations, it's just very inefficient
- * to scan through. It might be good for debugging though
- */
+/* malloc allocator tracks allocation ranges in per-tag pointer buckets. */
 static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 {
 	struct fy_malloc_allocator *ma;
 	struct fy_malloc_tag *mt;
+	struct fy_malloc_ptr_bucket *b;
 	struct fy_malloc_entry *me;
+	unsigned int i, j;
 	int tag_start, tag_end;
 
 	ma = container_of(a, struct fy_malloc_allocator, a);
@@ -699,13 +859,16 @@ static bool fy_malloc_contains(struct fy_allocator *a, int tag, const void *ptr)
 			continue;
 
 		fy_malloc_tag_list_lock(mt);
-		for (me = fy_malloc_entry_list_head(&mt->entries); me;
-		     me = fy_malloc_entry_next(&mt->entries, me)) {
-
-			if (ptr >= (void *)me->mem &&
-			    ptr < (void *)((char *)me->mem + me->size)) {
-				fy_malloc_tag_list_unlock(mt);
-				return true;
+		for (i = 0; i < mt->ptrs.nheads; i++) {
+			for (b = mt->ptrs.heads[i]; b; b = b->next) {
+				for (j = 0; j < b->count; j++) {
+					me = &b->entries[j];
+					if (ptr >= (void *)me->ptr &&
+					    ptr < (void *)((char *)me->ptr + me->size)) {
+						fy_malloc_tag_list_unlock(mt);
+						return true;
+					}
+				}
 			}
 		}
 		fy_malloc_tag_list_unlock(mt);

@@ -12,7 +12,6 @@
 #include "config.h"
 #endif
 
-#include "fy-typelist.h"
 #include "fy-id.h"
 
 #include "fy-atomics.h"
@@ -20,19 +19,28 @@
 
 struct fy_malloc_tag;
 
-FY_TYPE_FWD_DECL_LIST(malloc_entry);
 struct fy_malloc_entry {
-	struct list_head node;
+	void *ptr;
 	size_t size;
-	void *mem;
 };
-FY_TYPE_DECL_LIST(malloc_entry);
+
+struct fy_malloc_ptr_bucket {
+	struct fy_malloc_ptr_bucket *next;
+	size_t count;
+	struct fy_malloc_entry entries[];
+};
+
+struct fy_malloc_ptr_set {
+	struct fy_malloc_ptr_bucket **heads;
+	size_t nheads;
+	size_t count;
+};
 
 #define FY_MALLOC_TAG_MAX	32
 
 struct fy_malloc_tag {
 	fy_atomic_flag lock;
-	struct fy_malloc_entry_list entries;
+	struct fy_malloc_ptr_set ptrs;
 	struct fy_allocator_stats stats;
 };
 
