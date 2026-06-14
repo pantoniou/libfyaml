@@ -35,7 +35,7 @@
 
 #define TEST_REGION_BASE	0x520000000000ULL
 #define TEST_REGION_SIZE	(256ULL << 20)
-#define TEST_CHUNK_SIZE		(4ULL << 20)
+#define TEST_CHUNK_SIZE		(16ULL << 20)
 
 /* size distribution: small (8B), medium (64B), large (256B) */
 static const size_t size_table[] = { 8, 8, 16, 8, 64, 8, 32, 256, 8, 16 };
@@ -214,7 +214,7 @@ int main(void)
 			cfg.region_base = TEST_REGION_BASE;
 			cfg.region_size = TEST_REGION_SIZE;
 			cfg.chunk_size  = TEST_CHUNK_SIZE;
-			cfg.flags       = FY_DURABLE_ARENA_CREATE;
+			cfg.flags       = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_SPARSE;
 
 			a = fy_allocator_create("durable", &cfg);
 			if (a) {
@@ -240,7 +240,7 @@ int main(void)
 			cfg.region_base = TEST_REGION_BASE;
 			cfg.region_size = TEST_REGION_SIZE;
 			cfg.chunk_size  = TEST_CHUNK_SIZE;
-			cfg.flags       = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_DEDUP;
+			cfg.flags       = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_SPARSE | FY_DURABLE_ARENA_DEDUP;
 
 			a = fy_allocator_create("durable", &cfg);
 			if (a) {
