@@ -82,3 +82,5 @@ bench.er/
 bench_alloc_small.c
 callgrind.out
 gmon.out
+bench_compare
+bench_alloc
