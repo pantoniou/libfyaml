@@ -1289,11 +1289,13 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	/* simple one? perfect */
 	if ((ta->flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
 		text = fy_token_get_text(fyt, &len);
-		str = strdup(text);
+		str = malloc(len + 1);
 		if (!str) {
 			*lenp = 0;
 			return NULL;
 		}
+		memcpy(str, text, len);
+		str[len] = '\0';
 		*lenp = len;
 		return str;
 	}
