@@ -239,6 +239,76 @@ static Result bench_metall_withfree(const char *dir)
     return r;
 }
 
+/* ---- raw malloc: no-free ---- */
+
+static Result bench_raw_malloc_nofree()
+{
+    Result r;
+    r.name = "raw malloc (no-free)";
+
+    /* warmup */
+    for (int i = 0; i < WARMUP; i++) {
+        size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+        void *p = malloc(sz);
+        if (p) *(volatile uint8_t *)p = (uint8_t)i;
+        /* intentionally not freed */
+    }
+
+    for (int run = 0; run < RUNS; run++) {
+        uint64_t t0 = now_ns();
+        for (long i = 0; i < NALLOCS; i++) {
+            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+            void *p = malloc(sz);
+            if (!p) return r;
+            *(volatile uint8_t *)p = (uint8_t)i;
+        }
+        uint64_t elapsed = now_ns() - t0;
+        if (elapsed < r.min_ns) r.min_ns = elapsed;
+        r.total_ns += elapsed;
+        r.runs++;
+    }
+    return r;
+}
+
+/* ---- raw malloc: bulk-free per run ---- */
+
+static Result bench_raw_malloc_withfree()
+{
+    Result r;
+    r.name = "raw malloc (bulk-free)";
+
+    std::vector<void *> ptrs(NALLOCS);
+
+    /* warmup */
+    {
+        std::vector<void *> wp(WARMUP);
+        for (int i = 0; i < WARMUP; i++) {
+            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+            wp[i] = malloc(sz);
+            if (wp[i]) *(volatile uint8_t *)wp[i] = (uint8_t)i;
+        }
+        for (int i = 0; i < WARMUP; i++) free(wp[i]);
+    }
+
+    for (int run = 0; run < RUNS; run++) {
+        uint64_t t0 = now_ns();
+        for (long i = 0; i < NALLOCS; i++) {
+            size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+            ptrs[i] = malloc(sz);
+            if (!ptrs[i]) return r;
+            *(volatile uint8_t *)ptrs[i] = (uint8_t)i;
+        }
+        uint64_t t_alloc = now_ns() - t0;
+
+        for (long i = 0; i < NALLOCS; i++) free(ptrs[i]);
+
+        if (t_alloc < r.min_ns) r.min_ns = t_alloc;
+        r.total_ns += t_alloc;
+        r.runs++;
+    }
+    return r;
+}
+
 /* ---- libpmemobj driver: alloc-only (no individual frees, like durable) ---- */
 
 static Result bench_pmemobj_nofree(const char *dir)
@@ -421,6 +491,10 @@ int main()
             free(tmpdir);
         }
     }
+
+    /* ---- raw malloc ---- */
+    results.push_back(bench_raw_malloc_nofree());
+    results.push_back(bench_raw_malloc_withfree());
 
     /* ---- libpmemobj: no-free ---- */
     {
