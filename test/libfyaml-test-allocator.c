@@ -162,6 +162,31 @@ START_TEST(allocator_malloc)
 }
 END_TEST
 
+START_TEST(allocator_malloc_free_user_pointer)
+{
+	struct fy_allocator *a = NULL;
+	int tag = -1;
+	void *p;
+
+	a = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, -1);
+
+	p = fy_allocator_alloc(a, tag, 400, 8);
+	ck_assert_ptr_ne(p, NULL);
+	memset(p, 0xab, 400);
+	ck_assert(fy_allocator_contains(a, tag, p));
+	ck_assert(fy_allocator_contains(a, tag, (char *)p + 399));
+	ck_assert(!fy_allocator_contains(a, tag, (char *)p + 400));
+
+	fy_allocator_free(a, tag, p);
+	ck_assert(!fy_allocator_contains(a, tag, p));
+	fy_allocator_destroy(a);
+}
+END_TEST
+
 START_TEST(allocator_mremap)
 {
 	struct fy_allocator *a = NULL;
@@ -891,6 +916,7 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, allocator_linear_buf);
 	fy_check_testcase_add_test(ctc, allocator_linear_alloc);
 	fy_check_testcase_add_test(ctc, allocator_malloc);
+	fy_check_testcase_add_test(ctc, allocator_malloc_free_user_pointer);
 	fy_check_testcase_add_test(ctc, allocator_mremap);
 	fy_check_testcase_add_test(ctc, allocator_auto);
 	fy_check_testcase_add_test(ctc, allocator_linear_inplace);
