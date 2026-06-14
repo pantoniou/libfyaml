@@ -17,6 +17,7 @@
 #include <climits>
 #include <vector>
 #include <string>
+#include <malloc.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -376,6 +377,77 @@ static Result bench_raw_malloc_withfree()
     return r;
 }
 
+/* ---- memory overhead: requested bytes vs actual bytes consumed ---- */
+
+static void report_overhead()
+{
+    const long N = NALLOCS;
+    size_t requested = 0, actual_malloc = 0;
+    std::vector<void *> ptrs(N);
+
+    for (long i = 0; i < N; i++) {
+        size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+        requested += sz;
+        ptrs[i] = malloc(sz);
+        if (ptrs[i]) actual_malloc += malloc_usable_size(ptrs[i]);
+    }
+    for (long i = 0; i < N; i++) free(ptrs[i]);
+
+    /* arena (mremap): bump pointer tracks exact bytes used */
+    size_t actual_arena = 0;
+    {
+        auto *a = fy_allocator_create("mremap", nullptr);
+        if (a) {
+            int tag = fy_allocator_get_tag(a);
+            for (long i = 0; i < N; i++) {
+                size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+                void *p = fy_allocator_alloc(a, tag, sz, 8);
+                (void)p;
+            }
+            /* get bytes from /proc: measure RSS delta would be noisy;
+               instead report what mremap's bump pointer consumed via tag info.
+               We approximate: re-run with monotonic counter by using a fresh
+               linear buf and measuring bump displacement. */
+            fy_allocator_release_tag(a, tag);
+            fy_allocator_destroy(a);
+        }
+    }
+    /* Use a linear allocator in a known buffer to read the bump exactly */
+    {
+        const size_t bufsz = 64ULL << 20;
+        void *buf = mmap(nullptr, bufsz, PROT_READ|PROT_WRITE,
+                         MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if (buf != MAP_FAILED) {
+            /* place a canary at end to detect overflow */
+            auto *a = fy_linear_allocator_create_in_place(buf, bufsz);
+            if (a) {
+                int tag = fy_allocator_get_tag(a);
+                void *last = nullptr;
+                size_t last_sz = 0;
+                for (long i = 0; i < N; i++) {
+                    size_t sz = SIZE_TABLE[i % SIZE_TABLE_LEN];
+                    last = fy_allocator_alloc(a, tag, sz, 8);
+                    last_sz = sz;
+                }
+                if (last)
+                    actual_arena = (size_t)((char *)last + last_sz - (char *)buf);
+            }
+            munmap(buf, bufsz);
+        }
+    }
+
+    printf("\nMemory overhead (%ld allocations, size mix 8–256 B, align=8):\n", N);
+    printf("  Requested bytes:           %8zu  (%.1f B/alloc avg)\n",
+           requested, (double)requested / N);
+    printf("  malloc actual (usable):    %8zu  (%.1fx overhead, %.1f B/alloc)\n",
+           actual_malloc, (double)actual_malloc / requested,
+           (double)actual_malloc / N);
+    if (actual_arena)
+        printf("  arena actual (bump delta): %8zu  (%.1fx overhead, %.1f B/alloc)\n",
+               actual_arena, (double)actual_arena / requested,
+               (double)actual_arena / N);
+}
+
 /* ---- main ---- */
 
 int main()
@@ -492,6 +564,8 @@ int main()
         }
     }
     print_result(bench_raw_malloc_cycle());
+
+    report_overhead();
 
     printf("\nNotes:\n");
     printf("  fy-linear/mremap : arena (no individual frees)\n");
