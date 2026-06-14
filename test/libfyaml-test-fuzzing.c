@@ -786,6 +786,27 @@ START_TEST(fuzz_issue_300_token_unref_overflow_repro)
 }
 END_TEST
 
+START_TEST(fuzz_issue_305_malloc_allocator_free_repro)
+{
+	struct fy_allocator *a;
+	int tag;
+	void *p;
+
+	a = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, FY_ALLOC_TAG_ERROR);
+
+	p = fy_allocator_alloc(a, tag, 400, 8);
+	ck_assert_ptr_ne(p, NULL);
+
+	memset(p, 0xab, 400);
+	fy_allocator_free(a, tag, p);
+	fy_allocator_destroy(a);
+}
+END_TEST
+
 START_TEST(fuzz_resolve_document_ypath_null_alias)
 {
 	char buf[] = ":\n*.null";
@@ -1303,6 +1324,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_298_list_del_uaf_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_299_token_unref_uaf_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_300_token_unref_overflow_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_305_malloc_allocator_free_repro);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);
