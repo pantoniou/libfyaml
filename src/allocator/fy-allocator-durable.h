@@ -16,11 +16,12 @@
 
 #include "fy-atomics.h"
 #include "fy-allocator.h"
+#include "blake3.h"
 
 struct fy_dedup_tag;	/* in-arena dedup index anchor (fy-allocator-dedup.h) */
 
 /* on-disk format */
-#define FY_DURABLE_VERSION	1u
+#define FY_DURABLE_VERSION	2u
 #define FY_DURABLE_ENDIAN	0x12345678u
 
 /* per-chunk integrity magics */
@@ -46,10 +47,33 @@ struct fy_durable_chunk_hdr {
 	FY_ATOMIC(uint64_t) flags;		/* FYDCF_* */
 	FY_ATOMIC(size_t) next;			/* bump offset, measured from this header */
 	FY_ATOMIC(struct fy_durable_chunk_hdr *) next_chunk;	/* chunk-list link (fixed addr) */
+	uint8_t content_hash[32];		/* BLAKE3([DATA0..next]), written once when sealed */
 };
 
-/* first free byte offset within a chunk, measured from its header */
+/* first free byte offset within a chunk, measured from its header (80 with content_hash) */
 #define FY_DURABLE_DATA0	FY_ALIGN(16, sizeof(struct fy_durable_chunk_hdr))
+
+/*
+ * Number of rotating checkpoint slots.  Choosing 16 means a verify slot
+ * remains valid as long as fewer than 16 checkpoints have been taken since
+ * it was written.  The FIFO claim uses a 64-bit monotonic counter so the
+ * active slot index is (verify_head - 1) % FY_DURABLE_VERIFY_SLOTS.
+ */
+#define FY_DURABLE_VERIFY_SLOTS	16
+
+/*
+ * One rotating checkpoint record.  The generation field is written LAST
+ * (release store) so that a reader who observes a non-zero generation can
+ * safely read the rest of the slot.  A slot is valid iff:
+ *   current_verify_head - slot.generation < FY_DURABLE_VERIFY_SLOTS
+ */
+struct fy_durable_verify_slot {
+	FY_ATOMIC(uint64_t) generation;		/* slot sequence; 0 = empty; written last */
+	uint64_t head_chunk_gen;		/* chunk generation of the head at checkpoint */
+	uint64_t head_chunk_bump;		/* head chunk's next ptr at checkpoint */
+	uint64_t refs_head_snap;		/* snapshot of refs_head at checkpoint */
+	uint8_t  hash[32];			/* BLAKE3(head_data || sealed_hashes... || refs) */
+};
 
 /* bootstrap header at offset 0 of chunk 0. */
 struct fy_durable_boot {
@@ -70,9 +94,17 @@ struct fy_durable_boot {
 	uint64_t index_chunk_size;
 	FY_ATOMIC(uint64_t) index_generation;	/* generation id source for the index series */
 	FY_ATOMIC(struct fy_durable_chunk_hdr *) index_head;	/* index chunk-list head */
+	/* rolling FIFO of content-integrity checkpoints */
+	FY_ATOMIC(uint64_t) verify_head;	/* monotonic claim counter; slot = (head-1) % SLOTS */
+	struct fy_durable_verify_slot verify_slots[FY_DURABLE_VERIFY_SLOTS];
 };
 
-/* chunk 0 layout: [boot][pad to 16][chunk_hdr][pad to 16][data...] */
+/*
+ * Compile-time minimum offset of the chunk-0 chunk_hdr within chunk 0.
+ * At runtime the actual offset is rounded up to the system page size so that
+ * mprotect() can cover the [CHUNK0_HDR_OFF, chunk_size) range cleanly.
+ * Use da->content.chunk0_reserve (set in fy_durable_setup) for the runtime value.
+ */
 #define FY_DURABLE_CHUNK0_HDR_OFF \
 	FY_ALIGN(16, sizeof(struct fy_durable_boot))
 
@@ -83,9 +115,13 @@ _Static_assert(offsetof(struct fy_durable_boot, refs_head) % 8 == 0, "refs_head 
 _Static_assert(offsetof(struct fy_durable_boot, dedup_root) % 8 == 0, "dedup_root must be 8-byte aligned");
 _Static_assert(offsetof(struct fy_durable_boot, index_generation) % 8 == 0, "index_generation must be 8-byte aligned");
 _Static_assert(offsetof(struct fy_durable_boot, index_head) % 8 == 0, "index_head must be 8-byte aligned");
+_Static_assert(offsetof(struct fy_durable_boot, verify_head) % 8 == 0, "verify_head must be 8-byte aligned");
+_Static_assert(offsetof(struct fy_durable_boot, verify_slots) % 8 == 0, "verify_slots must be 8-byte aligned");
 _Static_assert(offsetof(struct fy_durable_chunk_hdr, flags) % 8 == 0, "flags must be 8-byte aligned");
 _Static_assert(offsetof(struct fy_durable_chunk_hdr, next) % 8 == 0, "next must be 8-byte aligned");
 _Static_assert(offsetof(struct fy_durable_chunk_hdr, next_chunk) % 8 == 0, "next_chunk must be 8-byte aligned");
+_Static_assert(offsetof(struct fy_durable_verify_slot, generation) % 8 == 0, "slot generation must be 8-byte aligned");
+_Static_assert(sizeof(struct fy_durable_verify_slot) == 64, "verify slot must be 64 bytes");
 
 /* one contiguous fixed-base region backed by a numbered file series (<prefix>-N.bin). */
 struct fy_durable_region {
@@ -117,6 +153,7 @@ struct fy_durable_allocator {
 	struct fy_durable_boot *boot;		/* chunk 0 mapping (== content.region_base) */
 	struct fy_durable_region content;	/* the content arena (always active) */
 	struct fy_durable_region index;		/* the dedup index arena (separate_index only) */
+	struct blake3_host_state *b3hs;		/* BLAKE3 host state for seal/checkpoint/verify */
 };
 
 extern const struct fy_allocator_ops fy_durable_allocator_ops;

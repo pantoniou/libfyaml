@@ -32,6 +32,7 @@
 #include "fy-bit64.h"
 #include "fy-list.h"
 #include "fy-utils.h"
+#include "blake3.h"
 
 static const uint8_t fy_durable_boot_magic[8] = {
 	'O', 'B', 'A', 'R', 'U', 'D', 'F', 'Y'
@@ -184,6 +185,45 @@ static inline void *fy_durable_chunk_alloc(struct fy_durable_chunk_hdr *hdr,
 	return (char *)hdr + data_pos;
 }
 
+/*
+ * Compute and store the content_hash for a chunk that is being retired as the
+ * active head.  Called by the grow winner immediately before installing the
+ * new head, so exactly one writer ever touches content_hash.
+ *
+ * The hash covers [DATA0 .. next) measured from the chunk header, i.e. the
+ * live allocation bytes only (not the chunk_hdr itself).  If the chunk is
+ * empty (next == DATA0) we write an all-zero hash and skip the msync — an
+ * empty sealed chunk carries no content to protect.
+ */
+static void fy_durable_seal_chunk(struct fy_durable_allocator *da,
+				  struct fy_durable_region *rg,
+				  struct fy_durable_chunk_hdr *hdr)
+{
+	struct blake3_hasher *h;
+	size_t next, data_len;
+	void *chunk_base;
+	size_t hdr_off, sync_len;
+
+	next = fy_atomic_load(&hdr->next);
+	if (next <= FY_DURABLE_DATA0)
+		return;
+
+	data_len = next - FY_DURABLE_DATA0;
+
+	h = blake3_hasher_create(da->b3hs, NULL, NULL, 0);
+	if (!h)
+		return;
+
+	blake3_hash(h, (char *)hdr + FY_DURABLE_DATA0, data_len, hdr->content_hash);
+	blake3_hasher_destroy(h);
+
+	/* msync from the chunk base through the end of the chunk_hdr (content_hash included) */
+	hdr_off = fy_durable_hdr_off(rg, hdr->generation);
+	chunk_base = fy_durable_chunk_base(rg, hdr->generation);
+	sync_len = hdr_off + FY_DURABLE_DATA0;
+	msync(chunk_base, sync_len, MS_SYNC);
+}
+
 /* declared below */
 static struct fy_durable_chunk_hdr *
 fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
@@ -240,6 +280,7 @@ static void fy_durable_init_chunk_hdr(struct fy_durable_region *rg,
 	fy_atomic_store(&hdr->flags, 0);
 	fy_atomic_store(&hdr->next, FY_DURABLE_DATA0);
 	fy_atomic_store(&hdr->next_chunk, next_chunk);
+	memset(hdr->content_hash, 0, sizeof(hdr->content_hash));
 }
 
 /* re-reserve a slot as PROT_NONE (loser cleanup / bad chunk) */
@@ -346,6 +387,9 @@ fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
 		do {
 			flock(da->dirfd, LOCK_UN);
 		} while (rc == -1 && errno == EAGAIN);
+		/* seal the displaced chunk: hash its content and persist */
+		if (da->b3hs)
+			fy_durable_seal_chunk(da, rg, observed_head);
 		return new_hdr;	/* winner */
 	}
 
@@ -640,6 +684,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 	b->chunk_size = rg->chunk_size;
 	b->boot_size = sizeof(*b);
 	b->refs_head = 0;
+	fy_atomic_store(&b->verify_head, 0);
 
 	if (da->cfg.flags & FY_DURABLE_ARENA_SEPARATE_INDEX) {
 		b->index_region_base = da->cfg.index_region_base ?
@@ -657,7 +702,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 	fy_atomic_store(&b->generation, 1);
 	fy_atomic_store(&b->head, h0);
 
-	msync(base, FY_DURABLE_CHUNK0_HDR_OFF + FY_DURABLE_DATA0, MS_SYNC);
+	msync(base, rg->chunk0_reserve + FY_DURABLE_DATA0, MS_SYNC);
 
 	/* publish atomically; loses to a concurrent creator */
 	if (linkat(da->dirfd, tmp, da->dirfd, "arena-0.bin", 0) != 0) {
@@ -735,7 +780,14 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	da->content.region_size = cfg->region_size ? cfg->region_size : fy_default_fixed_vm_size(0);
 	da->content.chunk_size = cfg->chunk_size ? cfg->chunk_size : FY_DURABLE_DEFAULT_CHUNK_SIZE;
 
-	if (fy_durable_region_geometry(da, &da->content, FY_DURABLE_CHUNK0_HDR_OFF) != 0)
+	/*
+	 * Round the boot-section size up to a page boundary so the chunk_hdr
+	 * (and all content data) for chunk 0 starts on its own page.  This is
+	 * the runtime value of what FY_DURABLE_CHUNK0_HDR_OFF would be with
+	 * page-alignment applied.
+	 */
+	if (fy_durable_region_geometry(da, &da->content,
+				       FY_ALIGN(da->pagesz, sizeof(struct fy_durable_boot))) != 0)
 		goto err_out;
 
 	da->dir = strdup(cfg->dir);
@@ -756,6 +808,15 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 
 	if (!fy_fd_fs_is_local(da->dirfd))
 		goto err_out;
+
+	{
+		blake3_host_config b3cfg;
+		memset(&b3cfg, 0, sizeof(b3cfg));
+		b3cfg.no_mthread = true;
+		da->b3hs = blake3_host_state_create(&b3cfg);
+		if (!da->b3hs)
+			goto err_out;
+	}
 
 	da->content.chunks = calloc(da->content.max_chunks, sizeof(*da->content.chunks));
 	if (!da->content.chunks)
@@ -856,6 +917,11 @@ static void fy_durable_cleanup(struct fy_allocator *a)
 
 	fy_durable_region_cleanup(&da->index);
 	fy_durable_region_cleanup(&da->content);
+
+	if (da->b3hs) {
+		blake3_host_state_destroy(da->b3hs);
+		da->b3hs = NULL;
+	}
 
 	if (da->dirfd >= 0) {
 		close(da->dirfd);
@@ -1095,6 +1161,8 @@ static uint64_t fy_durable_op_region_base(struct fy_allocator *a);
 static uint64_t fy_durable_op_region_size(struct fy_allocator *a);
 static uint64_t fy_durable_op_index_region_base(struct fy_allocator *a);
 static uint64_t fy_durable_op_index_region_size(struct fy_allocator *a);
+static int fy_durable_op_checkpoint(struct fy_allocator *a);
+static int fy_durable_op_verify(struct fy_allocator *a);
 
 const struct fy_allocator_ops fy_durable_allocator_ops = {
 	.setup = fy_durable_setup,
@@ -1126,6 +1194,8 @@ const struct fy_allocator_ops fy_durable_allocator_ops = {
 	.region_size = fy_durable_op_region_size,
 	.index_region_base = fy_durable_op_index_region_base,
 	.index_region_size = fy_durable_op_index_region_size,
+	.checkpoint = fy_durable_op_checkpoint,
+	.verify = fy_durable_op_verify,
 };
 
 /* map (and, for the first writable user, create) the separate dedup-index file
@@ -1346,6 +1416,233 @@ static uint64_t fy_durable_op_index_region_size(struct fy_allocator *a)
 	struct fy_durable_allocator *da = container_of(a, struct fy_durable_allocator, a);
 
 	return da->separate_index ? da->index.region_size : 0;
+}
+
+/*
+ * Compute the combined content integrity hash for the current arena state.
+ *
+ * The hash covers, in chunk-list walk order (newest first):
+ *   head chunk:   BLAKE3([DATA0 .. snap_bump)) — snapshot of head at call entry
+ *   older chunks: content_hash[32] of each sealed chunk
+ *   finally:      refs_head as a raw little-endian 64-bit word
+ *
+ * head_chunk_gen and head_chunk_bump are snapshotted atomically before the
+ * walk so that the verify path can reproduce the identical input sequence.
+ */
+static int fy_durable_hash_content(struct fy_durable_allocator *da,
+				   uint64_t *head_gen_out,
+				   uint64_t *head_bump_out,
+				   uint64_t *refs_snap_out,
+				   uint8_t out[32])
+{
+	struct fy_durable_region *rg = &da->content;
+	struct fy_durable_chunk_hdr *head, *hdr;
+	struct blake3_hasher *h;
+	uint64_t head_gen, head_bump, refs;
+	uint64_t refs_le;
+	bool first;
+
+	head = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+	if (!head)
+		return -1;
+
+	/* snapshot before hashing to ensure verify can replay exactly */
+	head_gen  = head->generation;
+	head_bump = fy_atomic_load(&head->next);
+	refs      = fy_atomic_load(&da->boot->refs_head);
+
+	h = blake3_hasher_create(da->b3hs, NULL, NULL, 0);
+	if (!h)
+		return -1;
+
+	/* head chunk: hash live data up to the snapshotted bump */
+	first = true;
+	for (hdr = head; hdr; hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk))) {
+		if (first) {
+			size_t data_len = head_bump > FY_DURABLE_DATA0 ?
+					  head_bump - FY_DURABLE_DATA0 : 0;
+			if (data_len)
+				blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
+			first = false;
+		} else {
+			/* sealed chunk: feed its pre-computed content hash */
+			blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+		}
+	}
+
+	/* refs_head as a LE 64-bit word so the hash is endian-stable on disk */
+	refs_le = refs;		/* already native; stored LE on x86/ARM LE */
+	blake3_hasher_update(h, &refs_le, sizeof(refs_le));
+
+	blake3_hasher_finalize(h, out, BLAKE3_OUT_LEN);
+	blake3_hasher_destroy(h);
+
+	*head_gen_out  = head_gen;
+	*head_bump_out = head_bump;
+	*refs_snap_out = refs;
+	return 0;
+}
+
+/*
+ * Write a new checkpoint slot.  Uses a lock-free fetch_add to claim a slot
+ * index from the rotating FIFO, computes the content hash, fills the slot,
+ * then publishes it with a release store to the generation field.
+ *
+ * Multiple concurrent checkpoints are safe: each claims a unique slot.  If
+ * more than FY_DURABLE_VERIFY_SLOTS checkpoints overlap, older slots become
+ * invalid (head - slot.gen >= SLOTS) and are silently ignored by verify.
+ *
+ * Returns 0 on success, -1 on error (b3hs unavailable or walk failure).
+ */
+static int fy_durable_op_checkpoint(struct fy_allocator *a)
+{
+	struct fy_durable_allocator *da = container_of(a, struct fy_durable_allocator, a);
+	struct fy_durable_verify_slot *slot;
+	uint8_t hash[32];
+	uint64_t head_gen, head_bump, refs_snap;
+	uint64_t claimed;
+	unsigned int idx;
+
+	if (!da->b3hs || da->read_only)
+		return -1;
+
+	if (fy_durable_hash_content(da, &head_gen, &head_bump, &refs_snap, hash) != 0)
+		return -1;
+
+	/* claim a slot: fetch_add returns the OLD value; our slot index = old % SLOTS */
+	claimed = fy_atomic_fetch_add(&da->boot->verify_head, 1);
+	idx = (unsigned int)(claimed % FY_DURABLE_VERIFY_SLOTS);
+	slot = &da->boot->verify_slots[idx];
+
+	/* write payload fields before the generation (the publication fence) */
+	slot->head_chunk_gen  = head_gen;
+	slot->head_chunk_bump = head_bump;
+	slot->refs_head_snap  = refs_snap;
+	memcpy(slot->hash, hash, sizeof(hash));
+
+	/* release store: makes all writes above visible before the slot is seen as valid */
+	fy_atomic_store(&slot->generation, claimed + 1);
+
+	/* persist the boot page so the slot survives a crash */
+	msync(da->content.region, da->pagesz, MS_SYNC);
+	return 0;
+}
+
+/*
+ * Find the most recent valid verify slot (if any) and return it.
+ * A slot at index i is valid iff:
+ *   current_head - slot.generation < FY_DURABLE_VERIFY_SLOTS
+ * where current_head is the value of boot->verify_head at call time.
+ *
+ * Returns a pointer to the slot or NULL if no valid slot exists.
+ * Caller must NOT hold any lock; the slot is read under acquire semantics.
+ */
+static const struct fy_durable_verify_slot *
+fy_durable_find_latest_slot(const struct fy_durable_allocator *da)
+{
+	uint64_t head, best_gen = 0;
+	const struct fy_durable_verify_slot *best = NULL;
+	unsigned int i;
+
+	head = fy_atomic_load(&da->boot->verify_head);
+	if (head == 0)
+		return NULL;
+
+	for (i = 0; i < FY_DURABLE_VERIFY_SLOTS; i++) {
+		const struct fy_durable_verify_slot *s = &da->boot->verify_slots[i];
+		uint64_t gen = fy_atomic_load(&s->generation);
+
+		if (gen == 0)
+			continue;
+		if (head - gen >= FY_DURABLE_VERIFY_SLOTS)
+			continue;	/* too old */
+		if (gen > best_gen) {
+			best_gen = gen;
+			best = s;
+		}
+	}
+	return best;
+}
+
+/*
+ * Verify the arena against the most recent valid checkpoint slot.
+ *
+ * Re-hashes the content covered by the slot (identified by head_chunk_gen
+ * and head_chunk_bump) and compares to the stored hash.
+ *
+ * Returns  0 if the hash matches (arena is intact).
+ * Returns -1 if no valid slot exists, a chunk cannot be mapped, or the
+ *            hash does not match (possible corruption).
+ */
+static int fy_durable_op_verify(struct fy_allocator *a)
+{
+	struct fy_durable_allocator *da = container_of(a, struct fy_durable_allocator, a);
+	struct fy_durable_region *rg = &da->content;
+	const struct fy_durable_verify_slot *slot;
+	struct fy_durable_chunk_hdr *hdr;
+	struct blake3_hasher *h;
+	uint8_t computed[32];
+	uint64_t head_gen, head_bump, refs_snap;
+	uint64_t refs_le;
+	bool first;
+
+	if (!da->b3hs)
+		return -1;
+
+	slot = fy_durable_find_latest_slot(da);
+	if (!slot)
+		return -1;
+
+	head_gen  = slot->head_chunk_gen;
+	head_bump = slot->head_chunk_bump;
+	refs_snap = slot->refs_head_snap;
+
+	h = blake3_hasher_create(da->b3hs, NULL, NULL, 0);
+	if (!h)
+		return -1;
+
+	/*
+	 * Walk the chunk list from the head.  Skip chunks added after the
+	 * checkpoint (gen > head_gen).  Hash the checkpoint head chunk's data
+	 * up to head_bump, then feed content_hash for each older sealed chunk.
+	 */
+	first = true;
+	hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+	while (hdr) {
+		if (hdr->generation == head_gen) {
+			/* the head chunk at checkpoint time */
+			size_t data_len = head_bump > FY_DURABLE_DATA0 ?
+					  head_bump - FY_DURABLE_DATA0 : 0;
+			if (data_len)
+				blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
+			first = false;
+			/* continue walking to older sealed chunks */
+			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+			continue;
+		}
+
+		if (hdr->generation > head_gen) {
+			/* chunk added after the checkpoint; skip */
+			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+			continue;
+		}
+
+		/* older sealed chunk */
+		if (first) {
+			/* head_gen chunk was not in the list — corrupted */
+			blake3_hasher_destroy(h);
+			return -1;
+		}
+		blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+		hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+	}
+
+	refs_le = refs_snap;
+	blake3_hasher_update(h, &refs_le, sizeof(refs_le));
+	blake3_hasher_finalize(h, computed, BLAKE3_OUT_LEN);
+	blake3_hasher_destroy(h);
+
+	return memcmp(computed, slot->hash, BLAKE3_OUT_LEN) == 0 ? 0 : -1;
 }
 
 #else

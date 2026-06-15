@@ -69,6 +69,8 @@ struct fy_allocator_ops {
 	uint64_t (*region_size)(struct fy_allocator *a);		/* reserved region size, or 0 */
 	uint64_t (*index_region_base)(struct fy_allocator *a);		/* separate dedup-index base, or 0 */
 	uint64_t (*index_region_size)(struct fy_allocator *a);		/* separate dedup-index size, or 0 */
+	int (*checkpoint)(struct fy_allocator *a);			/* write a new content integrity slot */
+	int (*verify)(struct fy_allocator *a);				/* verify against the latest valid slot; 0=ok */
 };
 
 /* a durable snapshot of an allocator */
@@ -448,6 +450,20 @@ static inline uint64_t fy_allocator_index_region_size(struct fy_allocator *a)
 	if (!a || !a->ops->index_region_size)
 		return 0;
 	return a->ops->index_region_size(a);
+}
+
+static inline int fy_allocator_checkpoint(struct fy_allocator *a)
+{
+	if (!a || !a->ops->checkpoint)
+		return -1;
+	return a->ops->checkpoint(a);
+}
+
+static inline int fy_allocator_verify(struct fy_allocator *a)
+{
+	if (!a || !a->ops->verify)
+		return -1;
+	return a->ops->verify(a);
 }
 
 #endif
