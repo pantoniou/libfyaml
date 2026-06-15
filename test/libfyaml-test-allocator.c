@@ -898,6 +898,53 @@ START_TEST(allocator_dedup_concurrent_store)
 }
 END_TEST
 
+/*
+ * Exercise the external-root dedup wiring directly (independent of the durable
+ * arena): create the index over a plain mremap parent with a local root slot,
+ * then a second layer attaches to the same slot and must see the first layer's
+ * stores (shared index).
+ */
+START_TEST(allocator_dedup_external_attach)
+{
+	struct fy_allocator *base, *d1, *d2;
+	struct fy_dedup_allocator_cfg dcfg;
+	FY_ATOMIC(struct fy_dedup_tag *) root = NULL;
+	const char payload[] = "a sufficiently long dedup payload value";
+	const void *p1, *p2, *p3;
+
+	base = fy_allocator_create("mremap", NULL);
+	ck_assert_ptr_ne(base, NULL);
+
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.parent_allocator = base;
+	dcfg.dedup_threshold = 8;
+
+	/* create: publishes the shared root */
+	d1 = fy_dedup_create_external(base, FY_ALLOC_TAG_DEFAULT, &dcfg, &root);
+	ck_assert_ptr_ne(d1, NULL);
+	ck_assert_ptr_ne((void *)root, NULL);
+
+	p1 = fy_allocator_store(d1, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	ck_assert_ptr_ne(p1, NULL);
+
+	/* attach: same root slot -> shared index */
+	d2 = fy_dedup_create_external(base, FY_ALLOC_TAG_DEFAULT, &dcfg, &root);
+	ck_assert_ptr_ne(d2, NULL);
+
+	/* d2 sees d1's store */
+	p2 = fy_allocator_lookup(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	ck_assert_ptr_eq(p2, p1);
+
+	/* storing the same payload via d2 dedups to the same pointer */
+	p3 = fy_allocator_store(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	ck_assert_ptr_eq(p3, p1);
+
+	fy_allocator_destroy(d2);
+	fy_allocator_destroy(d1);
+	fy_allocator_destroy(base);
+}
+END_TEST
+
 void libfyaml_case_allocator(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -925,4 +972,5 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_multi_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_deep_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_concurrent_store);
+	fy_check_testcase_add_test(ctc, allocator_dedup_external_attach);
 }
