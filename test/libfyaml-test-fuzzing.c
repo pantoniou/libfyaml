@@ -807,6 +807,7 @@ START_TEST(fuzz_issue_305_malloc_allocator_free_repro)
 }
 END_TEST
 
+#if defined(__linux__)
 START_TEST(fuzz_issue_309_scalar_path_key_repro)
 {
 	const char data[] = "\x32\x3a\x09\x2a\x30";
@@ -833,6 +834,7 @@ START_TEST(fuzz_issue_309_scalar_path_key_repro)
 	fy_document_destroy(fyd);
 }
 END_TEST
+#endif
 
 START_TEST(fuzz_resolve_document_ypath_null_alias)
 {
@@ -1352,7 +1354,9 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_299_token_unref_uaf_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_300_token_unref_overflow_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_305_malloc_allocator_free_repro);
+#if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_309_scalar_path_key_repro);
+#endif
 	fy_check_testcase_add_test(ctc, fuzz_resolve_document_ypath_null_alias);
 	fy_check_testcase_add_test(ctc, fuzz_path_expr_build_bang_triple_star);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_recursive_ypath_aliases_dup_keys);

@@ -474,6 +474,7 @@ START_TEST(parse_bug_escaped_space_before_newline_with_content)
 }
 END_TEST
 
+#if defined(__linux__)
 START_TEST(parse_bug_ypath_alias_path_key_at_eof)
 {
 	const char data[] = "\x32\x3a\x09\x2a\x30";
@@ -500,6 +501,7 @@ START_TEST(parse_bug_ypath_alias_path_key_at_eof)
 	fclose(fp);
 }
 END_TEST
+#endif
 
 /* ── registration ────────────────────────────────────────────────── */
 
@@ -535,6 +537,8 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_with_content);
 
+#if defined(__linux__)
 	/* Issue #309: path key duplication must not read past direct token text */
 	fy_check_testcase_add_test(ctc, parse_bug_ypath_alias_path_key_at_eof);
+#endif
 }
