@@ -178,6 +178,7 @@
 #define OPT_CREATE_MARKERS		6007
 #define OPT_KEEP_STYLE			6008
 #define OPT_STORAGE_STATS		6009
+#define OPT_DURABLE			6010
 #endif
 
 #ifdef HAVE_REFLECTION
@@ -311,6 +312,7 @@ static struct option lopts[] = {
 	{"generic-testsuite",	no_argument,		0,	OPT_GENERIC_TESTSUITE },
 	{"dump-primitives",	no_argument,		0,	OPT_DUMP_PRIMITIVES },
 	{"storage-stats",	no_argument,		0,	OPT_STORAGE_STATS },
+	{"durable",		required_argument,	0,	OPT_DURABLE },
 	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
@@ -598,6 +600,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM("--no-dedup", "Dedup mode off");
 		USAGE_ITEM("--dump-primitives", "Dump primitives");
 		USAGE_ITEM("--storage-stats", "Report storage statistics (dedup effectiveness)");
+		USAGE_ITEM("--durable <dir>", "Use a durable (on-disk, dedup) arena at <dir>; persists and dedups across invocations");
 		USAGE_ITEM("--create-markers", "Create markers");
 		USAGE_ITEM_DEFAULT("--schema <schema>", "Schema: auto, yaml1.2-failsafe, yaml1.2-core, "
 				"yaml1.2-json, yaml1.1-failsafe, yaml1.1, yaml1.1-pyyaml, json, python", "auto");
@@ -1648,6 +1651,7 @@ struct generic_config {
 	bool sloppy_flow_indentation;
 	bool relaxed_flow_doc;
 	bool emit_events;
+	const char *durable_dir;	/* if set, use a durable on-disk dedup arena here */
 };
 
 struct generic_config default_generic_cfg = {
@@ -1667,7 +1671,10 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	struct fy_generic_iterator *fygi = NULL;
 	struct fy_event *fye = NULL;
 	struct fy_auto_allocator_cfg auto_cfg;
+	struct fy_durable_allocator_cfg dur_cfg;
 	struct fy_generic_builder_cfg gb_cfg;
+	bool durable = gcfg->durable_dir != NULL;
+	bool dedup = gcfg->dedup || durable;	/* durable arena implies dedup */
 	size_t max_size;
 	const char *filename;
 	enum fy_op_parse_flags parse_flags;
@@ -1690,18 +1697,32 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	if (max_size < (1U << 20))
 		max_size = (1U << 20);
 
-	memset(&auto_cfg, 0, sizeof(auto_cfg));
-	auto_cfg.scenario = gcfg->dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
-	auto_cfg.estimated_max_size = (size_t)(max_size * 1.2);
+	if (durable) {
+		memset(&dur_cfg, 0, sizeof(dur_cfg));
+		dur_cfg.dir = gcfg->durable_dir;
+		dur_cfg.flags = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_DEDUP |
+				FY_DURABLE_ARENA_SPARSE;
 
-	allocator = fy_allocator_create("auto", &auto_cfg);
-	if (!allocator)
-		goto err_out;
+		allocator = fy_allocator_create("durable", &dur_cfg);
+		if (!allocator) {
+			fprintf(stderr, "failed to create durable arena at '%s'\n",
+				gcfg->durable_dir);
+			goto err_out;
+		}
+	} else {
+		memset(&auto_cfg, 0, sizeof(auto_cfg));
+		auto_cfg.scenario = dedup ? FYAST_PER_TAG_FREE_DEDUP : FYAST_PER_TAG_FREE;
+		auto_cfg.estimated_max_size = (size_t)(max_size * 1.2);
+
+		allocator = fy_allocator_create("auto", &auto_cfg);
+		if (!allocator)
+			goto err_out;
+	}
 
 	memset(&gb_cfg, 0, sizeof(gb_cfg));
 	gb_cfg.allocator = allocator;
 	gb_cfg.estimated_max_size = max_size;
-	gb_cfg.flags = FYGBCF_SCOPE_LEADER | (gcfg->dedup ? FYGBCF_DEDUP_ENABLED : 0);
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER | (dedup ? FYGBCF_DEDUP_ENABLED : 0);
 	gb_cfg.flags |= FYGBCF_SCHEMA(gcfg->schema);
 	gb_cfg.diag = gcfg->diag;
 	gb = fy_generic_builder_create(&gb_cfg);
@@ -1962,6 +1983,16 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		fy_generic_emit_default(vdiag);
 	}
 
+	if (durable && allocator && !had_error) {
+		/* flush everything to stable storage and report arena usage */
+		fy_allocator_sync(allocator);
+		fprintf(stderr,
+			"durable arena '%s': chunks=%u, content-bytes=%zd\n",
+			gcfg->durable_dir,
+			fy_allocator_chunk_count(allocator),
+			fy_allocator_get_tag_linear_size(allocator, FY_ALLOC_TAG_DEFAULT));
+	}
+
 	rc = !had_error ? 0 : -1;
 out:
 	fy_generic_builder_destroy(gb);
@@ -2056,6 +2087,7 @@ int main(int argc, char *argv[])
 	bool dedup = DEDUP_DEFAULT;
 	bool dump_primitives = false;
 	bool storage_stats = false;
+	const char *durable_dir = NULL;
 	bool create_markers = false;
 	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
@@ -2619,6 +2651,10 @@ int main(int argc, char *argv[])
 
 		case OPT_STORAGE_STATS:
 			storage_stats = true;
+			break;
+
+		case OPT_DURABLE:
+			durable_dir = optarg;
 			break;
 
 		case OPT_CREATE_MARKERS:
@@ -3475,6 +3511,7 @@ int main(int argc, char *argv[])
 		gcfg.sloppy_flow_indentation = !!(cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION);
 		gcfg.relaxed_flow_doc = !!(cfg.flags & FYPCF_RELAXED_FLOW_DOC);
 		gcfg.emit_events = emit_events;
+		gcfg.durable_dir = durable_dir;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */
