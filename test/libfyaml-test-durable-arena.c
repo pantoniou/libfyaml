@@ -720,6 +720,114 @@ START_TEST(dedup_cross_process)
 }
 END_TEST
 
+#ifdef HAVE_GENERIC
+/*
+ * Builder-level analogue of dedup_cross_process, mirroring what
+ * `fy-tool --generic --durable <dir>` does: each forked process is a separate
+ * "invocation" that builds generics into the *same* durable arena through a
+ * generic builder. Strings shared between the per-process inputs ("files") must
+ * be interned once and resolve to the identical in-arena address in every
+ * process -- i.e. duplicates from different files land at the same canonical
+ * spot. Public APIs only (no fy-tool, no internal headers).
+ */
+START_TEST(dedup_builder_cross_process)
+{
+	char dir[256], path[320], pl[80];
+	struct fy_allocator *da;
+	const int NK = 4, MSHARED = 200, UNIQ = 200;
+	uintptr_t ref[200], got[200];
+	int k, j, status, fails = 0, mism = 0, fd;
+	pid_t pid;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	/* create the arena up front so children only attach */
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) { rm_rf(dir); return; }
+	fy_allocator_destroy(da);
+
+	for (k = 0; k < NK; k++) {
+		pid = fork();
+		if (pid == 0) {
+			struct fy_allocator *cda = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+			struct fy_generic_builder_cfg gb_cfg;
+			struct fy_generic_builder *gb;
+			uintptr_t addrs[200];
+			char cpath[340];
+			int i, cfd;
+
+			if (!cda) _exit(2);
+
+			memset(&gb_cfg, 0, sizeof(gb_cfg));
+			gb_cfg.allocator = cda;
+			gb_cfg.flags = FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED;
+			gb = fy_generic_builder_create(&gb_cfg);
+			if (!gb) _exit(3);
+
+			/* shared "file" content: every process interns the same strings */
+			for (i = 0; i < MSHARED; i++) {
+				fy_generic v;
+				const void *p;
+
+				dd_payload(pl, sizeof(pl), i);
+				v = fy_gb_string_create_out_of_place(gb, pl);
+				if (fy_generic_is_invalid(v)) _exit(4);
+				p = fy_generic_resolve_ptr(v);
+				if (!p) _exit(5);
+				addrs[i] = (uintptr_t)p;
+			}
+			/* per-process unique strings add concurrent-insert pressure */
+			for (i = 0; i < UNIQ; i++) {
+				fy_generic v;
+
+				dd_payload(pl, sizeof(pl), 100000 + k * 1000 + i);
+				v = fy_gb_string_create_out_of_place(gb, pl);
+				if (fy_generic_is_invalid(v)) _exit(6);
+			}
+
+			fy_generic_builder_destroy(gb);
+			fy_allocator_sync(cda);
+
+			snprintf(cpath, sizeof(cpath), "%s/child-%d.bin", dir, k);
+			cfd = open(cpath, O_RDWR | O_CREAT | O_TRUNC, 0644);
+			if (cfd < 0) _exit(7);
+			if (write(cfd, addrs, sizeof(addrs)) != (ssize_t)sizeof(addrs)) _exit(8);
+			close(cfd);
+			fy_allocator_destroy(cda);
+			_exit(0);
+		}
+		ck_assert_int_ge(pid, 0);
+	}
+	for (k = 0; k < NK; k++) {
+		ck_assert_int_ge(wait(&status), 0);
+		if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+			fails++;
+	}
+	ck_assert_int_eq(fails, 0);
+
+	/* the shared strings must have resolved to the SAME address in every
+	 * process: canonical, cross-process identity through the generic builder */
+	snprintf(path, sizeof(path), "%s/child-0.bin", dir);
+	fd = open(path, O_RDONLY);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq(read(fd, ref, sizeof(ref)), (ssize_t)sizeof(ref));
+	close(fd);
+	for (k = 1; k < NK; k++) {
+		snprintf(path, sizeof(path), "%s/child-%d.bin", dir, k);
+		fd = open(path, O_RDONLY);
+		ck_assert_int_ge(fd, 0);
+		ck_assert_int_eq(read(fd, got, sizeof(got)), (ssize_t)sizeof(got));
+		close(fd);
+		for (j = 0; j < MSHARED; j++)
+			if (got[j] != ref[j])
+				mism++;
+	}
+	ck_assert_int_eq(mism, 0);
+
+	rm_rf(dir);
+}
+END_TEST
+#endif /* HAVE_GENERIC */
+
 #define DRT_NTHREADS	8
 #define DRT_PER		5000
 
@@ -1255,7 +1363,10 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, dedup_cross_process);
 	fy_check_testcase_add_test(ctc, dedup_resize_under_load);
 	fy_check_testcase_add_test(ctc, durable_roundtrip_fixed_base);
+#ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, durable_builder_roundtrip);
+	fy_check_testcase_add_test(ctc, dedup_builder_cross_process);
+#endif
 	fy_check_testcase_add_test(ctc, durable_multi_chunk_grow);
 	fy_check_testcase_add_test(ctc, durable_concurrent_grow);
 	fy_check_testcase_add_test(ctc, durable_threaded_grow);
