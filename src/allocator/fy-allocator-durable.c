@@ -198,8 +198,6 @@ static void *fy_durable_arena_alloc(struct fy_durable_allocator *da,
 	if (da->read_only || !size || !rg->region)
 		return NULL;
 
-	if (align < 16)
-		align = 16;
 	/* larger than any fresh chunk can ever satisfy */
 	if (size + align > rg->max_alloc)
 		return NULL;
