@@ -66,6 +66,7 @@ extern "C" {
 
 /* forward decl of allocator interfaces */
 struct fy_allocator;
+struct fy_thread_pool;	/* opaque; defined in libfyaml-thread.h */
 
 /* A tag that represents the default tag */
 #define FY_ALLOC_TAG_DEFAULT	0
@@ -658,6 +659,7 @@ struct fy_durable_allocator_cfg {
 	uint64_t index_region_base;
 	uint64_t index_region_size;
 	uint64_t index_chunk_size;
+	struct fy_thread_pool *tp;	/* optional thread pool for BLAKE3 hashing */
 };
 
 #ifdef __cplusplus

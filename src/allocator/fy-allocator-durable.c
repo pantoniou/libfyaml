@@ -170,6 +170,10 @@ static inline void *fy_durable_chunk_alloc(struct fy_durable_chunk_hdr *hdr,
 {
 	size_t old_next, new_next, data_pos;
 
+	/* fast bail: chunk has been retired; no point attempting the CAS loop */
+	if (fy_atomic_load(&hdr->flags) & FYDCF_FULL)
+		return NULL;
+
 	do {
 		old_next = fy_atomic_load(&hdr->next);
 		data_pos = fy_size_t_align(old_next, align);
@@ -217,7 +221,10 @@ static void fy_durable_seal_chunk(struct fy_durable_allocator *da,
 	blake3_hash(h, (char *)hdr + FY_DURABLE_DATA0, data_len, hdr->content_hash);
 	blake3_hasher_destroy(h);
 
-	/* msync from the chunk base through the end of the chunk_hdr (content_hash included) */
+	/* publish: FYDCF_SEALED tells checkpoint/verify that content_hash is now valid */
+	fy_atomic_fetch_or(&hdr->flags, (uint64_t)FYDCF_SEALED);
+
+	/* msync: persist content_hash, flags (FYDCF_SEALED) together */
 	hdr_off = fy_durable_hdr_off(rg, hdr->generation);
 	chunk_base = fy_durable_chunk_base(rg, hdr->generation);
 	sync_len = hdr_off + FY_DURABLE_DATA0;
@@ -387,7 +394,8 @@ fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
 		do {
 			flock(da->dirfd, LOCK_UN);
 		} while (rc == -1 && errno == EAGAIN);
-		/* seal the displaced chunk: hash its content and persist */
+		/* retire the displaced chunk: set FULL first, then seal its hash */
+		fy_atomic_fetch_or(&observed_head->flags, (uint64_t)FYDCF_FULL);
 		if (da->b3hs)
 			fy_durable_seal_chunk(da, rg, observed_head);
 		return new_hdr;	/* winner */
@@ -812,7 +820,8 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	{
 		blake3_host_config b3cfg;
 		memset(&b3cfg, 0, sizeof(b3cfg));
-		b3cfg.no_mthread = true;
+		b3cfg.tp = da->cfg.tp;
+		b3cfg.no_mthread = (da->cfg.tp == NULL);
 		da->b3hs = blake3_host_state_create(&b3cfg);
 		if (!da->b3hs)
 			goto err_out;
@@ -1163,6 +1172,9 @@ static uint64_t fy_durable_op_index_region_base(struct fy_allocator *a);
 static uint64_t fy_durable_op_index_region_size(struct fy_allocator *a);
 static int fy_durable_op_checkpoint(struct fy_allocator *a);
 static int fy_durable_op_verify(struct fy_allocator *a);
+static int fy_durable_op_checkpoint_iterate(struct fy_allocator *a,
+					    fy_alloc_checkpoint_iter_fn cb, void *arg);
+static int fy_durable_op_checkpoint_recover(struct fy_allocator *a, uint64_t slot_gen);
 
 const struct fy_allocator_ops fy_durable_allocator_ops = {
 	.setup = fy_durable_setup,
@@ -1196,6 +1208,8 @@ const struct fy_allocator_ops fy_durable_allocator_ops = {
 	.index_region_size = fy_durable_op_index_region_size,
 	.checkpoint = fy_durable_op_checkpoint,
 	.verify = fy_durable_op_verify,
+	.checkpoint_iterate = fy_durable_op_checkpoint_iterate,
+	.checkpoint_recover = fy_durable_op_checkpoint_recover,
 };
 
 /* map (and, for the first writable user, create) the separate dedup-index file
@@ -1465,8 +1479,19 @@ static int fy_durable_hash_content(struct fy_durable_allocator *da,
 				blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
 			first = false;
 		} else {
-			/* sealed chunk: feed its pre-computed content hash */
-			blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+			uint64_t flags = fy_atomic_load(&hdr->flags);
+			if (flags & FYDCF_SEALED) {
+				/* sealed: use the pre-computed per-chunk hash */
+				blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+			} else {
+				/* seal in progress (FYDCF_FULL set, FYDCF_SEALED not yet):
+				 * fall back to raw data so the checkpoint remains consistent
+				 * with a concurrent verify that sees the same state. */
+				size_t next = fy_atomic_load(&hdr->next);
+				size_t data_len = next > FY_DURABLE_DATA0 ? next - FY_DURABLE_DATA0 : 0;
+				if (data_len)
+					blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
+			}
 		}
 	}
 
@@ -1627,13 +1652,24 @@ static int fy_durable_op_verify(struct fy_allocator *a)
 			continue;
 		}
 
-		/* older sealed chunk */
+		/* older chunk (gen < head_gen): should be sealed */
 		if (first) {
 			/* head_gen chunk was not in the list — corrupted */
 			blake3_hasher_destroy(h);
 			return -1;
 		}
-		blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+		{
+			uint64_t flags = fy_atomic_load(&hdr->flags);
+			if (flags & FYDCF_SEALED) {
+				blake3_hasher_update(h, hdr->content_hash, sizeof(hdr->content_hash));
+			} else {
+				/* seal was interrupted (crash recovery path) */
+				size_t next = fy_atomic_load(&hdr->next);
+				size_t data_len = next > FY_DURABLE_DATA0 ? next - FY_DURABLE_DATA0 : 0;
+				if (data_len)
+					blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
+			}
+		}
 		hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
 	}
 
@@ -1643,6 +1679,176 @@ static int fy_durable_op_verify(struct fy_allocator *a)
 	blake3_hasher_destroy(h);
 
 	return memcmp(computed, slot->hash, BLAKE3_OUT_LEN) == 0 ? 0 : -1;
+}
+
+/*
+ * Iterate over valid checkpoint slots in ascending generation order (oldest
+ * to newest).  Calls @cb for each valid slot; stops early if @cb returns
+ * false.  Returns 0 if at least one slot was visited, -1 if none were valid.
+ */
+static int fy_durable_op_checkpoint_iterate(struct fy_allocator *a,
+					    fy_alloc_checkpoint_iter_fn cb,
+					    void *arg)
+{
+	struct fy_durable_allocator *da = container_of(a, struct fy_durable_allocator, a);
+	uint64_t head, best_gens[FY_DURABLE_VERIFY_SLOTS];
+	unsigned int i, j, n;
+	int visited = 0;
+
+	if (!cb)
+		return -1;
+
+	head = fy_atomic_load(&da->boot->verify_head);
+	if (head == 0)
+		return -1;
+
+	/* collect valid slot generations */
+	n = 0;
+	for (i = 0; i < FY_DURABLE_VERIFY_SLOTS; i++) {
+		const struct fy_durable_verify_slot *s = &da->boot->verify_slots[i];
+		uint64_t gen = fy_atomic_load(&s->generation);
+		if (gen == 0 || head - gen >= FY_DURABLE_VERIFY_SLOTS)
+			continue;
+		/* insertion-sort by generation (ascending) */
+		for (j = n; j > 0 && best_gens[j - 1] > gen; j--)
+			best_gens[j] = best_gens[j - 1];
+		best_gens[j] = gen;
+		n++;
+	}
+
+	if (n == 0)
+		return -1;
+
+	/* invoke callback oldest-to-newest */
+	for (i = 0; i < n; i++) {
+		uint64_t gen = best_gens[i];
+		unsigned int idx = (unsigned int)((gen - 1) % FY_DURABLE_VERIFY_SLOTS);
+		const struct fy_durable_verify_slot *s = &da->boot->verify_slots[idx];
+
+		/* re-validate: slot could have been overwritten */
+		if (fy_atomic_load(&s->generation) != gen)
+			continue;
+
+		visited++;
+		if (!cb(gen, s->head_chunk_gen, s->head_chunk_bump, s->refs_head_snap, arg))
+			break;
+	}
+	return visited > 0 ? 0 : -1;
+}
+
+/*
+ * Delete chunk files whose generation is strictly greater than @max_gen for
+ * the given region, and drop their local mappings.  Leaves chunk-0 intact.
+ */
+static void fy_durable_prune_chunks_after(struct fy_durable_allocator *da,
+					  struct fy_durable_region *rg,
+					  uint64_t max_gen)
+{
+	uint64_t total_gen = fy_atomic_load(rg->boot_generation);
+	char name[64];
+	uint64_t i;
+
+	for (i = max_gen + 1; i < total_gen && i < rg->max_chunks; i++) {
+		struct fy_durable_chunk_hdr *hdr = fy_atomic_load(&rg->chunks[i]);
+		if (hdr) {
+			munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+			fy_atomic_store(&rg->chunks[i], NULL);
+			fy_durable_unmap_to_reserved(rg, i);
+		}
+		snprintf(name, sizeof(name), "%s-%llu.bin",
+			 rg->prefix, (unsigned long long)i);
+		unlinkat(da->dirfd, name, 0);
+	}
+}
+
+/*
+ * Roll back the arena state to the checkpoint identified by @slot_gen.
+ *
+ * Steps:
+ *   1. Locate and validate the target slot.
+ *   2. Ensure the target chunk is mapped.
+ *   3. Take LOCK_EX on the arena directory.
+ *   4. Delete chunk files beyond the target chunk generation.
+ *   5. Restore boot->head to the target chunk.
+ *   6. Clear FYDCF_FULL and FYDCF_SEALED on the target chunk (it becomes
+ *      the active head again; new allocations append beyond its old bump).
+ *   7. Zero content_hash on the target chunk so no stale sealed hash lingers.
+ *   8. Restore refs_head from the slot snapshot.
+ *   9. msync the boot page and the target chunk header, then release the lock.
+ *
+ * Returns 0 on success, -1 on any error.
+ */
+static int fy_durable_op_checkpoint_recover(struct fy_allocator *a, uint64_t slot_gen)
+{
+	struct fy_durable_allocator *da = container_of(a, struct fy_durable_allocator, a);
+	struct fy_durable_region *rg = &da->content;
+	const struct fy_durable_verify_slot *slot;
+	struct fy_durable_chunk_hdr *target_hdr;
+	uint64_t head, target_gen;
+	unsigned int idx;
+	int rc;
+
+	if (da->read_only || !da->b3hs)
+		return -1;
+
+	/* find and validate the slot */
+	head = fy_atomic_load(&da->boot->verify_head);
+	if (head == 0 || head - slot_gen >= FY_DURABLE_VERIFY_SLOTS)
+		return -1;	/* slot_gen out of valid range */
+
+	idx = (unsigned int)((slot_gen - 1) % FY_DURABLE_VERIFY_SLOTS);
+	slot = &da->boot->verify_slots[idx];
+	if (fy_atomic_load(&slot->generation) != slot_gen)
+		return -1;	/* slot was overwritten */
+
+	target_gen = slot->head_chunk_gen;
+
+	/* ensure the target chunk is mapped */
+	target_hdr = fy_durable_ensure_mapped(da, rg, target_gen);
+	if (!target_hdr)
+		return -1;
+
+	/* take exclusive directory lock: no concurrent grows during recovery */
+	do {
+		rc = flock(da->dirfd, LOCK_EX);
+	} while (rc == -1 && errno == EINTR);
+	if (rc)
+		return -1;
+
+	/* re-read slot under lock in case it was just overwritten */
+	if (fy_atomic_load(&slot->generation) != slot_gen) {
+		flock(da->dirfd, LOCK_UN);
+		return -1;
+	}
+
+	/* remove chunk files beyond the recovery point */
+	fy_durable_prune_chunks_after(da, rg, target_gen);
+
+	/* restore the head to the target chunk */
+	fy_atomic_store(rg->boot_head, target_hdr);
+	fy_atomic_store(&rg->cur_head, target_hdr);
+
+	/* clear seal flags: the target chunk is now the active head again */
+	fy_atomic_fetch_and(&target_hdr->flags,
+			    ~((uint64_t)(FYDCF_FULL | FYDCF_SEALED)));
+	memset(target_hdr->content_hash, 0, sizeof(target_hdr->content_hash));
+
+	/* restore refs_head from the slot's snapshot */
+	fy_atomic_store(&da->boot->refs_head, slot->refs_head_snap);
+
+	/* persist: boot page (head, refs_head) and target chunk header */
+	msync(da->content.region, da->pagesz, MS_SYNC);
+	{
+		void *chunk_base = fy_durable_chunk_base(rg, target_gen);
+		size_t hdr_off = fy_durable_hdr_off(rg, target_gen);
+		msync(chunk_base, hdr_off + FY_DURABLE_DATA0, MS_SYNC);
+	}
+
+	do {
+		rc = flock(da->dirfd, LOCK_UN);
+	} while (rc == -1 && errno == EINTR);
+
+	return 0;
 }
 
 #else

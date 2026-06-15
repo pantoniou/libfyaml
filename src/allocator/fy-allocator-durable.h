@@ -33,7 +33,8 @@ struct fy_dedup_tag;	/* in-arena dedup index anchor (fy-allocator-dedup.h) */
 #define FY_DURABLE_DEFAULT_INDEX_CHUNK_SIZE	(64ULL << 20)	/* 64 MiB */
 
 /* chunk header flags */
-#define FYDCF_FULL	FY_BIT(0)
+#define FYDCF_FULL	FY_BIT(0)	/* chunk retired; no further allocations */
+#define FYDCF_SEALED	FY_BIT(1)	/* content_hash valid; written after FYDCF_FULL */
 
 /* tags the durable allocator hands out. */
 #define FY_DURABLE_CONTENT_TAG	FY_ALLOC_TAG_DEFAULT
