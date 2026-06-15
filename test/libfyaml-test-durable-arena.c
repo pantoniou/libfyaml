@@ -41,8 +41,9 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include "fy-check.h"
 
 #ifdef HAVE_GENERIC
-#include "fy-generic.h"
+#include <libfyaml/libfyaml-generic.h>
 #endif
+
 
 /*
  * Tests use a distinct high-half base and a deliberately small geometry
