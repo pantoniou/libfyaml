@@ -1432,14 +1432,17 @@ static int cache_remove_cb(const char *path,
 		return -1;
 
 	if (info->has_dedup_index) {
-		index = strdupa(path);
-		s = strrchr(index, '.');
-		if (s && !strcmp(s, ".fygc")) {
-			/* replace .fygc with fygi */
-			strcpy(s, ".fygi");
+		index = strdup(path);
+		if (index) {
+			s = strrchr(index, '.');
+			if (s && !strcmp(s, ".fygc")) {
+				/* replace .fygc with fygi */
+				strcpy(s, ".fygi");
+			}
+			/* removing index is fine if it fails */
+			(void)unlink(index);
+			free(index);
 		}
-		/* removing index is fine if it fails */
-		(void)unlink(index);
 	}
 
 	ctx->removed++;
