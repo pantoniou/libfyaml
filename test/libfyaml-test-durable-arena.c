@@ -39,7 +39,6 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <libfyaml.h>
 
 #include "fy-check.h"
-#include "fy-allocator.h"
 #include "fy-allocator-dedup.h"
 
 #ifdef HAVE_GENERIC
@@ -186,14 +185,14 @@ START_TEST(durable_roundtrip_fixed_base)
 	ck_assert_ptr_ne(a, NULL);
 
 	/* the durable allocator advertises the durability capability */
-	ck_assert(fy_allocator_get_caps_nocheck(a) & FYACF_DURABLE);
+	ck_assert(fy_allocator_get_caps(a) & FYACF_DURABLE);
 
 	/* store two payloads, record their fixed addresses */
-	s1 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, "hello durable", 14, 16);
-	s2 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, "second payload", 15, 16);
+	s1 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "hello durable", 14, 16);
+	s2 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "second payload", 15, 16);
 	ck_assert_ptr_ne(s1, NULL);
 	ck_assert_ptr_ne(s2, NULL);
-	ck_assert(fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_DEFAULT, s1));
+	ck_assert(fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, s1));
 	a1 = (uintptr_t)s1;
 	a2 = (uintptr_t)s2;
 
@@ -249,7 +248,7 @@ START_TEST(durable_builder_roundtrip)
 	v = fy_gb_string_create_out_of_place(gb, "a durable interned string");
 	ck_assert(!fy_generic_is_invalid(v));
 	p = fy_generic_resolve_ptr(v);
-	ck_assert(fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_DEFAULT, p));
+	ck_assert(fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, p));
 	addr = (uintptr_t)p;
 	ck_assert_uint_ge(addr, TEST_REGION_BASE);
 	ck_assert_uint_lt(addr, TEST_REGION_BASE + TEST_REGION_SIZE);
@@ -292,9 +291,9 @@ START_TEST(durable_multi_chunk_grow)
 	a = da;
 
 	for (i = 0; i < nblk; i++) {
-		p = fy_allocator_alloc_nocheck(a, FY_ALLOC_TAG_DEFAULT, blk, 16);
+		p = fy_allocator_alloc(a, FY_ALLOC_TAG_DEFAULT, blk, 16);
 		ck_assert_ptr_ne(p, NULL);
-		ck_assert(fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_DEFAULT, p));
+		ck_assert(fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, p));
 		memset((void *)p, (i & 0xff), blk);
 	}
 
@@ -341,7 +340,7 @@ START_TEST(durable_concurrent_grow)
 			ca = cda;
 			for (i = 0; i < per; i++) {
 				uint64_t *q = (uint64_t *)
-					fy_allocator_alloc_nocheck(ca, FY_ALLOC_TAG_DEFAULT, blk, 16);
+					fy_allocator_alloc(ca, FY_ALLOC_TAG_DEFAULT, blk, 16);
 				if (!q)
 					_exit(3);
 				/* write a unique value, then read it back: a clobber
@@ -391,7 +390,7 @@ START_TEST(durable_crash_recovery)
 	a = da;
 	/* force at least one grow so a real chunk list exists */
 	for (i = 0; i < 512; i++)
-		ck_assert_ptr_ne(fy_allocator_alloc_nocheck(a, FY_ALLOC_TAG_DEFAULT, 4096, 16), NULL);
+		ck_assert_ptr_ne(fy_allocator_alloc(a, FY_ALLOC_TAG_DEFAULT, 4096, 16), NULL);
 	chunks_before = fy_allocator_chunk_count(da);
 	ck_assert_uint_gt(chunks_before, 1);
 	fy_allocator_destroy(da);
@@ -479,7 +478,7 @@ static void mt_worker(void *arg)
 
 	for (i = 0; i < MT_PER; i++) {
 		uint64_t tag = ((uint64_t)j->tid << 40) | (uint64_t)i;
-		uint64_t *p = fy_allocator_alloc_nocheck(j->a, FY_ALLOC_TAG_DEFAULT,
+		uint64_t *p = fy_allocator_alloc(j->a, FY_ALLOC_TAG_DEFAULT,
 							 MT_BLK, 16);
 		if (!p || ((uintptr_t)p & 15)) {
 			j->fail = 1;
@@ -538,7 +537,7 @@ START_TEST(durable_threaded_grow)
 		int bad = 0;
 		for (i = 0; i < MT_PER; i++) {
 			uint64_t *p = jobs[k].recs[i].ptr;
-			if (!fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_DEFAULT, p))
+			if (!fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, p))
 				bad++;
 			for (w = 0; w < MT_BLK / 8; w++)
 				if (p[w] != jobs[k].recs[i].tag)
@@ -581,7 +580,7 @@ START_TEST(dedup_external_attach)
 	ck_assert_ptr_ne(d1, NULL);
 	ck_assert_ptr_ne((void *)root, NULL);
 
-	p1 = fy_allocator_store_nocheck(d1, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	p1 = fy_allocator_store(d1, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
 	ck_assert_ptr_ne(p1, NULL);
 
 	/* attach: same root slot -> shared index */
@@ -589,11 +588,11 @@ START_TEST(dedup_external_attach)
 	ck_assert_ptr_ne(d2, NULL);
 
 	/* d2 sees d1's store */
-	p2 = fy_allocator_lookup_nocheck(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	p2 = fy_allocator_lookup(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
 	ck_assert_ptr_eq(p2, p1);
 
 	/* storing the same payload via d2 dedups to the same pointer */
-	p3 = fy_allocator_store_nocheck(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
+	p3 = fy_allocator_store(d2, FY_ALLOC_TAG_DEFAULT, payload, sizeof(payload), 16);
 	ck_assert_ptr_eq(p3, p1);
 
 	fy_allocator_destroy(d2);
@@ -624,13 +623,13 @@ START_TEST(dedup_same_pointer)
 	a = da;
 
 	/* dedup-over-durable propagates durability and advertises dedup */
-	ck_assert(fy_allocator_get_caps_nocheck(a) & FYACF_DURABLE);
-	ck_assert(fy_allocator_get_caps_nocheck(a) & FYACF_CAN_DEDUP);
+	ck_assert(fy_allocator_get_caps(a) & FYACF_DURABLE);
+	ck_assert(fy_allocator_get_caps(a) & FYACF_CAN_DEDUP);
 
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		const void *q = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *q = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
 		ck_assert_ptr_eq(q, p);		/* same content -> same pointer */
 		first[i] = p;
@@ -661,7 +660,7 @@ START_TEST(dedup_cross_session)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
 		addr[i] = (uintptr_t)p;
 	}
@@ -674,14 +673,14 @@ START_TEST(dedup_cross_session)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_uint_eq((uintptr_t)p, addr[i]);
 	}
 	/* a brand-new payload is unique and itself dedups on repeat */
 	{
 		size_t len = dd_payload(pl, sizeof(pl), K + 1);
-		n1 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		n2 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		n1 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		n2 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(n1, NULL);
 		ck_assert_ptr_eq(n2, n1);
 	}
@@ -719,14 +718,14 @@ START_TEST(dedup_cross_process)
 			/* shared payloads: every child stores the same content */
 			for (i = 0; i < MSHARED; i++) {
 				size_t len = dd_payload(pl, sizeof(pl), i);
-				const void *p = fy_allocator_store_nocheck(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+				const void *p = fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 				if (!p) _exit(3);
 				addrs[i] = (uintptr_t)p;
 			}
 			/* per-child unique payloads add concurrent-insert pressure */
 			for (i = 0; i < UNIQ; i++) {
 				size_t len = dd_payload(pl, sizeof(pl), 100000 + k * 1000 + i);
-				if (!fy_allocator_store_nocheck(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16))
+				if (!fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16))
 					_exit(4);
 			}
 			snprintf(cpath, sizeof(cpath), "%s/child-%d.bin", dir, k);
@@ -784,7 +783,7 @@ static void drt_worker(void *arg)
 
 	for (i = 0; i < DRT_PER; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), j->tid * DRT_PER + i);
-		const void *p = fy_allocator_store_nocheck(j->a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(j->a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		if (!p) { j->fail = 1; return; }
 		j->addrs[i] = (uintptr_t)p;
 	}
@@ -823,7 +822,7 @@ START_TEST(dedup_resize_under_load)
 		int bad = 0;
 		for (i = 0; i < DRT_PER; i++) {
 			size_t len = dd_payload(pl, sizeof(pl), k * DRT_PER + i);
-			const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+			const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 			if ((uintptr_t)p != jobs[k].addrs[i])
 				bad++;
 		}
@@ -860,8 +859,8 @@ START_TEST(refs_publish_basic)
 	/* fresh arena has no refs head */
 	ck_assert_uint_eq(fy_allocator_refs_get(da), 0);
 
-	p1 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, "refs-one", 9, 16);
-	p2 = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, "refs-two", 9, 16);
+	p1 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "refs-one", 9, 16);
+	p2 = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "refs-two", 9, 16);
 	ck_assert_ptr_ne(p1, NULL);
 	ck_assert_ptr_ne(p2, NULL);
 	w1 = (uint64_t)(uintptr_t)p1;
@@ -929,7 +928,7 @@ START_TEST(refs_cross_session)
 	}
 	a = da;
 
-	p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, "refs-payload", 13, 16);
+	p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "refs-payload", 13, 16);
 	ck_assert_ptr_ne(p, NULL);
 	w = (uint64_t)(uintptr_t)p;
 
@@ -981,7 +980,7 @@ START_TEST(refs_checkpoint_crash)
 		if (!cda)
 			_exit(2);
 		ca = cda;
-		p = fy_allocator_store_nocheck(ca, FY_ALLOC_TAG_DEFAULT, "crash-content", 14, 16);
+		p = fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, "crash-content", 14, 16);
 		if (!p)
 			_exit(3);
 		cw = (uint64_t)(uintptr_t)p;
@@ -1116,8 +1115,8 @@ START_TEST(durable_separate_index_basic)
 
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		const void *q = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *q = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 
 		if (!p || q != p)
 			bad_dedup++;
@@ -1166,7 +1165,7 @@ START_TEST(durable_combined_no_index)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
 	}
 
@@ -1202,7 +1201,7 @@ START_TEST(durable_separate_index_cross_session)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
 		addr[i] = (uintptr_t)p;
 	}
@@ -1217,7 +1216,7 @@ START_TEST(durable_separate_index_cross_session)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		if ((uintptr_t)p != addr[i])
 			bad++;
 	}
@@ -1264,7 +1263,7 @@ START_TEST(durable_separate_index_grow)
 	a = da;
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store_nocheck(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		if (!p)
 			bad++;
 	}
