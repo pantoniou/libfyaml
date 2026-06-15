@@ -714,6 +714,70 @@ void fy_allocator_reset_tag(struct fy_allocator *a, int tag)
 	fy_allocator_reset_tag_nocheck(a, tag);
 }
 
+int fy_allocator_sync(struct fy_allocator *a)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_sync_nocheck(a);
+}
+
+uint64_t fy_allocator_refs_get(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_refs_get_nocheck(a);
+}
+
+int fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
+			      uint64_t desired, unsigned int flags)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_refs_publish_nocheck(a, expected, desired, flags);
+}
+
+uint64_t fy_allocator_generation(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_generation_nocheck(a);
+}
+
+unsigned int fy_allocator_chunk_count(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_chunk_count_nocheck(a);
+}
+
+uint64_t fy_allocator_region_base(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_region_base_nocheck(a);
+}
+
+uint64_t fy_allocator_region_size(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_region_size_nocheck(a);
+}
+
+uint64_t fy_allocator_index_region_base(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_index_region_base_nocheck(a);
+}
+
+uint64_t fy_allocator_index_region_size(struct fy_allocator *a)
+{
+	if (!a)
+		return 0;
+	return fy_allocator_index_region_size_nocheck(a);
+}
+
 struct fy_allocator_info *
 fy_allocator_get_info(struct fy_allocator *a, int tag)
 {

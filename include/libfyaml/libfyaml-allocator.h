@@ -660,6 +660,162 @@ struct fy_durable_allocator_cfg {
 	uint64_t index_chunk_size;
 };
 
+/**
+ * fy_allocator_sync() - Flush a durable arena to stable storage
+ *
+ * Durably persist everything allocated so far in a durable arena, the way
+ * msync()/fsync() would. The operation walks the allocator's parent chain, so
+ * it works whether @a is the durable base or a dedup layer over it.
+ *
+ * On allocators that do not support the operation (everything but "durable")
+ * this is a no-op that returns -1.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * 0 on success, -1 on error or if the allocator does not support syncing.
+ */
+int
+fy_allocator_sync(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_refs_get() - Read the durable refs head word
+ *
+ * Return the published refs head word of a durable arena: the single
+ * application-defined root pointer/cookie that names the currently committed
+ * graph. It is 0 until first published. Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The current refs head word, or 0 if unpublished / unsupported.
+ */
+uint64_t
+fy_allocator_refs_get(struct fy_allocator *a)
+	FY_EXPORT;
+
+/* flags for fy_allocator_refs_publish() */
+#define FY_ALLOC_REFS_CHECKPOINT	(1u << 0)	/* enforce the durability ordering barrier */
+
+/**
+ * fy_allocator_refs_publish() - Atomically publish a new durable refs head
+ *
+ * Compare-and-swap the durable refs head word from @expected to @desired,
+ * atomically across processes and sessions. This is how a new committed root is
+ * made visible to other readers of the arena.
+ *
+ * With FY_ALLOC_REFS_CHECKPOINT in @flags the call enforces the durability
+ * ordering barrier (the arena contents are persisted before the head is
+ * published), so a crash never exposes a head that points at unflushed data.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ * @expected: The refs head value expected to be current
+ * @desired: The new refs head value to publish
+ * @flags: FY_ALLOC_REFS_* bits
+ *
+ * Returns:
+ * 0 if the swap succeeded, 1 if @expected did not match (no change), or -1 on
+ * error / if the allocator does not support publishing.
+ */
+int
+fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
+			  uint64_t desired, unsigned int flags)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_generation() - Get the durable arena generation
+ *
+ * Return a monotonically increasing generation counter for a durable arena,
+ * which advances as the arena grows. Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The current generation, or 0 if unsupported.
+ */
+uint64_t
+fy_allocator_generation(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_chunk_count() - Get the durable arena chunk count
+ *
+ * Return the number of chunk files currently backing a durable arena's content
+ * region. Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The number of content chunks, or 0 if unsupported.
+ */
+unsigned int
+fy_allocator_chunk_count(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_region_base() - Get the durable content region base address
+ *
+ * Return the fixed virtual base address of a durable arena's content region.
+ * Because the base is identical across every process and session, an in-arena
+ * pointer is a stable canonical identity. Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The content region base address, or 0 if unsupported.
+ */
+uint64_t
+fy_allocator_region_base(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_region_size() - Get the durable content region reserved size
+ *
+ * Return the total reserved virtual size of a durable arena's content region.
+ * Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The content region reserved size, or 0 if unsupported.
+ */
+uint64_t
+fy_allocator_region_size(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_index_region_base() - Get the durable index region base address
+ *
+ * Return the fixed virtual base address of a durable arena's separate
+ * dedup-index region (FY_DURABLE_ARENA_SEPARATE_INDEX). Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The index region base address, or 0 if there is no separate index region /
+ * if unsupported.
+ */
+uint64_t
+fy_allocator_index_region_base(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_index_region_size() - Get the durable index region reserved size
+ *
+ * Return the total reserved virtual size of a durable arena's separate
+ * dedup-index region (FY_DURABLE_ARENA_SEPARATE_INDEX). Walks the parent chain.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The index region reserved size, or 0 if there is no separate index region /
+ * if unsupported.
+ */
+uint64_t
+fy_allocator_index_region_size(struct fy_allocator *a)
+	FY_EXPORT;
+
 #ifdef __cplusplus
 }
 #endif

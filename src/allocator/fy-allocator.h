@@ -383,69 +383,66 @@ fy_allocator_snapshot_release(struct fy_allocator *a, struct fy_allocator_snapsh
 	fy_allocator_snapshot_release_nocheck(a, snap);
 }
 
-/* flags for fy_allocator_refs_publish() */
-#define FY_ALLOC_REFS_CHECKPOINT	(1u << 0)	/* enforce the durability ordering barrier */
-
-static inline int fy_allocator_sync(struct fy_allocator *a)
+static inline int fy_allocator_sync_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->sync)
+	if (!a->ops->sync)
 		return -1;
 	return a->ops->sync(a);
 }
 
-static inline uint64_t fy_allocator_refs_get(struct fy_allocator *a)
+static inline uint64_t fy_allocator_refs_get_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->refs_get)
+	if (!a->ops->refs_get)
 		return 0;
 	return a->ops->refs_get(a);
 }
 
-static inline int fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
-					    uint64_t desired, unsigned int flags)
+static inline int fy_allocator_refs_publish_nocheck(struct fy_allocator *a, uint64_t expected,
+						    uint64_t desired, unsigned int flags)
 {
-	if (!a || !a->ops->refs_publish)
+	if (!a->ops->refs_publish)
 		return -1;
 	return a->ops->refs_publish(a, expected, desired, flags);
 }
 
-static inline uint64_t fy_allocator_generation(struct fy_allocator *a)
+static inline uint64_t fy_allocator_generation_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->generation)
+	if (!a->ops->generation)
 		return 0;
 	return a->ops->generation(a);
 }
 
-static inline unsigned int fy_allocator_chunk_count(struct fy_allocator *a)
+static inline unsigned int fy_allocator_chunk_count_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->chunk_count)
+	if (!a->ops->chunk_count)
 		return 0;
 	return a->ops->chunk_count(a);
 }
 
-static inline uint64_t fy_allocator_region_base(struct fy_allocator *a)
+static inline uint64_t fy_allocator_region_base_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->region_base)
+	if (!a->ops->region_base)
 		return 0;
 	return a->ops->region_base(a);
 }
 
-static inline uint64_t fy_allocator_region_size(struct fy_allocator *a)
+static inline uint64_t fy_allocator_region_size_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->region_size)
+	if (!a->ops->region_size)
 		return 0;
 	return a->ops->region_size(a);
 }
 
-static inline uint64_t fy_allocator_index_region_base(struct fy_allocator *a)
+static inline uint64_t fy_allocator_index_region_base_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->index_region_base)
+	if (!a->ops->index_region_base)
 		return 0;
 	return a->ops->index_region_base(a);
 }
 
-static inline uint64_t fy_allocator_index_region_size(struct fy_allocator *a)
+static inline uint64_t fy_allocator_index_region_size_nocheck(struct fy_allocator *a)
 {
-	if (!a || !a->ops->index_region_size)
+	if (!a->ops->index_region_size)
 		return 0;
 	return a->ops->index_region_size(a);
 }
