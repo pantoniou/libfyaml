@@ -1176,7 +1176,7 @@ int fy_rename(const char *old_file, const char *new_file, bool no_replace)
 	neww = fy_win32_u8tow(new_file);
 
 	if (oldw && neww) {
-		result = MoveFileExW(oldw, neww, no_replace ? MOVEFILE_REPLACE_EXISTING : 0);
+		result = MoveFileExW(oldw, neww, no_replace ? 0 : MOVEFILE_REPLACE_EXISTING);
 		if (result) {
 			rc = 0;
 		} else {
