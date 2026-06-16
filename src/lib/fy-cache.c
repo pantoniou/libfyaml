@@ -644,13 +644,13 @@ void fy_parse_cache_entry_destroy(struct fy_parse_cache_entry *entry)
 		if (entry->index_mmaped)
 			munmap(entry->index_map, entry->index_map_size);
 		else
-			free(entry->index_map);
+			fy_align_free(entry->index_map);
 	}
 	fy_generic_iterator_destroy(entry->fygi);
 	if (entry->mmaped)
 		munmap(entry->map, entry->map_size);
 	else
-		free(entry->arena);
+		fy_align_free(entry->arena);
 
 	free(entry);
 }
@@ -985,7 +985,7 @@ out:
 		if (copy_mmaped)
 			munmap(copy, copy_size);
 		else
-			free(copy);
+			fy_align_free(copy);
 	}
 	if (fd >= 0)
 		close(fd);
@@ -1143,7 +1143,7 @@ out:
 		if (copy_mmaped)
 			munmap(copy, copy_size);
 		else
-			free(copy);
+			fy_align_free(copy);
 	}
 	return entry;
 }
