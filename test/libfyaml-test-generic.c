@@ -6297,6 +6297,92 @@ START_TEST(generic_signature)
 }
 END_TEST
 
+/*
+ * Auto-anchor emission: build a "billion laughs" style graph in a
+ * deduplicated builder (each level is a 9-way sequence of the level below,
+ * all sharing one canonical node), emit it with FYOPEF_AUTO_ANCHOR, and
+ * confirm that
+ *   - the output is tiny (anchors + aliases, not the exponential expansion),
+ *   - it actually contains anchors and aliases, and
+ *   - re-parsing it reproduces the original graph exactly.
+ *
+ * The nesting depth is kept modest (NLEVELS) because the verifying
+ * fy_generic_compare() walks the *expanded* tree (it does not memoize shared
+ * nodes), so a full nine-deep graph would take exponential time to compare.
+ * The emitter, which is what we are testing, is bounded regardless.
+ */
+#define AA_NLEVELS	6
+START_TEST(gb_auto_anchor_billion_laughs)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic root, reparsed, vstr;
+	fy_generic levels[AA_NLEVELS], items[9], pairs[2 * AA_NLEVELS];
+	const char *keys[AA_NLEVELS] = { "a", "b", "c", "d", "e", "f" };
+	const char *out;
+	size_t outlen;
+	int i, lvl, namp = 0, nstar = 0;
+
+	/* in-place dedup builder over a stack buffer (exercises the in-place
+	 * destroy path that must not free the caller's buffer) */
+	gb = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	/* level 0 ('a'): nine identical out-of-place strings */
+	for (i = 0; i < 9; i++)
+		items[i] = fy_value(gb, "a repeated payload string");
+	levels[0] = fy_gb_sequence_create(gb, 9, items);
+	ck_assert(fy_generic_is_sequence(levels[0]));
+
+	/* each subsequent level is nine references to the previous one */
+	for (lvl = 1; lvl < AA_NLEVELS; lvl++) {
+		for (i = 0; i < 9; i++)
+			items[i] = levels[lvl - 1];
+		levels[lvl] = fy_gb_sequence_create(gb, 9, items);
+		ck_assert(fy_generic_is_sequence(levels[lvl]));
+	}
+
+	/* root mapping a.. -> level 0.. */
+	for (i = 0; i < AA_NLEVELS; i++) {
+		pairs[i * 2] = fy_value(gb, keys[i]);
+		pairs[i * 2 + 1] = levels[i];
+	}
+	root = fy_gb_mapping_create(gb, AA_NLEVELS, pairs);
+	ck_assert(fy_generic_is_mapping(root));
+
+	/* emit with auto-anchor to a string */
+	vstr = fy_gb_emit(gb, root,
+			  FYOPEF_DISABLE_DIRECTORY | FYOPEF_AUTO_ANCHOR |
+			  FYOPEF_MODE_YAML_1_2 | FYOPEF_OUTPUT_TYPE_STRING, NULL);
+	ck_assert(fy_generic_is_string(vstr));
+	out = fy_castp(&vstr, "");
+	outlen = strlen(out);
+
+	/* tiny: the non-dedup expansion would be ~hundreds of millions of bytes */
+	ck_assert_uint_lt(outlen, 4096);
+
+	for (i = 0; out[i]; i++) {
+		if (out[i] == '&')
+			namp++;
+		else if (out[i] == '*')
+			nstar++;
+	}
+	/* shared inner levels must be anchored and aliased */
+	ck_assert_int_gt(namp, 0);
+	ck_assert_int_gt(nstar, 0);
+
+	/* round-trip: re-parsing reproduces the original graph */
+	reparsed = fy_gb_parse(gb, out,
+			       FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING, NULL);
+	ck_assert(fy_generic_is_mapping(reparsed));
+	ck_assert_int_eq(fy_generic_compare(root, reparsed), 0);
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 void libfyaml_case_generic(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -6342,6 +6428,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* continue with builders */
 	fy_check_testcase_add_test(ctc, gb_dedup_basics);
+	fy_check_testcase_add_test(ctc, gb_auto_anchor_billion_laughs);
 	fy_check_testcase_add_test(ctc, gb_scoping);
 
 	fy_check_testcase_add_test(ctc, gb_dedup_scoping);
