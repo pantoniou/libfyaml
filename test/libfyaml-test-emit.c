@@ -875,6 +875,35 @@ START_TEST(emit_constructed_comment_indent)
 }
 END_TEST
 
+/*
+ * Regression: an alias value leaves a "whitespace before next indicator" need
+ * pending (an alias has no natural terminator). It must not leak across the
+ * following line break and put a stray space before the next key's ':' (e.g.
+ * "c : *x" instead of "c: *x").
+ */
+START_TEST(emit_alias_value_no_stray_colon_space)
+{
+	struct fy_parse_cfg cfg = { .flags = 0 };
+	struct fy_document *fyd;
+	char *output;
+
+	fyd = fy_document_build_from_string(&cfg,
+		"a: &x [1, 2]\nb: *x\nc: *x\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	output = fy_emit_document_to_string(fyd, FYECF_DEFAULT);
+	ck_assert_ptr_ne(output, NULL);
+
+	/* no key should be emitted with a space before its colon */
+	ck_assert_ptr_eq(strstr(output, " :"), NULL);
+	ck_assert_ptr_ne(strstr(output, "b: *x"), NULL);
+	ck_assert_ptr_ne(strstr(output, "c: *x"), NULL);
+
+	free(output);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_emit(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -882,6 +911,7 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	ctc = fy_check_suite_add_test_case(cs, "emit");
 
 	fy_check_testcase_add_test(ctc, emit_simple);
+	fy_check_testcase_add_test(ctc, emit_alias_value_no_stray_colon_space);
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_single);
 	fy_check_testcase_add_test(ctc, emit_interstitial_comment_multiple);
 	fy_check_testcase_add_test(ctc, emit_interstitial_and_inline_comment);
