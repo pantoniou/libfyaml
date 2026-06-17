@@ -501,6 +501,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
 	/* clang backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-clang");
+	fy_check_testcase_set_timeout(ctc, 30);
 
 	fy_check_testcase_add_test(ctc, reflection_clang_struct_info);
 	fy_check_testcase_add_test(ctc, reflection_clang_struct_parse);
