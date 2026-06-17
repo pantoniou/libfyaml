@@ -568,6 +568,14 @@ int fy_generic_find_duplicates(struct fy_generic_idset *set, fy_generic root)
 	return fy_generic_find_duplicates_visit(set, root);
 }
 
+const char *
+fy_generic_auto_anchor_name(char *buf, size_t bufsz, uintmax_t id)
+{
+	/* short, grep-friendly sequential name: a1, a2, a3, ... */
+	snprintf(buf, bufsz, "a%llu", (unsigned long long)id);
+	return buf;
+}
+
 /* one-byte stream tags; kept distinct from any pointer/layout artefact */
 #define FY_SIG_TAG_NULL		0x00
 #define FY_SIG_TAG_BOOL		0x01

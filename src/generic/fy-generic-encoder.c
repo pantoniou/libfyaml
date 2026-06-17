@@ -106,7 +106,8 @@ err_out:
 }
 
 static int
-fy_generic_encoder_emit_vdir_iter(struct fy_generic_encoder *fyge, fy_generic vdir)
+fy_generic_encoder_emit_vdir_iter(struct fy_generic_encoder *fyge, fy_generic vdir,
+				  bool auto_anchor)
 {
 	struct fy_generic_iterator_cfg cfg;
 	struct fy_generic_iterator *fygi = NULL;
@@ -129,6 +130,8 @@ fy_generic_encoder_emit_vdir_iter(struct fy_generic_encoder *fyge, fy_generic vd
 
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.flags = FYGICF_WANT_DOCUMENT_BODY_EVENTS | FYGICF_HAS_FULL_DIRECTORY;
+	if (auto_anchor)
+		cfg.flags |= FYGICF_AUTO_ANCHOR;
 	cfg.vdir = vdir;
 	cfg.schema = fyge->schema;
 
@@ -216,10 +219,18 @@ int fy_generic_encoder_emit(struct fy_generic_encoder *fyge,
 		}
 	}
 
-	if (emit_flags & FYGEEF_EMIT_EVENTS)
-		rc = fy_generic_encoder_emit_vdir_iter(fyge, vdir);
-	else
+	if (emit_flags & FYGEEF_EMIT_EVENTS) {
+		/* event path: the document iterator applies auto-anchor */
+		rc = fy_generic_encoder_emit_vdir_iter(fyge, vdir,
+				!!(emit_flags & FYGEEF_AUTO_ANCHOR));
+	} else {
+		/* fast path: the direct generic emitter applies auto-anchor */
+		if (emit_flags & FYGEEF_AUTO_ANCHOR)
+			fyge->emit->xcfg.xflags |= FYEXCF_GENERIC_AUTO_ANCHOR;
+		else
+			fyge->emit->xcfg.xflags &= ~FYEXCF_GENERIC_AUTO_ANCHOR;
 		rc = fy_emit_generic_vdir(fyge->emit, vdir);
+	}
 
 	return rc;
 }

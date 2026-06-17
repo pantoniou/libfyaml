@@ -31,6 +31,14 @@
 #include "fy-emit.h"
 #include "fy-input.h"
 
+/* (re)build the duplicate set for the current document's root */
+static int
+fygi_anchor_build(struct fy_generic_iterator *fygi, fy_generic root)
+{
+	fygi->anchor_counter = 0;
+	return fy_generic_find_duplicates(&fygi->anchor_set, root);
+}
+
 int fy_generic_iterator_setup(struct fy_generic_iterator *fygi, const struct fy_generic_iterator_cfg *cfg)
 {
 	memset(fygi, 0, sizeof(*fygi));
@@ -90,6 +98,12 @@ int fy_generic_iterator_setup(struct fy_generic_iterator *fygi, const struct fy_
 		break;
 	}
 
+	if (fygi->cfg.flags & FYGICF_AUTO_ANCHOR) {
+		if (fy_generic_idset_setup(&fygi->anchor_set) < 0)
+			return -1;
+		fygi->auto_anchor = true;
+	}
+
 	return 0;
 }
 
@@ -120,6 +134,9 @@ void fy_generic_iterator_cleanup(struct fy_generic_iterator *fygi)
 	fygi->iterate_root = fy_invalid;
 	fygi->idx = 0;
 	fygi->count = 0;
+
+	fy_generic_idset_cleanup(&fygi->anchor_set);
+	fygi->auto_anchor = false;
 }
 
 struct fy_generic_iterator *
@@ -442,7 +459,8 @@ fygi_fast_scalar_text(fy_generic v, enum fy_generic_schema schema,
 
 static struct fy_event *
 fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit,
-		       fy_generic v, bool start)
+		       fy_generic v, bool start,
+		       const char *auto_anchor, bool is_alias)
 {
 	struct fygi_fast_event_data gd_local, *gd = &gd_local;
 	struct fy_event *fye = NULL;
@@ -457,6 +475,14 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 
 	if (!fygi || !emit)
 		return NULL;
+
+	/* auto-anchor: a repeated value emitted as an alias is a leaf */
+	if (is_alias) {
+		fye = fy_emit_event_create(emit, FYET_ALIAS, auto_anchor);
+		if (!fye)
+			fygi->state = FYGIS_ERROR;
+		return fye;
+	}
 
 	type = fy_generic_get_type(v);
 
@@ -475,6 +501,10 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 	fygi_fast_event_get_data(fygi, emit, v, gd);
 	v = gd->v;
 	type = fy_generic_get_type(v);
+
+	/* auto-anchor: stamp the generated anchor on the first appearance */
+	if (auto_anchor)
+		gd->anchor = auto_anchor;
 
 	switch (type) {
 	case FYGT_NULL:
@@ -530,7 +560,8 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 }
 
 static struct fy_event *
-fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
+fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start,
+		  const char *auto_anchor, bool is_alias)
 {
 	struct fy_eventp *fyep;
 	struct fy_event *fye;
@@ -544,6 +575,16 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start)
 	enum fy_token_type ttype;
 	bool has_style, has_comment;
 	int rc;
+
+	/*
+	 * Auto-anchor is only ever driven through the emitter path
+	 * (fygi_emit_event_create); the raw token path does not synthesize
+	 * anchor/alias tokens from generated names.
+	 */
+	if (auto_anchor || is_alias) {
+		fygi->state = FYGIS_ERROR;
+		return NULL;
+	}
 
 	fyep = fy_generic_iterator_eventp_alloc(fygi);
 	if (!fyep) {
@@ -784,6 +825,13 @@ fy_generic_iterator_document_start_internal(struct fy_generic_iterator *fygi)
 	/* and go into body */
 	fygi->state = FYGIS_WAITING_BODY_START_OR_DOCUMENT_END;
 
+	/* auto-anchor: (re)build the duplicate set for this document */
+	if (fygi->auto_anchor &&
+	    fygi_anchor_build(fygi, fygi->iterate_root) < 0) {
+		fy_generic_iterator_event_free(fygi, fye);
+		goto err_out;
+	}
+
 	return fye;
 
 err_out:
@@ -927,6 +975,11 @@ fy_generic_iterator_body_next_internal(struct fy_generic_iterator *fygi,
 	struct fy_generic_iterator_body_state *s;
 	fy_generic v, vcol;
 	bool end;
+	const fy_generic_map_pair *pairs;
+	const fy_generic *items;
+	size_t count;
+	uintmax_t id;
+	int rc;
 
 	if (!fygi || !res || fygi->state == FYGIS_ERROR)
 		return false;
@@ -956,9 +1009,6 @@ fy_generic_iterator_body_next_internal(struct fy_generic_iterator *fygi,
 
 		v = fy_invalid;
 		if (fy_generic_is_sequence(vcol)) {
-			const fy_generic *items;
-			size_t count;
-
 			items = fy_generic_sequence_get_items(vcol, &count);
 			if (s->idx < count)
 				v = items[s->idx++];
@@ -966,10 +1016,6 @@ fy_generic_iterator_body_next_internal(struct fy_generic_iterator *fygi,
 				v = fy_invalid;
 
 		} if (fy_generic_is_mapping(vcol)) {
-
-			const fy_generic_map_pair *pairs;
-			size_t count;
-
 			pairs = fy_generic_mapping_get_pairs(vcol, &count);
 			if (s->idx < count) {
 				if (!s->processed_key) {
@@ -991,6 +1037,35 @@ fy_generic_iterator_body_next_internal(struct fy_generic_iterator *fygi,
 	}
 
 	assert(fy_generic_is_valid(v));
+
+	res->is_alias = false;
+	res->anchor = NULL;
+
+	/*
+	 * auto-anchor: a value that occurs more than once is emitted with a
+	 * generated anchor on its first appearance and as an alias afterwards.
+	 * Aliases are leaves, so we must not descend into a duplicate collection
+	 * on subsequent appearances.
+	 */
+	if (fygi->auto_anchor && !end && !fy_generic_is_in_place(v)) {
+
+		rc = fy_generic_idset_anchor(&fygi->anchor_set, v.v,
+						 &fygi->anchor_counter, &id);
+		if (rc < 0)
+			goto err_out;
+		if (rc != 0)
+			res->anchor = fy_generic_auto_anchor_name(
+				fygi->anchor_name_buf,
+				sizeof(fygi->anchor_name_buf), id);
+		if (rc == 2) {
+			/* later appearance: emit as an alias, do not descend */
+			res->is_alias = true;
+			res->v = v;
+			res->end = false;
+			return true;
+		}
+		/* rc == 1: first appearance, fall through with the anchor attached */
+	}
 
 	/* only for collections */
 	if (fy_generic_is_collection(v) || fy_generic_is_sequence(v)) {
@@ -1024,9 +1099,10 @@ fy_generic_iterator_body_next_internal_emit(struct fy_generic_iterator *fygi,
 		return NULL;
 
 	if (emit)
-		return fygi_emit_event_create(fygi, emit, res.v, !res.end);
+		return fygi_emit_event_create(fygi, emit, res.v, !res.end,
+					      res.anchor, res.is_alias);
 
-	return fygi_event_create(fygi, res.v, !res.end);
+	return fygi_event_create(fygi, res.v, !res.end, res.anchor, res.is_alias);
 }
 
 struct fy_event *fy_generic_iterator_body_next(struct fy_generic_iterator *fygi)

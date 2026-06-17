@@ -8717,6 +8717,7 @@ struct fy_op_parse_args {
  * @FYOPEF_STYLE_COMPACT:          Compact (minimal whitespace) style
  * @FYOPEF_STYLE_ONELINE:          Single-line style
  * @FYOPEF_EMIT_EVENTS:            Use emit events, not the optimized generic emit path
+ * @FYOPEF_AUTO_ANCHOR:            Auto-emit anchors/aliases for repeated values
  */
 enum fy_op_emit_flags {
 	FYOPEF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8757,6 +8758,7 @@ enum fy_op_emit_flags {
 	FYOPEF_STYLE_COMPACT		= FYOPEF_STYLE(4),
 	FYOPEF_STYLE_ONELINE		= FYOPEF_STYLE(5),
 	FYOPEF_EMIT_EVENTS		= FY_BIT(25),
+	FYOPEF_AUTO_ANCHOR		= FY_BIT(26),
 };
 
 /* FYOPEF_DEFAULT - Recommended default emit flags (disables directory) */
@@ -10958,6 +10960,7 @@ struct fy_generic_iterator;
  * @FYGICF_STRIP_COMMENTS: Strip comments from the output
  * @FYGICF_STRIP_STYLE: Strip style information from the output
  * @FYGICF_STRIP_FAILSAFE_STR: Strip failsafe schema plain string tags
+ * @FYGICF_AUTO_ANCHOR: Auto-emit anchors/aliases for values that occur more than once.
  */
 enum fy_generic_iterator_cfg_flags {
 	FYGICF_WANT_BODY_EVENTS			= FYGICF_WANT(0),
@@ -10969,6 +10972,7 @@ enum fy_generic_iterator_cfg_flags {
 	FYGICF_STRIP_COMMENTS			= FY_BIT(5),
 	FYGICF_STRIP_STYLE			= FY_BIT(6),
 	FYGICF_STRIP_FAILSAFE_STR		= FY_BIT(7),
+	FYGICF_AUTO_ANCHOR			= FY_BIT(8),
 };
 
 /**

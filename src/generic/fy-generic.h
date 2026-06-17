@@ -117,6 +117,9 @@ int fy_generic_idset_anchor(struct fy_generic_idset *set, fy_generic_value key,
  */
 int fy_generic_find_duplicates(struct fy_generic_idset *set, fy_generic root);
 
+/* sequential anchor name ("a1", "a2", ...) for @id, written into @buf */
+const char *fy_generic_auto_anchor_name(char *buf, size_t bufsz, uintmax_t id);
+
 struct fy_generic_iterator {
 	struct fy_generic_iterator_cfg cfg;
 	enum fy_generic_iterator_state state;
@@ -152,6 +155,12 @@ struct fy_generic_iterator {
 #define FYGIGF_WANTS_STREAM	FY_BIT(8)
 #define FYGIGF_WANTS_DOC	FY_BIT(9)
 	unsigned int generator_state;
+
+	/* auto-anchor (FYGICF_AUTO_ANCHOR) */
+	bool auto_anchor;
+	struct fy_generic_idset anchor_set;	/* dup-bit + assigned anchor id */
+	uintmax_t anchor_counter;		/* last assigned anchor id */
+	char anchor_name_buf[24];
 };
 
 int fy_generic_iterator_setup(struct fy_generic_iterator *fygi, const struct fy_generic_iterator_cfg *cfg);
@@ -169,6 +178,8 @@ fy_generic fy_generic_arena_relocate(const struct fy_arena_reloc *arenas,
 struct fy_generic_iterator_body_result {
 	fy_generic v;
 	bool end;
+	bool is_alias;		/* emit v as an alias to .anchor (auto-anchor) */
+	const char *anchor;	/* generated anchor/alias name, or NULL */
 };
 
 bool

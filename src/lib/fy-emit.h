@@ -125,6 +125,9 @@ struct fy_emitter {
 
 	/* for special needs */
 	void (*finalizer)(struct fy_emitter *emit);
+
+	/* auto-anchor state for the direct generic emitter (NULL = disabled) */
+	struct fy_emit_auto_anchor *aa;
 };
 
 int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg);

@@ -3240,6 +3240,8 @@ void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *
 	memset(sc, 0, sizeof(*sc));
 }
 
+static void fy_emit_auto_anchor_free(struct fy_emitter *emit);
+
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
 	struct fy_eventp *fyep;
@@ -3274,6 +3276,8 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 		free(emit->sc_stack);
 
 	fy_diag_unref(emit->diag);
+
+	fy_emit_auto_anchor_free(emit);
 
 	if (emit->owned_output_fp)
 		fclose(emit->owned_output_fp);
@@ -5877,6 +5881,87 @@ void fy_emit_generic_mapping(struct fy_emitter *emit, fy_generic v, int flags, i
 	fy_emit_generic_mapping_epilog(emit, sc, v);
 }
 
+/*
+ * Auto-anchor state for the direct generic emitter. @dups holds the values
+ * that occur more than once in the current document (computed up front);
+ * @emitted records which of those have already had their anchor written, so
+ * later appearances are emitted as aliases. Anchor names are generated
+ * deterministically from the value identity.
+ */
+struct fy_emit_auto_anchor {
+	struct fy_generic_idset set;	/* dup-bit + assigned anchor id */
+	uintmax_t counter;		/* last assigned anchor id */
+	char namebuf[24];
+};
+
+/* lazily allocate the auto-anchor context (driven by emit->generic_auto_anchor) */
+static int fy_emit_auto_anchor_ensure(struct fy_emitter *emit)
+{
+	struct fy_emit_auto_anchor *aa;
+
+	if (emit->aa)
+		return 0;
+
+	aa = malloc(sizeof(*aa));
+	if (!aa)
+		return -1;
+	memset(aa, 0, sizeof(*aa));
+	if (fy_generic_idset_setup(&aa->set) < 0) {
+		free(aa);
+		return -1;
+	}
+	emit->aa = aa;
+	return 0;
+}
+
+static void fy_emit_auto_anchor_free(struct fy_emitter *emit)
+{
+	if (emit->aa) {
+		fy_generic_idset_cleanup(&emit->aa->set);
+		free(emit->aa);
+		emit->aa = NULL;
+	}
+}
+
+/*
+ * Auto-anchor hook for a node about to be emitted. Returns:
+ *   0  - emit normally (not a duplicate)
+ *   1  - first appearance of a duplicate; *anchorp is the anchor name to stamp
+ *   2  - later appearance; emit an alias to *anchorp instead of the content
+ *  -1  - error
+ */
+static int
+fy_emit_generic_auto_anchor(struct fy_emitter *emit, fy_generic v, const char **anchorp)
+{
+	struct fy_emit_auto_anchor *aa = emit->aa;
+	uintmax_t id;
+	int rc;
+
+	*anchorp = NULL;
+	/* aliases are not representable in JSON */
+	if (!aa || fy_emit_is_json_mode(emit) || fy_generic_is_in_place(v))
+		return 0;
+
+	rc = fy_generic_idset_anchor(&aa->set, v.v, &aa->counter, &id);
+	if (rc <= 0)
+		return rc;	/* 0: not a duplicate, -1: error */
+	*anchorp = fy_generic_auto_anchor_name(aa->namebuf, sizeof(aa->namebuf), id);
+	return rc;
+}
+
+/* emit a synthesized alias (a generated name, not derived from a generic) */
+static void
+fy_emit_generic_alias_name(struct fy_emitter *emit, const char *name,
+			   int flags, int indent)
+{
+	fy_emit_common_text_preamble(emit, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+				     flags, indent, FYNT_SCALAR);
+	fy_emit_write_indicator(emit, di_star, flags, indent, fyewt_alias);
+	fy_emit_write(emit, fyewt_alias, name, strlen(name));
+	emit->flags &= ~FYEF_INDENTATION;
+	emit->flags |= FYEF_NEED_WS_BEFORE_IND;
+}
+
 static int
 fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int indent, bool is_key,
 			 fy_generic_sized_string *scalar_szstr, struct fy_text_analysis *scalar_ta)
@@ -5889,6 +5974,7 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 	char *tag_data = NULL;
 	size_t tag_size;
 	enum fy_node_style style;
+	const char *aa_anchor = NULL;
 	int rc;
 
 	style = FYNS_ANY;
@@ -5917,6 +6003,16 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 
 	if (style != FYNS_ALIAS) {
 		vanchor = fy_generic_get_anchor(v);
+
+		/* auto-anchor: a repeated value is anchored on its first
+		 * appearance and aliased afterwards */
+		rc = fy_emit_generic_auto_anchor(emit, v, &aa_anchor);
+		if (rc < 0)
+			return -1;
+		if (rc == 2) {
+			fy_emit_generic_alias_name(emit, aa_anchor, flags, indent);
+			return 0;
+		}
 	} else {
 		vanchor = fy_invalid;
 	}
@@ -5924,6 +6020,12 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 
 	szstr_anchor = fy_cast(vanchor, fy_szstr_empty);
 	szstr_tag = fy_cast(vtag, fy_szstr_empty);
+
+	/* auto-anchor first appearance: stamp the generated anchor name */
+	if (aa_anchor) {
+		szstr_anchor.data = aa_anchor;
+		szstr_anchor.size = strlen(aa_anchor);
+	}
 
 	if (szstr_tag.data) {
 		tag_data = fy_document_state_format_tag_alloc(emit->fyds, szstr_tag.data, szstr_tag.size, &tag_size);
@@ -6003,6 +6105,14 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 	if (!emit || fy_generic_is_invalid(vdir))
 		return -1;
 
+	/* auto-anchor context tracks the FYEXCF_GENERIC_AUTO_ANCHOR flag */
+	if (emit->xcfg.xflags & FYEXCF_GENERIC_AUTO_ANCHOR) {
+		if (fy_emit_auto_anchor_ensure(emit) < 0)
+			goto err_out;
+	} else {
+		fy_emit_auto_anchor_free(emit);
+	}
+
 	/* FYET_STREAM_START */
 	if (emit->state != FYES_STREAM_START) {
 		if (emit->column != 0)
@@ -6034,6 +6144,13 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 		fy_emit_goto_state(emit, FYES_DOCUMENT_CONTENT);
 
 		vroot = fy_generic_vds_get_root(vds);
+
+		/* auto-anchor: find the per-document duplicates up front */
+		if (emit->aa) {
+			emit->aa->counter = 0;
+			if (fy_generic_find_duplicates(&emit->aa->set, vroot) < 0)
+				goto err_out;
+		}
 
 		rc = fy_emit_generic_internal(emit, vroot, DDNF_ROOT, -1, false, NULL, NULL);
 		if (rc)
