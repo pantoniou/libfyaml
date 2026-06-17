@@ -6174,4 +6174,10 @@ err_out:
 	return -1;
 }
 
+#else
+
+static void fy_emit_auto_anchor_free(struct fy_emitter *emit FY_UNUSED)
+{
+}
+
 #endif
