@@ -142,6 +142,7 @@
 #define OPT_CACHE_DIR			2034
 #define OPT_CACHE_INFO			2035
 #define OPT_EMIT_EVENTS			2036
+#define OPT_AUTO_ANCHOR			2037
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -247,6 +248,7 @@ static struct option lopts[] = {
 	{"relaxed-flow-doc",	no_argument,		0,	OPT_RELAXED_FLOW_DOC },
 	{"enable-cache",	no_argument,		0,	OPT_ENABLE_CACHE },
 	{"emit-events",		no_argument,		0,	OPT_EMIT_EVENTS },
+	{"auto-anchor",		no_argument,		0,	OPT_AUTO_ANCHOR },
 	{"cache-list",		no_argument,		0,	OPT_CACHE_LIST },
 	{"cache-remove",	required_argument,	0,	OPT_CACHE_REMOVE },
 	{"cache-stats",		no_argument,		0,	OPT_CACHE_STATS },
@@ -493,6 +495,7 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM("--cache-dir", "Print the parse cache directory");
 	USAGE_ITEM("--cache-stats", "Show parse cache directory statistics");
 	USAGE_ITEM("--emit-events", "Use events to drive the emitter");
+	USAGE_ITEM("--auto-anchor", "Auto-emit anchors/aliases for repeated (deduplicated) values");
 #endif
 
 	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
@@ -1651,6 +1654,7 @@ struct generic_config {
 	bool sloppy_flow_indentation;
 	bool relaxed_flow_doc;
 	bool emit_events;
+	bool auto_anchor;
 	const char *durable_dir;	/* if set, use a durable on-disk dedup arena here */
 };
 
@@ -1945,6 +1949,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (gcfg->emit_events)
 			emit_flags |= FYOPEF_EMIT_EVENTS;
 
+		if (gcfg->auto_anchor)
+			emit_flags |= FYOPEF_AUTO_ANCHOR;
+
 		if (!gcfg->null_output) {
 
 			if (!gcfg->testsuite && !gcfg->parse_dump) {
@@ -2094,6 +2101,7 @@ int main(int argc, char *argv[])
 	bool cache_list = false, cache_stats = false, cache_clear = false, cache_dir = false;
 	const char *cache_remove = NULL, *cache_info = NULL;
 	bool emit_events = false;
+	bool auto_anchor = false;
 #endif
 #ifdef HAVE_REFLECTION
 	/* reflection */
@@ -2490,6 +2498,9 @@ int main(int argc, char *argv[])
 			break;
 		case OPT_EMIT_EVENTS:
 			emit_events = true;
+			break;
+		case OPT_AUTO_ANCHOR:
+			auto_anchor = true;
 			break;
 #endif
 		case OPT_PREFER_RECURSIVE:
@@ -3511,6 +3522,7 @@ int main(int argc, char *argv[])
 		gcfg.sloppy_flow_indentation = !!(cfg.flags & FYPCF_SLOPPY_FLOW_INDENTATION);
 		gcfg.relaxed_flow_doc = !!(cfg.flags & FYPCF_RELAXED_FLOW_DOC);
 		gcfg.emit_events = emit_events;
+		gcfg.auto_anchor = auto_anchor;
 		gcfg.durable_dir = durable_dir;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
