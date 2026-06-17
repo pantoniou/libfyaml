@@ -1220,12 +1220,19 @@ struct fy_generic_builder *fy_generic_builder_create(const struct fy_generic_bui
 
 void fy_generic_builder_destroy(struct fy_generic_builder *gb)
 {
+	bool in_place;
+
 	if (!gb)
 		return;
 
+	/* the builder may live in caller-owned memory; snapshot before cleanup */
+	in_place = !!(gb->flags & FYGBF_IN_PLACE);
+
 	fy_generic_builder_cleanup(gb);
 
-	free(gb);
+	/* only free the builder itself if we allocated it */
+	if (!in_place)
+		free(gb);
 }
 
 struct fy_generic_builder *
@@ -1272,6 +1279,9 @@ fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic
 	rc = fy_generic_builder_setup(gb, &cfg);
 	if (rc)
 		return NULL;
+
+	/* the builder (and its allocator) live in the caller's buffer */
+	gb->flags |= FYGBF_IN_PLACE;
 
 	return gb;
 }

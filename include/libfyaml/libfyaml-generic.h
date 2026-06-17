@@ -7251,6 +7251,7 @@ struct fy_generic_builder_cfg {
  * @FYGBF_DEDUP_CHAIN:    All builders in the chain have deduplication enabled
  * @FYGBF_OWNS_ALLOCATOR: Builder owns and will destroy the allocator
  * @FYGBF_CREATED_TAG:    Builder created a tag on the allocator
+ * @FYGBF_IN_PLACE:       Builder lives in caller-owned memory (do not free it)
  */
 enum fy_gb_flags {
 	FYGBF_NONE			= 0,
@@ -7259,6 +7260,7 @@ enum fy_gb_flags {
 	FYGBF_DEDUP_CHAIN		= FY_BIT(2),	/* builder chain is dedup */
 	FYGBF_OWNS_ALLOCATOR		= FY_BIT(3),	/* builder owns the allocator */
 	FYGBF_CREATED_TAG		= FY_BIT(4),	/* builder has created tag on allocator */
+	FYGBF_IN_PLACE			= FY_BIT(5),	/* builder is in caller-owned memory */
 };
 
 /**
