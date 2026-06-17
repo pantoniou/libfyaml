@@ -462,6 +462,8 @@ void fy_emit_write_indent(struct fy_emitter *emit, int indent)
 	}
 
 	emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
+	/* clear after writing an indent */
+	emit->flags &= ~FYEF_NEED_WS_BEFORE_IND;
 }
 
 enum document_indicator {
