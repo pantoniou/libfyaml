@@ -178,166 +178,16 @@ fy_generic_arena_relocate(const struct fy_arena_reloc *arenas, unsigned int num_
 	}
 }
 
-#define FY_STORAGE_STATS_BUCKET_SIZE	4096
-#define FY_STORAGE_STATS_DEFAULT_HEADS	512
-
-struct fy_storage_stat_entry {
-	fy_generic_value key;
-	size_t size;
-};
-
-struct fy_storage_stats_bucket {
-	struct fy_storage_stats_bucket *next;
-	size_t count;
-	struct fy_storage_stat_entry entries[];
-};
-
-#define FY_STORAGE_STATS_BUCKET_CAP \
-	((FY_STORAGE_STATS_BUCKET_SIZE - sizeof(struct fy_storage_stats_bucket)) / \
-	 sizeof(struct fy_storage_stat_entry))
-
-struct fy_storage_stats_set {
-	struct fy_storage_stats_bucket **heads;
-	size_t nheads;
-};
-
 static int
-fy_storage_stats_set_setup(struct fy_storage_stats_set *set, size_t est_size)
-{
-	size_t nheads;
+fy_generic_idset_insert(struct fy_generic_idset *set, fy_generic_value key,
+			uintmax_t new_pld, uintmax_t *found_pldp);
 
-	nheads = est_size ? est_size / FY_STORAGE_STATS_BUCKET_SIZE :
-			    FY_STORAGE_STATS_DEFAULT_HEADS;
-	if (nheads < 1)
-		nheads = 1;
-
-	set->nheads = nheads;
-	set->heads = calloc(nheads, sizeof(*set->heads));
-	return set->heads ? 0 : -1;
-}
-
-static void
-fy_storage_stats_set_cleanup(struct fy_storage_stats_set *set)
-{
-	struct fy_storage_stats_bucket *b, *next;
-	size_t i;
-
-	if (!set->heads)
-		return;
-	for (i = 0; i < set->nheads; i++) {
-		for (b = set->heads[i]; b; b = next) {
-			next = b->next;
-			free(b);
-		}
-	}
-	free(set->heads);
-	set->heads = NULL;
-}
-
-/* binary search a sorted bucket run; returns true if found, *idxp = slot */
-static inline bool
-fy_storage_stats_bucket_find(const struct fy_storage_stats_bucket *b,
-			   fy_generic_value key, size_t *idxp)
-{
-	size_t lo, mid, hi;
-	fy_generic_value k;
-
-	lo = 0;
-	hi = b->count;
-
-	while (lo < hi) {
-		mid = lo + (hi - lo) / 2;
-		k = b->entries[mid].key;
-		if (k == key) {
-			*idxp = mid;
-			return true;
-		}
-		if (key < k)
-			hi = mid;
-		else
-			lo = mid + 1;
-	}
-	*idxp = lo;
-	return false;
-}
-
-/* returns 1 if duplicate, 0 if newly inserted (unique), -1 on allocation failure */
-static int
-fy_storage_stats_set_add(struct fy_storage_stats_set *set, fy_generic_value key,
-			 size_t *sizep)
-{
-	size_t head;
-	struct fy_storage_stats_bucket **lastp;
-	struct fy_storage_stats_bucket *b, *last;
-	size_t idx;
-
-	head = XXH64(&key, sizeof(key), 0) % set->nheads;
-	lastp = &set->heads[head];
-	idx = 0;
-	last = NULL;
-	*sizep = 0;
-
-	/* walk the chain; a hit in any bucket is a duplicate */
-	for (b = set->heads[head]; b; b = b->next) {
-		if (fy_storage_stats_bucket_find(b, key, &idx)) {
-			*sizep = b->entries[idx].size;
-			return 1;
-		}
-		lastp = &b->next;
-		last = b;
-	}
-
-	/* not found: insert into the last bucket, or a fresh one if needed */
-	if (!last || last->count >= FY_STORAGE_STATS_BUCKET_CAP) {
-		b = malloc(FY_STORAGE_STATS_BUCKET_SIZE);
-		if (!b)
-			return -1;
-		b->next = NULL;
-		b->count = 0;
-		*lastp = b;
-		last = b;
-		idx = 0;
-	} else {
-		/* re-find the sorted insertion slot within the last bucket */
-		(void)fy_storage_stats_bucket_find(last, key, &idx);
-	}
-
-	if (idx < last->count)
-		memmove(&last->entries[idx + 1], &last->entries[idx],
-			(last->count - idx) * sizeof(last->entries[0]));
-	last->entries[idx].key = key;
-	last->entries[idx].size = 0;	/* not calculated yet */
-	last->count++;
-	return 0;
-}
-
-static size_t *
-fy_storage_stats_set_get_sizep(struct fy_storage_stats_set *set, fy_generic_value key)
-{
-	struct fy_storage_stats_bucket *b;
-	size_t head, idx;
-
-	head = XXH64(&key, sizeof(key), 0) % set->nheads;
-	for (b = set->heads[head]; b; b = b->next) {
-		if (fy_storage_stats_bucket_find(b, key, &idx))
-			return &b->entries[idx].size;
-	}
-	return NULL;
-}
-
-static void
-fy_storage_stats_set_set_size(struct fy_storage_stats_set *set, fy_generic_value key, size_t size)
-{
-	size_t *sizep;
-
-	sizep = fy_storage_stats_set_get_sizep(set, key);
-	if (!sizep)
-		return;
-	*sizep = size;
-}
-
+/*
+ * The storage-stats walk uses the shared identity map (fy_generic_idset),
+ * storing each out-of-place value's computed byte size in the entry's id slot.
+ */
 static size_t
-fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
+fy_generic_storage_stats_visit(struct fy_generic_idset *set,
 			       struct fy_generic_storage_stats *stats,
 			       fy_generic v)
 {
@@ -349,9 +199,9 @@ fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
 	uint64_t flags;
 	const void *colp;
 	size_t size;
+	uintmax_t *sizep, dupsize;
 	const uint8_t *str, *sp;
 	int rc;
-	bool is_dup;
 
 	if (fy_generic_is_invalid(v))
 		return (size_t)-1;
@@ -363,19 +213,16 @@ fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
 		return sizeof(fy_generic);
 	}
 
-	rc = fy_storage_stats_set_add(set, v.v, &size);
+	/* a single lookup: on a hit, dupsize is the size stored on first visit */
+	rc = fy_generic_idset_insert(set, v.v, 0, &dupsize);
 	if (rc < 0)
 		return (size_t)-1;
 
-	is_dup = rc == 1;
-
 	/* if it's a duplicate we can stop now */
-	if (is_dup) {
+	if (rc == 1) {
 		stats->duplicate_values++;
 		stats->duplicate_bytes += sizeof(fy_generic);
-
-		/* the size must have been updated */
-		return size;
+		return (size_t)dupsize;
 	}
 
 	size = 0;
@@ -455,8 +302,10 @@ fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
 		return (size_t)-1;
 	}
 
-	/* store the size */
-	fy_storage_stats_set_set_size(set, v.v, size);
+	/* store the size on the entry inserted above */
+	sizep = fy_generic_idset_idp(set, v.v);
+	if (sizep)
+		*sizep = size;
 
 	return size;
 }
@@ -464,7 +313,7 @@ fy_generic_storage_stats_visit(struct fy_storage_stats_set *set,
 int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
 				  struct fy_generic_storage_stats *stats)
 {
-	struct fy_storage_stats_set set = { 0 };
+	struct fy_generic_idset set = { 0 };
 	size_t size;
 	int rc;
 
@@ -472,7 +321,7 @@ int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
 		return -1;
 	memset(stats, 0, sizeof(*stats));
 
-	if (fy_storage_stats_set_setup(&set, est_size) != 0)
+	if (fy_generic_idset_setup_hint(&set, est_size) != 0)
 		return -1;
 
 	size = fy_generic_storage_stats_visit(&set, stats, v);
@@ -484,8 +333,239 @@ int fy_generic_calc_storage_stats(fy_generic v, size_t est_size,
 				     stats->duplicate_bytes;
 	}
 
-	fy_storage_stats_set_cleanup(&set);
+	fy_generic_idset_cleanup(&set);
 	return rc;
+}
+
+#define FY_IDSET_BUCKET_SIZE		4096
+#define FY_IDSET_DEFAULT_HEADS		256
+
+#define FY_IDSET_BUCKET_CAP \
+	((FY_IDSET_BUCKET_SIZE - sizeof(struct fy_generic_idset_bucket)) / \
+	 sizeof(struct fy_generic_idset_entry))
+
+int fy_generic_idset_setup_hint(struct fy_generic_idset *set, size_t est_bytes)
+{
+	size_t nheads;
+
+	nheads = est_bytes ? est_bytes / FY_IDSET_BUCKET_SIZE : FY_IDSET_DEFAULT_HEADS;
+	if (nheads < 1)
+		nheads = 1;
+
+	set->nheads = nheads;
+	set->heads = calloc(set->nheads, sizeof(*set->heads));
+	return set->heads ? 0 : -1;
+}
+
+int fy_generic_idset_setup(struct fy_generic_idset *set)
+{
+	return fy_generic_idset_setup_hint(set, 0);
+}
+
+void fy_generic_idset_cleanup(struct fy_generic_idset *set)
+{
+	struct fy_generic_idset_bucket *b, *next;
+	size_t i;
+
+	if (!set->heads)
+		return;
+	for (i = 0; i < set->nheads; i++) {
+		for (b = set->heads[i]; b; b = next) {
+			next = b->next;
+			free(b);
+		}
+	}
+	free(set->heads);
+	set->heads = NULL;
+	set->nheads = 0;
+}
+
+/* drop all entries but keep the head array, for reuse */
+void fy_generic_idset_reset(struct fy_generic_idset *set)
+{
+	struct fy_generic_idset_bucket *b, *next;
+	size_t i;
+
+	if (!set->heads)
+		return;
+	for (i = 0; i < set->nheads; i++) {
+		for (b = set->heads[i]; b; b = next) {
+			next = b->next;
+			free(b);
+		}
+		set->heads[i] = NULL;
+	}
+}
+
+/* binary search a sorted bucket; returns true if found, *idxp = slot */
+static inline bool
+fy_generic_idset_bucket_find(const struct fy_generic_idset_bucket *b,
+			     fy_generic_value key, size_t *idxp)
+{
+	size_t lo = 0, hi = b->count, mid;
+	fy_generic_value k;
+
+	while (lo < hi) {
+		mid = lo + (hi - lo) / 2;
+		k = b->entries[mid].key;
+		if (k == key) {
+			*idxp = mid;
+			return true;
+		}
+		if (key < k)
+			hi = mid;
+		else
+			lo = mid + 1;
+	}
+	*idxp = lo;
+	return false;
+}
+
+bool fy_generic_idset_contains(struct fy_generic_idset *set, fy_generic_value key)
+{
+	struct fy_generic_idset_bucket *b;
+	size_t head, idx;
+
+	if (!set->heads)
+		return false;
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_generic_idset_bucket_find(b, key, &idx))
+			return true;
+	}
+	return false;
+}
+
+uintmax_t *fy_generic_idset_idp(struct fy_generic_idset *set, fy_generic_value key)
+{
+	struct fy_generic_idset_bucket *b;
+	size_t head, idx;
+
+	if (!set->heads)
+		return NULL;
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_generic_idset_bucket_find(b, key, &idx))
+			return &b->entries[idx].payload;
+	}
+	return NULL;
+}
+
+/* hit, return 1 (*found_pldp receives the payload
+ * miss, return 0, insert key, new_pld
+ * error, return -1;
+ */
+static int
+fy_generic_idset_insert(struct fy_generic_idset *set, fy_generic_value key,
+			uintmax_t new_pld,
+			uintmax_t *found_pldp)
+{
+	struct fy_generic_idset_bucket **lastp, *b, *last;
+	size_t head, idx;
+
+	head = XXH64(&key, sizeof(key), 0) % set->nheads;
+	lastp = &set->heads[head];
+	last = NULL;
+	idx = 0;
+
+	for (b = set->heads[head]; b; b = b->next) {
+		if (fy_generic_idset_bucket_find(b, key, &idx)) {
+			if (found_pldp)
+				*found_pldp = b->entries[idx].payload;
+			return 1;
+		}
+		lastp = &b->next;
+		last = b;
+	}
+
+	if (!last || last->count >= FY_IDSET_BUCKET_CAP) {
+		b = malloc(FY_IDSET_BUCKET_SIZE);
+		if (!b)
+			return -1;
+		b->next = NULL;
+		b->count = 0;
+		*lastp = b;
+		last = b;
+		idx = 0;
+	} else {
+		(void)fy_generic_idset_bucket_find(last, key, &idx);
+	}
+
+	if (idx < last->count)
+		memmove(&last->entries[idx + 1], &last->entries[idx],
+			(last->count - idx) * sizeof(last->entries[0]));
+	last->entries[idx].key = key;
+	last->entries[idx].payload = new_pld;
+	last->count++;
+	return 0;
+}
+
+int fy_generic_idset_add(struct fy_generic_idset *set, fy_generic_value key)
+{
+	return fy_generic_idset_insert(set, key, 0, NULL);
+}
+
+int fy_generic_idset_anchor(struct fy_generic_idset *set, fy_generic_value key,
+			    uintmax_t *counter, uintmax_t *idp)
+{
+	uintmax_t *pld;
+	uintmax_t id;
+
+	pld = fy_generic_idset_idp(set, key);
+	if (!pld || !(*pld & FY_GENERIC_IDSET_DUP_BIT))
+		return 0;	/* not a duplicate: emit normally */
+
+	id = *pld & ~FY_GENERIC_IDSET_DUP_BIT;
+	if (id == 0) {
+		/* first appearance of a duplicate: assign the next id */
+		id = ++(*counter);
+		*pld = FY_GENERIC_IDSET_DUP_BIT | id;
+		*idp = id;
+		return 1;	/* emit with anchor */
+	}
+
+	*idp = id;
+	return 2;		/* later appearance: emit as alias */
+}
+
+static int
+fy_generic_find_duplicates_visit(struct fy_generic_idset *set, fy_generic v)
+{
+	const fy_generic *items;
+	size_t i, count;
+	int rc;
+
+	if (fy_generic_is_invalid(v) || fy_generic_is_in_place(v))
+		return 0;
+
+	rc = fy_generic_idset_add(set, v.v);
+	if (rc < 0)
+		return -1;
+
+	if (rc == 1) {
+		/* seen before: mark as a duplicate (already descended once) */
+		uintmax_t *pld = fy_generic_idset_idp(set, v.v);
+		if (pld)
+			*pld |= FY_GENERIC_IDSET_DUP_BIT;
+		return 0;
+	}
+
+	/* first time: descend into collections */
+	if (fy_generic_is_collection(v)) {
+		items = fy_generic_collection_get_items(v, &count);
+		for (i = 0; i < count; i++) {
+			rc = fy_generic_find_duplicates_visit(set, items[i]);
+			if (rc < 0)
+				return -1;
+		}
+	}
+	return 0;
+}
+
+int fy_generic_find_duplicates(struct fy_generic_idset *set, fy_generic root)
+{
+	fy_generic_idset_reset(set);
+	return fy_generic_find_duplicates_visit(set, root);
 }
 
 /* one-byte stream tags; kept distinct from any pointer/layout artefact */

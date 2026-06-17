@@ -63,6 +63,60 @@ struct fy_generic_iterator_body_state {
 	bool processed_key : 1;	/* for mapping only */
 };
 
+/* dense identity map of out-of-place generic values. */
+struct fy_generic_idset_entry {
+	fy_generic_value key;
+	uintmax_t payload;
+};
+
+/*
+ * High bit of the payload: marks a key as a duplicate (occurs > once) for the
+ * auto-anchor set. The remaining low bits hold the sequential anchor id once
+ * assigned (0 = duplicate seen but no anchor emitted yet).
+ */
+#define FY_GENERIC_IDSET_DUP_BIT ((uintmax_t)1 << (sizeof(uintmax_t) * 8 - 1))
+
+struct fy_generic_idset_bucket {
+	struct fy_generic_idset_bucket *next;
+	size_t count;
+	struct fy_generic_idset_entry entries[];
+};
+
+struct fy_generic_idset {
+	struct fy_generic_idset_bucket **heads;
+	size_t nheads;
+};
+
+int fy_generic_idset_setup(struct fy_generic_idset *set);
+/* like setup() but sizes the head array from an estimate of the keyed bytes */
+int fy_generic_idset_setup_hint(struct fy_generic_idset *set, size_t est_bytes);
+void fy_generic_idset_cleanup(struct fy_generic_idset *set);
+void fy_generic_idset_reset(struct fy_generic_idset *set);
+/* returns 1 if already present, 0 if newly inserted, -1 on allocation failure */
+int fy_generic_idset_add(struct fy_generic_idset *set, fy_generic_value key);
+bool fy_generic_idset_contains(struct fy_generic_idset *set, fy_generic_value key);
+/* pointer to the stored id/payload of @key, or NULL if absent */
+uintmax_t *fy_generic_idset_idp(struct fy_generic_idset *set, fy_generic_value key);
+
+/*
+ * Auto-anchor decision for @key against a set previously filled by
+ * fy_generic_find_duplicates(). On the first appearance of a duplicate the next
+ * sequential id is assigned (pre-incrementing *@counter); *@idp receives it.
+ * Returns 0 if @key is not a duplicate (emit normally), 1 on the first
+ * appearance (emit with anchor a<id>), 2 on a later appearance (emit alias
+ * *a<id>), -1 on error.
+ */
+int fy_generic_idset_anchor(struct fy_generic_idset *set, fy_generic_value key,
+			    uintmax_t *counter, uintmax_t *idp);
+
+/*
+ * Mark, within a single @set, every out-of-place value that occurs more than
+ * once under @root with FY_GENERIC_IDSET_DUP_BIT (the values that warrant an
+ * anchor/alias). The set is reset first. Returns 0 on success, -1 on
+ * allocation failure.
+ */
+int fy_generic_find_duplicates(struct fy_generic_idset *set, fy_generic root);
+
 struct fy_generic_iterator {
 	struct fy_generic_iterator_cfg cfg;
 	enum fy_generic_iterator_state state;
