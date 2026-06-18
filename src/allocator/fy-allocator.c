@@ -786,6 +786,30 @@ fy_allocator_get_info(struct fy_allocator *a, int tag)
 	return fy_allocator_get_info_nocheck(a, tag);
 }
 
+int
+fy_allocator_get_usage(struct fy_allocator *a, int tag,
+		       struct fy_allocator_usage *usage)
+{
+	struct fy_allocator_info *info;
+
+	if (!usage)
+		return -1;
+	memset(usage, 0, sizeof(*usage));
+
+	if (!a)
+		return -1;
+
+	info = fy_allocator_get_info_nocheck(a, tag);
+	if (!info)
+		return -1;
+
+	usage->free = info->free;
+	usage->used = info->used;
+	usage->total = info->total;
+	free(info);
+	return 0;
+}
+
 enum fy_allocator_cap_flags
 fy_allocator_get_caps(struct fy_allocator *a)
 {

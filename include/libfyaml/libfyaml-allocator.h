@@ -463,6 +463,37 @@ fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 	FY_EXPORT;
 
 /**
+ * struct fy_allocator_usage - Aggregate allocator usage summary.
+ *
+ * @free:  Bytes still available.
+ * @used:  Bytes currently allocated.
+ * @total: Total size (used + free).
+ */
+struct fy_allocator_usage {
+	size_t free;
+	size_t used;
+	size_t total;
+};
+
+/**
+ * fy_allocator_get_usage() - Summarize allocator usage (free/used/total)
+ *
+ * Fill @usage with the aggregate byte counts for @tag, or for every tag when
+ * @tag is FY_ALLOC_TAG_NONE.
+ *
+ * @a:     The allocator
+ * @tag:   The tag to summarize, or FY_ALLOC_TAG_NONE for all tags
+ * @usage: Receives the summary; zeroed first; never NULL
+ *
+ * Returns:
+ * 0 on success, -1 on error or if the allocator does not support it.
+ */
+int
+fy_allocator_get_usage(struct fy_allocator *a, int tag,
+		       struct fy_allocator_usage *usage)
+	FY_EXPORT;
+
+/**
  * fy_allocator_get_tag_linear_size() - Get the linear size of an allocator tag
  *
  * Retrieve the linear size of the content of a tag.
