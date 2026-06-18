@@ -1353,8 +1353,305 @@ static uint64_t fy_durable_op_index_region_size(struct fy_allocator *a)
 	return da->separate_index ? da->index.region_size : 0;
 }
 
+#ifdef HAVE_GENERIC
+
+#include <libfyaml/libfyaml-generic.h>
+
+/* remove a flat arena directory (chunk files only, no nested dirs); ENOENT is ok */
+static int fy_durable_rmdir_flat(const char *path)
+{
+	DIR *d;
+	struct dirent *de;
+	int dfd, rc = 0;
+
+	d = opendir(path);
+	if (!d)
+		return errno == ENOENT ? 0 : -1;
+	dfd = dirfd(d);
+	while ((de = readdir(d)) != NULL) {
+		if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
+			continue;
+		if (unlinkat(dfd, de->d_name, 0) != 0)
+			rc = -1;
+	}
+	closedir(d);
+	if (rmdir(path) != 0 && errno != ENOENT)
+		rc = -1;
+	return rc;
+}
+
+/* walk the parent chain (e.g. through a dedup layer) to the durable allocator */
+static struct fy_durable_allocator *fy_durable_of(struct fy_allocator *a)
+{
+	while (a && a->ops != &fy_durable_allocator_ops)
+		a = fy_allocator_get_parent(a);
+	return a ? container_of(a, struct fy_durable_allocator, a) : NULL;
+}
+
+/* read chunk-0's boot header (geometry) without mapping at the fixed base */
+static int fy_durable_probe_boot(const char *dir, struct fy_durable_boot *out)
+{
+	char path[PATH_MAX];
+	struct fy_durable_boot *b;
+	void *p;
+	int fd, rc = -1;
+
+	if (snprintf(path, sizeof(path), "%s/arena-0.bin", dir) >= (int)sizeof(path))
+		return -1;
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -1;
+	p = mmap(NULL, sizeof(*b), PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (p == MAP_FAILED)
+		return -1;
+	b = p;
+	if (!memcmp(b->magic, fy_durable_boot_magic, sizeof(b->magic)) &&
+	    b->version == FY_DURABLE_VERSION && b->endian == FY_DURABLE_ENDIAN) {
+		*out = *b;
+		rc = 0;
+	}
+	munmap(p, sizeof(*b));
+	return rc;
+}
+
+/* total content bytes actually written (used to size the copy memo) */
+static size_t fy_durable_content_used(struct fy_durable_allocator *da)
+{
+	struct fy_durable_chunk_hdr *hdr;
+	size_t total = 0;
+
+	for (hdr = fy_atomic_load(&da->boot->head); hdr;
+	     hdr = fy_atomic_load(&hdr->next_chunk)) {
+		if (!fy_durable_ensure_mapped_ptr(da, &da->content, hdr))
+			break;
+		total += fy_durable_hdr_off(&da->content, hdr->generation) +
+			 fy_atomic_load(&hdr->next);
+	}
+	return total;
+}
+
+/* copy a value graph into a fresh durable arena described by @c (CREATE|...) */
+static fy_generic
+fy_durable_gc_copy_into(const struct fy_durable_allocator_cfg *c, fy_generic src,
+			size_t est, struct fy_allocator **arenap)
+{
+	struct fy_generic_builder_cfg gbcfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *arena;
+	fy_generic dst;
+
+	*arenap = NULL;
+
+	arena = fy_allocator_create("durable", c);
+	if (!arena)
+		return fy_invalid;
+
+	memset(&gbcfg, 0, sizeof(gbcfg));
+	gbcfg.flags = FYGBCF_SCOPE_LEADER;
+	gbcfg.allocator = arena;
+	gb = fy_generic_builder_create(&gbcfg);
+	if (!gb) {
+		fy_allocator_destroy(arena);
+		return fy_invalid;
+	}
+
+	dst = fy_gb_copy_memoized(gb, src, est);
+
+	fy_generic_builder_destroy(gb);
+
+	if (fy_generic_is_invalid(dst)) {
+		fy_allocator_destroy(arena);
+		return fy_invalid;
+	}
+
+	*arenap = arena;
+	return dst;
+}
+
+int fy_durable_arena_gc(const char *dir_in)
+{
+	char dir[PATH_MAX], *gcnew, *gcscratch, *gclock;
+	struct fy_durable_allocator_cfg c;
+	struct fy_durable_boot pb;
+	struct fy_allocator *real = NULL, *scratch = NULL, *staging = NULL;
+	struct fy_durable_allocator *da;
+	fy_generic root, scratch_root, final_root;
+	uint64_t region_base, region_size, idx_base = 0, idx_size = 0, idx_chunk = 0, chunk_size;
+	unsigned int carry_flags;
+	size_t est;
+	bool separate_index;
+	int lockfd = -1, rc = -1;
+
+	if (!dir_in)
+		return -1;
+
+	/* canonicalize so that everyhing is stable */
+	if (!fy_realpath(dir_in, dir, sizeof(dir)))
+		return -1;
+	gcnew = fy_sprintfa("%s.gcnew", dir);
+	gcscratch = fy_sprintfa("%s.gcscratch", dir);
+	gclock = fy_sprintfa("%s.gclock", dir);
+
+	/* 1. GC exclusive lock on a sibling file (survives the directory swap) */
+	lockfd = open(gclock, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+	if (lockfd < 0)
+		return -1;
+	if (flock(lockfd, LOCK_EX | LOCK_NB) != 0) {
+		rc = (errno == EWOULDBLOCK) ? 1 : -1;
+		close(lockfd);
+		return rc;
+	}
+
+	/* 2. clean any leftovers from a crashed prior collection */
+	fy_durable_rmdir_flat(gcnew);
+	fy_durable_rmdir_flat(gcscratch);
+
+	/* 3. discover the whole layout from chunk-0's recorded header */
+	if (fy_durable_probe_boot(dir, &pb) != 0)
+		goto out;
+
+	/* nothing ever published -> nothing to collect */
+	if ((uint64_t)fy_atomic_load(&pb.refs_head) == 0) {
+		rc = 0;
+		goto out;
+	}
+
+	region_base = pb.region_base;
+	region_size = pb.region_size;
+	chunk_size  = pb.chunk_size;
+	separate_index = pb.index_region_base != 0;
+	if (separate_index) {
+		idx_base  = pb.index_region_base;
+		idx_size  = pb.index_region_size;
+		idx_chunk = pb.index_chunk_size;
+	}
+
+	carry_flags = 0;
+	if (fy_atomic_load(&pb.dedup_root) != NULL)
+		carry_flags |= FY_DURABLE_ARENA_DEDUP;
+	if (separate_index)
+		carry_flags |= FY_DURABLE_ARENA_SEPARATE_INDEX;
+	if (pb.flags & FY_DURABLE_BOOT_SPARSE)
+		carry_flags |= FY_DURABLE_ARENA_SPARSE;
+
+	/* open the live arena at its recorded base */
+	memset(&c, 0, sizeof(c));
+	c.dir = dir;
+	c.region_base = region_base;
+	c.region_size = region_size;
+	c.chunk_size  = chunk_size;
+	c.flags = carry_flags;
+	if (separate_index) {
+		c.index_region_base = idx_base;
+		c.index_region_size = idx_size;
+		c.index_chunk_size  = idx_chunk;
+	}
+	real = fy_allocator_create("durable", &c);
+	if (!real)
+		goto out;
+
+	da = fy_durable_of(real);
+	if (!da)
+		goto out;
+
+	root.v = (fy_generic_value)fy_allocator_refs_get(real);
+	est = fy_durable_content_used(da);
+
+	/* 4. copy 1: live -> scratch arena at an adjacent temp base */
+	memset(&c, 0, sizeof(c));
+	c.dir = gcscratch;
+	c.region_base = region_base + region_size;
+	c.region_size = region_size;
+	c.chunk_size  = chunk_size;
+	c.flags = FY_DURABLE_ARENA_CREATE | carry_flags;
+	if (separate_index) {
+		c.index_region_base = idx_base + idx_size;
+		c.index_region_size = idx_size;
+		c.index_chunk_size  = idx_chunk;
+	}
+	scratch_root = fy_durable_gc_copy_into(&c, root, est, &scratch);
+	if (fy_generic_is_invalid(scratch_root))
+		goto out;
+
+	/* 5. close the live arena -> frees the canonical base (files untouched) */
+	fy_allocator_destroy(real);
+	real = NULL;
+
+	/* 6. copy 2: scratch -> staging built AT the canonical base, in <dir>.gcnew */
+	memset(&c, 0, sizeof(c));
+	c.dir = gcnew;
+	c.region_base = region_base;
+	c.region_size = region_size;
+	c.chunk_size  = chunk_size;
+	c.flags = FY_DURABLE_ARENA_CREATE | carry_flags;
+	if (separate_index) {
+		c.index_region_base = idx_base;
+		c.index_region_size = idx_size;
+		c.index_chunk_size  = idx_chunk;
+	}
+	final_root = fy_durable_gc_copy_into(&c, scratch_root, est, &staging);
+	if (fy_generic_is_invalid(final_root))
+		goto out;
+
+	/* 7. publish + durably checkpoint the compacted root */
+	if (fy_allocator_refs_publish(staging, 0, (uint64_t)final_root.v,
+				      FY_ALLOC_REFS_CHECKPOINT) != 0)
+		goto out;
+	if (fy_allocator_sync(staging) != 0)
+		goto out;
+
+	fy_allocator_destroy(staging);	/* frees the canonical base before the swap */
+	staging = NULL;
+
+	/* 8. drop the scratch arena */
+	fy_allocator_destroy(scratch);
+	scratch = NULL;
+	fy_durable_rmdir_flat(gcscratch);
+
+	/* 9. atomic commit: swap <dir> and <dir>.gcnew in one step */
+	if (fy_rename_exchange(gcnew, dir) != 0)
+		goto out;
+
+	/* 10. remove the old arena (now living at <dir>.gcnew) */
+	fy_durable_rmdir_flat(gcnew);
+	rc = 0;
+
+out:
+	if (staging)
+		fy_allocator_destroy(staging);
+	if (scratch)
+		fy_allocator_destroy(scratch);
+	if (real)
+		fy_allocator_destroy(real);
+	/* on failure the original arena at <dir> is always intact */
+	if (rc != 0) {
+		fy_durable_rmdir_flat(gcnew);
+		fy_durable_rmdir_flat(gcscratch);
+	}
+	flock(lockfd, LOCK_UN);
+	close(lockfd);
+	return rc;
+}
+
+#else /* !HAVE_GENERIC */
+
+int fy_durable_arena_gc(const char *dir)
+{
+	(void)dir;
+	return -1;	/* needs the generic API */
+}
+
+#endif /* HAVE_GENERIC */
+
 #else
 
 /* _WIN32: durable arenas are unsupported for now */
+
+int fy_durable_arena_gc(const char *dir)
+{
+	(void)dir;
+	return -1;
+}
 
 #endif /* _WIN32 */

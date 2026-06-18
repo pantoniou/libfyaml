@@ -816,6 +816,23 @@ uint64_t
 fy_allocator_index_region_size(struct fy_allocator *a)
 	FY_EXPORT;
 
+/**
+ * fy_durable_arena_gc() - Offline garbage-collect (compact) a durable arena
+ *
+ * Reclaim everything in the durable arena at @dir that is no longer reachable
+ * from its published refs head, rewriting the arena as a compacted copy at the
+ * same canonical base address.
+ *
+ * @dir: Path to the arena directory.
+ *
+ * Returns:
+ * 0 on success, 1 if another collector currently holds the arena's GC lock, or
+ * -1 on error
+ */
+int
+fy_durable_arena_gc(const char *dir)
+	FY_EXPORT;
+
 #ifdef __cplusplus
 }
 #endif
