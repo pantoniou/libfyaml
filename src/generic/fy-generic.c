@@ -1747,7 +1747,9 @@ fy_generic fy_gb_szstr_create_out_of_place(struct fy_generic_builder *gb, const 
 	return fy_gb_string_size_create_out_of_place(gb, szstr.data, szstr.size);
 }
 
-fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
+static fy_generic
+fy_gb_internalize_core(struct fy_generic_builder *gb,
+		       struct fy_generic_idset *memo, fy_generic v)
 {
 	fy_generic vi, new_v;
 	const fy_generic_collection *colp;
@@ -1760,6 +1762,8 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	size_t len;
 	const fy_generic *itemss;
 	fy_generic *items;
+	uintmax_t *pld;
+	fy_generic_indirect gi;
 
 	/* direct invalid */
 	if (fy_generic_is_direct_invalid(v))
@@ -1773,22 +1777,28 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 	if (fy_generic_builder_contains(gb, v))
 		return v;
 
+	/* already copied once during this traversal? */
+	if (memo) {
+		pld = fy_generic_idset_idp(memo, v.v);
+		if (pld)
+			return (fy_generic){ .v = (fy_generic_value)*pld };
+	}
+
 	/* indirects are handled here (note, aliases are indirect too) */
 	if (fy_generic_is_indirect(v)) {
-		fy_generic_indirect gi;
-
 		fy_generic_indirect_get(v, &gi);
 		flags = (uint64_t)(gi.flags & FYGIF_CONTENT_MASK);
 		while (flags) {
 			i = fy_bit64_lowest(flags);
 			flags &= ~FY_BIT64(i);
-			vi = fy_gb_internalize(gb, gi.vindirect[i]);
+			vi = fy_gb_internalize_core(gb, memo, gi.vindirect[i]);
 			if (fy_generic_is_invalid(vi))
 				return fy_invalid;
 			gi.vindirect[i] = vi;
 		}
 
-		return fy_gb_indirect_create(gb, &gi);
+		new_v = fy_gb_indirect_create(gb, &gi);
+		goto memoize;
 	}
 
 	type = fy_generic_get_type(v);
@@ -1868,7 +1878,7 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 			}
 
 			for (i = 0; i < count; i++) {
-				vi = fy_gb_internalize(gb, itemss[i]);
+				vi = fy_gb_internalize_core(gb, memo, itemss[i]);
 				if (fy_generic_is_invalid(vi))
 					break;
 				items[i] = vi;
@@ -1901,7 +1911,41 @@ fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_gene
 		FY_IMPOSSIBLE_ABORT();
 	}
 
+memoize:
+	/* record src->dst so shared subtrees are copied only once */
+	if (memo && !fy_generic_is_invalid(new_v)) {
+		if (fy_generic_idset_add(memo, v.v) < 0)
+			return fy_invalid;
+		pld = fy_generic_idset_idp(memo, v.v);
+		if (pld)
+			*pld = (uintmax_t)new_v.v;
+	}
+
 	return new_v;
+}
+
+fy_generic fy_gb_internalize_out_of_place(struct fy_generic_builder *gb, fy_generic v)
+{
+	return fy_gb_internalize_core(gb, NULL, v);
+}
+
+fy_generic fy_gb_copy_memoized(struct fy_generic_builder *gb, fy_generic v,
+			       size_t est_bytes)
+{
+	struct fy_generic_idset memo;
+	fy_generic r;
+
+	if (fy_generic_is_invalid(v) || fy_generic_is_in_place(v))
+		return v;
+
+	if (fy_generic_idset_setup_hint(&memo, est_bytes) < 0)
+		return fy_invalid;
+
+	r = fy_gb_internalize_core(gb, &memo, v);
+
+	fy_generic_idset_cleanup(&memo);
+
+	return r;
 }
 
 fy_generic fy_gb_validate_out_of_place(struct fy_generic_builder *gb, fy_generic v)

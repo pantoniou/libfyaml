@@ -9260,6 +9260,27 @@ fy_gb_internalize(struct fy_generic_builder *gb, fy_generic v)
 }
 
 /**
+ * fy_gb_copy_memoized() - Deep-copy a generic value graph into a builder, linear time.
+ *
+ * Recursively copies @v into @gb, re-interning every scalar and collection.
+ *
+ * The result is identical to fy_gb_copy(), but the traversal is memoized, so a
+ * heavily-shared DAG is copied in time linear in its node count rather than its
+ * (potentially exponential) number of distinct paths.
+ *
+ * @gb:        Destination builder
+ * @v:         Value graph to copy (from anywhere)
+ * @est_bytes: Estimated source footprint in bytes, 0 if unknown.
+ *
+ * Returns:
+ * @v unchanged if invalid or in-place, a copy rooted in @gb, or fy_invalid on
+ * error.
+ */
+fy_generic
+fy_gb_copy_memoized(struct fy_generic_builder *gb, fy_generic v, size_t est_bytes)
+	FY_EXPORT;
+
+/**
  * fy_validate_out_of_place() - Validate an out-of-place generic (no builder).
  *
  * Checks structural and type consistency of @v without a builder context.
