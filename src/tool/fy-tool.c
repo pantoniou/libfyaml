@@ -180,6 +180,10 @@
 #define OPT_KEEP_STYLE			6008
 #define OPT_STORAGE_STATS		6009
 #define OPT_DURABLE			6010
+#define OPT_COMPACT			6011
+#define OPT_DURABLE_DUMP		6012
+#define OPT_DURABLE_REPLACE		6013
+#define OPT_DURABLE_STATS		6014
 #endif
 
 #ifdef HAVE_REFLECTION
@@ -315,6 +319,10 @@ static struct option lopts[] = {
 	{"dump-primitives",	no_argument,		0,	OPT_DUMP_PRIMITIVES },
 	{"storage-stats",	no_argument,		0,	OPT_STORAGE_STATS },
 	{"durable",		required_argument,	0,	OPT_DURABLE },
+	{"compact",		required_argument,	0,	OPT_COMPACT },
+	{"durable-dump",	required_argument,	0,	OPT_DURABLE_DUMP },
+	{"durable-replace",	no_argument,		0,	OPT_DURABLE_REPLACE },
+	{"durable-stats",	required_argument,	0,	OPT_DURABLE_STATS },
 	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
@@ -604,6 +612,10 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM("--dump-primitives", "Dump primitives");
 		USAGE_ITEM("--storage-stats", "Report storage statistics (dedup effectiveness)");
 		USAGE_ITEM("--durable <dir>", "Use a durable (on-disk, dedup) arena at <dir>; persists and dedups across invocations");
+		USAGE_ITEM("--compact <dir>", "Offline-compact (garbage collect) the durable arena at <dir> and report before/after size");
+		USAGE_ITEM("--durable-dump <dir>", "Emit the documents rooted at the durable arena's refs head at <dir>");
+		USAGE_ITEM("--durable-replace", "With --durable, replace the refs head with this run's documents instead of accumulating");
+		USAGE_ITEM("--durable-stats <dir>", "Report geometry, usage and dedup effectiveness of the durable arena at <dir>");
 		USAGE_ITEM("--create-markers", "Create markers");
 		USAGE_ITEM_DEFAULT("--schema <schema>", "Schema: auto, yaml1.2-failsafe, yaml1.2-core, "
 				"yaml1.2-json, yaml1.1-failsafe, yaml1.1, yaml1.1-pyyaml, json, python", "auto");
@@ -1656,6 +1668,7 @@ struct generic_config {
 	bool emit_events;
 	bool auto_anchor;
 	const char *durable_dir;	/* if set, use a durable on-disk dedup arena here */
+	bool durable_replace;		/* replace the refs head instead of accumulating */
 };
 
 struct generic_config default_generic_cfg = {
@@ -1664,6 +1677,322 @@ struct generic_config default_generic_cfg = {
 	.schema = FYGS_AUTO,
 	.estimated_max_size = 0,	/* adapt to input */
 };
+
+/* open an existing durable arena (content base is the recorded default) for inspection */
+static struct fy_allocator *open_durable_ro(const char *dir)
+{
+	struct fy_durable_allocator_cfg cfg;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.dir = dir;
+	cfg.flags = FY_DURABLE_ARENA_DEDUP;	/* attach existing index; no CREATE */
+	return fy_allocator_create("durable", &cfg);
+}
+
+/* gather a content-region usage summary; returns chunk count, fills @u */
+static unsigned int durable_usage(struct fy_allocator *a, struct fy_allocator_usage *u)
+{
+	memset(u, 0, sizeof(*u));
+	fy_allocator_get_usage(a, FY_ALLOC_TAG_DEFAULT, u);
+	return fy_allocator_chunk_count(a);
+}
+
+/* offline-compact a durable arena and report the before/after size */
+static int do_compact(const char *dir)
+{
+	struct fy_allocator *a;
+	struct fy_allocator_usage before, after;
+	unsigned int chunks_before, chunks_after;
+	int rc;
+
+	a = open_durable_ro(dir);
+	if (!a) {
+		fprintf(stderr, "fy-tool: no durable arena at '%s'\n", dir);
+		return -1;
+	}
+	chunks_before = durable_usage(a, &before);
+	fy_allocator_destroy(a);
+
+	rc = fy_durable_arena_gc(dir);
+	if (rc > 0) {
+		fprintf(stderr, "fy-tool: arena '%s' is busy (another collector running)\n", dir);
+		return -1;
+	}
+	if (rc < 0) {
+		fprintf(stderr, "fy-tool: compaction of '%s' failed\n", dir);
+		return -1;
+	}
+
+	a = open_durable_ro(dir);
+	if (!a) {
+		fprintf(stderr, "fy-tool: cannot reopen '%s' after compaction\n", dir);
+		return -1;
+	}
+	chunks_after = durable_usage(a, &after);
+	fy_allocator_destroy(a);
+
+	printf("compacted durable arena '%s'\n", dir);
+	printf("  before:    chunks=%-4u used=%-12zu free=%-12zu total=%zu\n",
+	       chunks_before, before.used, before.free, before.total);
+	printf("  after:     chunks=%-4u used=%-12zu free=%-12zu total=%zu\n",
+	       chunks_after, after.used, after.free, after.total);
+	printf("  reclaimed: chunks=%-4d used=%-12zd total=%zd\n",
+	       (int)chunks_before - (int)chunks_after,
+	       (ssize_t)before.used - (ssize_t)after.used,
+	       (ssize_t)before.total - (ssize_t)after.total);
+	return 0;
+}
+
+/* translate the generic_config emit settings into op-emit style flags */
+static enum fy_op_emit_flags generic_emit_style_flags(const struct generic_config *gcfg)
+{
+	enum fy_op_emit_flags f = 0;
+
+	/* we don't support arbitrary indents */
+	switch (gcfg->emit_cfg_flags & (FYECF_INDENT_MASK << FYECF_INDENT_SHIFT)) {
+	case FYECF_INDENT_DEFAULT:
+		f |= FYOPEF_INDENT_DEFAULT;
+		break;
+	case FYECF_INDENT_1:
+		f |= FYOPEF_INDENT_1;
+		break;
+	case FYECF_INDENT_2:
+		f |= FYOPEF_INDENT_2;
+		break;
+	case FYECF_INDENT_3:
+		f |= FYOPEF_INDENT_3;
+		break;
+	case FYECF_INDENT_4:
+	case FYECF_INDENT_5:
+		f |= FYOPEF_INDENT_4;
+		break;
+	case FYECF_INDENT_6:
+	case FYECF_INDENT_7:
+		f |= FYOPEF_INDENT_6;
+		break;
+	default:
+	case FYECF_INDENT_8:
+		f |= FYOPEF_INDENT_8;
+		break;
+	}
+
+	/* we don't support arbitrary widths */
+	switch (gcfg->emit_cfg_flags & (FYECF_WIDTH_MASK << FYECF_WIDTH_SHIFT)) {
+	default:
+		f |= FYOPEF_WIDTH_DEFAULT;
+		break;
+	case FYECF_WIDTH_80:
+		f |= FYOPEF_WIDTH_80;
+		break;
+	case FYECF_WIDTH_132:
+		f |= FYOPEF_WIDTH_132;
+		break;
+	case FYECF_WIDTH_INF:
+		f |= FYOPEF_WIDTH_INF;
+		break;
+	}
+
+	/* generic emit supports JSON plus YAML style selection */
+	switch (gcfg->emit_cfg_flags & (FYECF_MODE_MASK << FYECF_MODE_SHIFT)) {
+	case FYECF_MODE_ORIGINAL:
+	default:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_DEFAULT;
+		break;
+	case FYECF_MODE_BLOCK:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_BLOCK;
+		break;
+	case FYECF_MODE_FLOW:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_FLOW;
+		break;
+	case FYECF_MODE_PRETTY:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_PRETTY;
+		break;
+	case FYECF_MODE_FLOW_COMPACT:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_COMPACT;
+		break;
+	case FYECF_MODE_FLOW_ONELINE:
+		f |= FYOPEF_MODE_YAML_1_2;
+		f |= FYOPEF_STYLE_ONELINE;
+		break;
+	case FYECF_MODE_JSON:
+		f |= FYOPEF_MODE_JSON;
+		f |= FYOPEF_STYLE_DEFAULT;
+		break;
+	case FYECF_MODE_JSON_ONELINE:
+		f |= FYOPEF_MODE_JSON;
+		f |= FYOPEF_STYLE_ONELINE;
+		break;
+	case FYECF_MODE_JSON_COMPACT:
+		f |= FYOPEF_MODE_JSON;
+		f |= FYOPEF_STYLE_COMPACT;
+		break;
+	}
+
+	switch (gcfg->emit_xcfg_flags & (FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT)) {
+	case FYEXCF_COLOR_AUTO:
+		f |= FYOPEF_COLOR_AUTO;
+		break;
+	case FYEXCF_COLOR_NONE:
+		f |= FYOPEF_COLOR_NONE;
+		break;
+	case FYEXCF_COLOR_FORCE:
+		f |= FYOPEF_COLOR_FORCE;
+		break;
+	}
+
+	if (gcfg->emit_cfg_flags & FYECF_NO_ENDING_NEWLINE)
+		f |= FYOPEF_NO_ENDING_NEWLINE;
+
+	if (gcfg->emit_events)
+		f |= FYOPEF_EMIT_EVENTS;
+
+	if (gcfg->auto_anchor)
+		f |= FYOPEF_AUTO_ANCHOR;
+
+	return f;
+}
+
+static int durable_publish_roots(struct fy_generic_builder *gb, struct fy_allocator *a,
+				 const fy_generic *roots, size_t nroots, bool replace)
+{
+	for (;;) {
+		uint64_t prev = fy_allocator_refs_get(a);
+		fy_generic prevg = { .v = (fy_generic_value)prev };
+		fy_generic *all, head;
+		size_t prior = 0, k, total;
+		int rc;
+
+		if (!replace && prev && fy_generic_is_sequence(prevg))
+			prior = fy_len(prevg);
+
+		total = prior + nroots;
+		all = malloc(sizeof(*all) * (total ? total : 1));
+		if (!all)
+			return -1;
+		for (k = 0; k < prior; k++)
+			all[k] = fy_get(prevg, k, fy_invalid);
+		for (k = 0; k < nroots; k++)
+			all[prior + k] = roots[k];
+
+		head = fy_gb_sequence_create(gb, total, all);
+		free(all);
+		if (fy_generic_is_invalid(head))
+			return -1;
+
+		rc = fy_allocator_refs_publish(a, prev, (uint64_t)head.v,
+					       FY_ALLOC_REFS_CHECKPOINT);
+		if (rc == 0)
+			return 0;
+		if (rc < 0)
+			return -1;
+		/* rc == 1: another writer advanced the head; rebuild and retry */
+	}
+}
+
+/* report geometry, usage, and dedup effectiveness of a durable arena */
+static int do_durable_stats(const char *dir)
+{
+	struct fy_allocator *a;
+	struct fy_allocator_usage content;
+	struct fy_generic_storage_stats ss;
+	uint64_t base, size, idx_base, idx_size;
+	unsigned int chunks;
+	fy_generic head;
+
+	a = open_durable_ro(dir);
+	if (!a) {
+		fprintf(stderr, "fy-tool: no durable arena at '%s'\n", dir);
+		return -1;
+	}
+
+	base = fy_allocator_region_base(a);
+	size = fy_allocator_region_size(a);
+	idx_base = fy_allocator_index_region_base(a);
+	idx_size = fy_allocator_index_region_size(a);
+	chunks = durable_usage(a, &content);
+	head.v = (fy_generic_value)fy_allocator_refs_get(a);
+
+	printf("durable arena '%s'\n", dir);
+	printf("  region:    base=%#" PRIx64 " size=%" PRIu64 "\n", base, size);
+	if (idx_base)
+		printf("  index:     base=%#" PRIx64 " size=%" PRIu64 " (separate)\n",
+		       idx_base, idx_size);
+	printf("  content:   chunks=%u used=%zu free=%zu total=%zu\n",
+	       chunks, content.used, content.free, content.total);
+
+	if (head.v == 0) {
+		printf("  refs head: (none)\n");
+	} else {
+		int ndocs = fy_generic_dir_get_document_count(head);
+
+		printf("  refs head: %#" PRIx64 " documents=%d\n",
+		       (uint64_t)head.v, ndocs);
+
+		if (fy_generic_calc_storage_stats(head, content.used, &ss) == 0) {
+			printf("  storage:   in-place=%zu unique=%zu duplicate=%zu\n",
+			       ss.inplace_bytes, ss.unique_bytes, ss.duplicate_bytes);
+			printf("             total=%zu total-non-dedup=%zu",
+			       ss.total_bytes, ss.total_non_dedup_bytes);
+			if (ss.total_non_dedup_bytes)
+				printf(" savings=%.1f%%",
+				       100.0 * (double)(ss.total_non_dedup_bytes - ss.total_bytes) /
+					       (double)ss.total_non_dedup_bytes);
+			printf("\n");
+		}
+	}
+
+	fy_allocator_destroy(a);
+	return 0;
+}
+
+/* emit the documents held in a durable arena's refs head */
+static int do_durable_dump(const char *dir, const struct generic_config *gcfg)
+{
+	struct fy_allocator *a;
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	enum fy_op_emit_flags emit_flags;
+	fy_generic head;
+
+	a = open_durable_ro(dir);
+	if (!a) {
+		fprintf(stderr, "fy-tool: no durable arena at '%s'\n", dir);
+		return -1;
+	}
+
+	head.v = (fy_generic_value)fy_allocator_refs_get(a);
+	if (head.v == 0) {
+		/* nothing published yet: empty arena */
+		fy_allocator_destroy(a);
+		return 0;
+	}
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER | FYGBCF_SCHEMA(gcfg->schema);
+	gb_cfg.allocator = a;
+	gb = fy_generic_builder_create(&gb_cfg);
+	if (!gb) {
+		fy_allocator_destroy(a);
+		return -1;
+	}
+
+	emit_flags = FYOPEF_MULTI_DOCUMENT | generic_emit_style_flags(gcfg);
+	if (gcfg->keep_comments)
+		emit_flags |= FYOPEF_OUTPUT_COMMENTS;
+
+	/* the refs head is a document directory (a sequence of vds); the emitter
+	 * walks its documents and adds the document separator markers */
+	fy_emit(gb, head, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(a);
+	return 0;
+}
 
 static int
 do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
@@ -1686,6 +2015,8 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	fy_generic v;
 	enum dump_testsuite_event_flags dump_flags = 0;
 	bool had_error;
+	fy_generic *roots = NULL;	/* durable: document roots to publish as the refs head */
+	size_t nroots = 0, roots_alloc = 0;
 	int i, rc;
 
 	if (gcfg->testsuite || gcfg->parse_dump)
@@ -1810,6 +2141,36 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 			break;
 		}
 
+		/* durable: collect this file's documents (vds) so the refs head is a
+		 * flat document directory; arena values survive the per-file reset */
+		if (durable) {
+			int dc = fy_generic_dir_get_document_count(v);
+			int d;
+
+			for (d = 0; d < dc; d++) {
+				fy_generic vds = fy_generic_dir_get_document_vds(v, (size_t)d);
+
+				if (fy_generic_is_invalid(vds)) {
+					had_error = true;
+					break;
+				}
+				if (nroots == roots_alloc) {
+					size_t na = roots_alloc ? roots_alloc * 2 : 8;
+					fy_generic *nr = realloc(roots, na * sizeof(*nr));
+
+					if (!nr) {
+						had_error = true;
+						break;
+					}
+					roots = nr;
+					roots_alloc = na;
+				}
+				roots[nroots++] = vds;
+			}
+			if (had_error)
+				break;
+		}
+
 		if (gcfg->storage_stats) {
 			fy_generic vdir = v, vds, vroot;
 			struct fy_generic_storage_stats ss;
@@ -1846,111 +2207,7 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 			}
 		}
 
-		/* we don't support arbitrary indents */
-		switch (gcfg->emit_cfg_flags & (FYECF_INDENT_MASK << FYECF_INDENT_SHIFT)) {
-		case FYECF_INDENT_DEFAULT:
-			emit_flags |= FYOPEF_INDENT_DEFAULT;
-			break;
-		case FYECF_INDENT_1:
-			emit_flags |= FYOPEF_INDENT_1;
-			break;
-		case FYECF_INDENT_2:
-			emit_flags |= FYOPEF_INDENT_2;
-			break;
-		case FYECF_INDENT_3:
-			emit_flags |= FYOPEF_INDENT_3;
-			break;
-		case FYECF_INDENT_4:
-		case FYECF_INDENT_5:
-			emit_flags |= FYOPEF_INDENT_4;
-			break;
-		case FYECF_INDENT_6:
-		case FYECF_INDENT_7:
-			emit_flags |= FYOPEF_INDENT_6;
-			break;
-		default:
-		case FYECF_INDENT_8:
-			emit_flags |= FYOPEF_INDENT_8;
-			break;
-		}
-
-		/* we don't support arbitrary widths */
-		switch (gcfg->emit_cfg_flags & (FYECF_WIDTH_MASK << FYECF_WIDTH_SHIFT)) {
-		default:
-			emit_flags |= FYOPEF_WIDTH_DEFAULT;
-			break;
-		case FYECF_WIDTH_80:
-			emit_flags |= FYOPEF_WIDTH_80;
-			break;
-		case FYECF_WIDTH_132:
-			emit_flags |= FYOPEF_WIDTH_132;
-			break;
-		case FYECF_WIDTH_INF:
-			emit_flags |= FYOPEF_WIDTH_INF;
-			break;
-		}
-
-		/* generic emit supports JSON plus YAML style selection */
-		switch (gcfg->emit_cfg_flags & (FYECF_MODE_MASK << FYECF_MODE_SHIFT)) {
-		case FYECF_MODE_ORIGINAL:
-		default:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_DEFAULT;
-			break;
-		case FYECF_MODE_BLOCK:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_BLOCK;
-			break;
-		case FYECF_MODE_FLOW:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_FLOW;
-			break;
-		case FYECF_MODE_PRETTY:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_PRETTY;
-			break;
-		case FYECF_MODE_FLOW_COMPACT:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_COMPACT;
-			break;
-		case FYECF_MODE_FLOW_ONELINE:
-			emit_flags |= FYOPEF_MODE_YAML_1_2;
-			emit_flags |= FYOPEF_STYLE_ONELINE;
-			break;
-		case FYECF_MODE_JSON:
-			emit_flags |= FYOPEF_MODE_JSON;
-			emit_flags |= FYOPEF_STYLE_DEFAULT;
-			break;
-		case FYECF_MODE_JSON_ONELINE:
-			emit_flags |= FYOPEF_MODE_JSON;
-			emit_flags |= FYOPEF_STYLE_ONELINE;
-			break;
-		case FYECF_MODE_JSON_COMPACT:
-			emit_flags |= FYOPEF_MODE_JSON;
-			emit_flags |= FYOPEF_STYLE_COMPACT;
-			break;
-		}
-
-		switch (gcfg->emit_xcfg_flags & (FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT)) {
-		case FYEXCF_COLOR_AUTO:
-			emit_flags |= FYOPEF_COLOR_AUTO;
-			break;
-		case FYEXCF_COLOR_NONE:
-			emit_flags |= FYOPEF_COLOR_NONE;
-			break;
-		case FYEXCF_COLOR_FORCE:
-			emit_flags |= FYOPEF_COLOR_FORCE;
-			break;
-		}
-
-		if (gcfg->emit_cfg_flags & FYECF_NO_ENDING_NEWLINE)
-			emit_flags |= FYOPEF_NO_ENDING_NEWLINE;
-
-		if (gcfg->emit_events)
-			emit_flags |= FYOPEF_EMIT_EVENTS;
-
-		if (gcfg->auto_anchor)
-			emit_flags |= FYOPEF_AUTO_ANCHOR;
+		emit_flags |= generic_emit_style_flags(gcfg);
 
 		if (!gcfg->null_output) {
 
@@ -1991,17 +2248,18 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	}
 
 	if (durable && allocator && !had_error) {
-		/* flush everything to stable storage and report arena usage */
-		fy_allocator_sync(allocator);
-		fprintf(stderr,
-			"durable arena '%s': chunks=%u, content-bytes=%zd\n",
-			gcfg->durable_dir,
-			fy_allocator_chunk_count(allocator),
-			fy_allocator_get_tag_linear_size(allocator, FY_ALLOC_TAG_DEFAULT));
+		/* root this run's documents at the refs head, then flush + report */
+		if (durable_publish_roots(gb, allocator, roots, nroots,
+					  gcfg->durable_replace) != 0) {
+			fprintf(stderr, "failed to publish durable refs head\n");
+			had_error = true;
+		} else
+			fy_allocator_sync(allocator);
 	}
 
 	rc = !had_error ? 0 : -1;
 out:
+	free(roots);
 	fy_generic_builder_destroy(gb);
 	fy_allocator_destroy(allocator);
 
@@ -2095,6 +2353,10 @@ int main(int argc, char *argv[])
 	bool dump_primitives = false;
 	bool storage_stats = false;
 	const char *durable_dir = NULL;
+	const char *compact_dir = NULL;
+	const char *durable_dump_dir = NULL;
+	const char *durable_stats_dir = NULL;
+	bool durable_replace = false;
 	bool create_markers = false;
 	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
@@ -2668,6 +2930,22 @@ int main(int argc, char *argv[])
 			durable_dir = optarg;
 			break;
 
+		case OPT_COMPACT:
+			compact_dir = optarg;
+			break;
+
+		case OPT_DURABLE_DUMP:
+			durable_dump_dir = optarg;
+			break;
+
+		case OPT_DURABLE_REPLACE:
+			durable_replace = true;
+			break;
+
+		case OPT_DURABLE_STATS:
+			durable_stats_dir = optarg;
+			break;
+
 		case OPT_CREATE_MARKERS:
 			create_markers = true;
 			break;
@@ -2786,6 +3064,32 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef HAVE_GENERIC
+	if (compact_dir) {
+		rc = do_compact(compact_dir);
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
+	}
+
+	if (durable_stats_dir) {
+		rc = do_durable_stats(durable_stats_dir);
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
+	}
+
+	if (durable_dump_dir) {
+		struct generic_config dcfg = default_generic_cfg;
+
+		dcfg.schema = schema;
+		dcfg.emit_cfg_flags = emit_flags | emit_width_flags | FYECF_INDENT(indent);
+		dcfg.emit_xcfg_flags = emit_xflags;
+		dcfg.emit_events = emit_events;
+		dcfg.auto_anchor = auto_anchor;
+		dcfg.keep_comments = !!(cfg.flags & FYPCF_PARSE_COMMENTS);
+		rc = do_durable_dump(durable_dump_dir, &dcfg);
+		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
+		goto cleanup;
+	}
+
 	if (cache_list || cache_remove || cache_stats || cache_clear || cache_dir || cache_info) {
 		if (cache_list)
 			rc = do_cache_list();
@@ -3524,6 +3828,7 @@ int main(int argc, char *argv[])
 		gcfg.emit_events = emit_events;
 		gcfg.auto_anchor = auto_anchor;
 		gcfg.durable_dir = durable_dir;
+		gcfg.durable_replace = durable_replace;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */
