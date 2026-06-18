@@ -6383,6 +6383,219 @@ START_TEST(gb_auto_anchor_billion_laughs)
 }
 END_TEST
 
+/*
+ * fy_gb_copy_memoized(): deep-copy a value graph into a destination builder.
+ * Basic fidelity: a mixed tree copied across builders compares equal, lives in
+ * the destination, and in-place / invalid values pass straight through.
+ */
+START_TEST(gb_copy_memoized_basic)
+{
+	char sbuf[8192], dbuf[8192];
+	struct fy_generic_builder *src, *dst;
+	fy_generic root, copied, vin;
+
+	src = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			sbuf, sizeof(sbuf));
+	ck_assert(src != NULL);
+	dst = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			dbuf, sizeof(dbuf));
+	ck_assert(dst != NULL);
+
+	root = fy_gb_mapping(src,
+			"name", "a long out of place string value",
+			"count", (long long)FYGT_INT_INPLACE_MAX + 1,
+			"items", fy_gb_sequence(src, 1, 2, 3, "tail"),
+			"flag", fy_null);
+	ck_assert(fy_generic_is_mapping(root));
+
+	copied = fy_gb_copy_memoized(dst, root, 0);
+	ck_assert(fy_generic_is_valid(copied));
+	ck_assert(fy_generic_is_mapping(copied));
+
+	/* lives in the destination, equals the source */
+	ck_assert(fy_generic_builder_contains(dst, copied));
+	ck_assert_int_eq(fy_generic_compare(root, copied), 0);
+
+	/* in-place value passes through unchanged */
+	vin = fy_value(src, 7);
+	ck_assert(fy_generic_is_in_place(vin));
+	ck_assert(fy_gb_copy_memoized(dst, vin, 0).v == vin.v);
+
+	/* invalid passes through */
+	ck_assert(fy_generic_is_invalid(fy_gb_copy_memoized(dst, fy_invalid, 0)));
+
+	fy_generic_builder_destroy(dst);
+	fy_generic_builder_destroy(src);
+}
+END_TEST
+
+/*
+ * Heavily-shared DAG: a "billion laughs" spine (each level is nine references
+ * to the level below). The memoized copy must run in time linear in the node
+ * count (a non-memoized copy would re-walk 9^depth paths and never finish), and
+ * the copy must preserve sharing: at every level the nine items are one and the
+ * same destination node.
+ *
+ * Depth is large on purpose: completion itself proves memoization. Verification
+ * walks only the spine (items[0] at each level), so it stays linear.
+ */
+#define GC_DAG_DEPTH	28
+START_TEST(gb_copy_memoized_shared_dag)
+{
+	char sbuf[65536], dbuf[65536];
+	struct fy_generic_builder *src, *dst;
+	fy_generic levels[GC_DAG_DEPTH], items[9], copied, cur;
+	int i, lvl;
+
+	/* shared construction keeps storage linear: only ~GC_DAG_DEPTH nodes */
+	src = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			sbuf, sizeof(sbuf));
+	ck_assert(src != NULL);
+	dst = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			dbuf, sizeof(dbuf));
+	ck_assert(dst != NULL);
+
+	/* level 0: nine identical out-of-place strings */
+	for (i = 0; i < 9; i++)
+		items[i] = fy_value(src, "shared leaf payload");
+	levels[0] = fy_gb_sequence_create(src, 9, items);
+	ck_assert(fy_generic_is_sequence(levels[0]));
+
+	for (lvl = 1; lvl < GC_DAG_DEPTH; lvl++) {
+		for (i = 0; i < 9; i++)
+			items[i] = levels[lvl - 1];
+		levels[lvl] = fy_gb_sequence_create(src, 9, items);
+		ck_assert(fy_generic_is_sequence(levels[lvl]));
+	}
+
+	/* the operation under test: linear-time even for 9^28 paths */
+	copied = fy_gb_copy_memoized(dst, levels[GC_DAG_DEPTH - 1], 0);
+	ck_assert(fy_generic_is_valid(copied));
+	ck_assert(fy_generic_builder_contains(dst, copied));
+
+	/* walk the spine: every level is a 9-seq whose items share one node */
+	cur = copied;
+	for (lvl = GC_DAG_DEPTH - 1; lvl >= 0; lvl--) {
+		fy_generic first;
+		int identical = 1;
+
+		ck_assert(fy_generic_is_sequence(cur));
+		ck_assert_int_eq((int)fy_len(cur), 9);
+		first = fy_get(cur, 0, fy_invalid);
+		for (i = 1; i < 9; i++)
+			identical &= (fy_get(cur, i, fy_invalid).v == first.v);
+		ck_assert(identical);	/* sharing preserved */
+		cur = first;
+	}
+	/* bottom: the shared leaf string */
+	ck_assert(fy_generic_is_string(cur));
+	ck_assert_str_eq(fy_castp(&cur, ""), "shared leaf payload");
+
+	fy_generic_builder_destroy(dst);
+	fy_generic_builder_destroy(src);
+}
+END_TEST
+
+/*
+ * Cross-allocator copy: source is a heap-backed "auto" builder, destination is
+ * an in-place dedup builder over a stack buffer. Copy must work across the two
+ * different allocator backings, preserve equality, and keep shared subtrees as
+ * a single canonical node in the destination.
+ */
+START_TEST(gb_copy_memoized_cross_alloc)
+{
+	char dbuf[8192];
+	struct fy_allocator *allocator;
+	struct fy_generic_builder_cfg gbcfg = {
+		.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+	};
+	struct fy_generic_builder *src, *dst;
+	fy_generic sub, root, copied, c0, c1;
+
+	allocator = fy_allocator_create("auto", NULL);
+	ck_assert_ptr_ne(allocator, NULL);
+	gbcfg.allocator = allocator;
+	src = fy_generic_builder_create(&gbcfg);
+	ck_assert(src != NULL);
+
+	dst = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			dbuf, sizeof(dbuf));
+	ck_assert(dst != NULL);
+
+	/* a shared subtree referenced twice from the root */
+	sub = fy_gb_mapping(src, "k", "a repeated out of place value", "n", (long long)1 << 40);
+	ck_assert(fy_generic_is_mapping(sub));
+	root = fy_gb_sequence_create(src, 2, (fy_generic[]){ sub, sub });
+	ck_assert(fy_generic_is_sequence(root));
+
+	copied = fy_gb_copy_memoized(dst, root, 0);
+	ck_assert(fy_generic_is_valid(copied));
+	ck_assert(fy_generic_builder_contains(dst, copied));
+	ck_assert_int_eq(fy_generic_compare(root, copied), 0);
+
+	/* the shared subtree remains a single node after the cross-allocator copy */
+	c0 = fy_get(copied, 0, fy_invalid);
+	c1 = fy_get(copied, 1, fy_invalid);
+	ck_assert(fy_generic_is_valid(c0) && fy_generic_is_valid(c1));
+	ck_assert(c0.v == c1.v);
+
+	fy_generic_builder_destroy(dst);
+	fy_generic_builder_destroy(src);
+	fy_allocator_destroy(allocator);
+}
+END_TEST
+
+/*
+ * Compaction: copying only a reachable sub-root carries exactly that sub-root's
+ * footprint, never the unreachable garbage that also lives in the source.
+ */
+START_TEST(gb_copy_memoized_compacts)
+{
+	char sbuf[8192], dbuf[8192];
+	struct fy_generic_builder *src, *dst;
+	struct fy_generic_storage_stats st_live, st_copy, st_whole;
+	fy_generic live, garbage, whole, copied;
+
+	src = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			sbuf, sizeof(sbuf));
+	ck_assert(src != NULL);
+	dst = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED, NULL,
+			dbuf, sizeof(dbuf));
+	ck_assert(dst != NULL);
+
+	live = fy_gb_mapping(src, "kept", fy_gb_sequence(src, "alpha", "beta", "gamma"));
+	garbage = fy_gb_sequence(src, "this is dead weight that must not be copied",
+				 "more unreachable bytes");
+	/* a value that references both; we only ever copy `live` from it */
+	whole = fy_gb_sequence_create(src, 2, (fy_generic[]){ live, garbage });
+	ck_assert(fy_generic_is_sequence(whole));
+
+	copied = fy_gb_copy_memoized(dst, live, 0);
+	ck_assert(fy_generic_is_valid(copied));
+	ck_assert_int_eq(fy_generic_compare(live, copied), 0);
+
+	ck_assert_int_eq(fy_generic_calc_storage_stats(live, 0, &st_live), 0);
+	ck_assert_int_eq(fy_generic_calc_storage_stats(copied, 0, &st_copy), 0);
+	ck_assert_int_eq(fy_generic_calc_storage_stats(whole, 0, &st_whole), 0);
+
+	/* fidelity: copy carries exactly the live footprint */
+	ck_assert_uint_eq(st_copy.unique_bytes, st_live.unique_bytes);
+	ck_assert_uint_eq(st_copy.unique_values, st_live.unique_values);
+	/* selectivity: the whole (live + garbage) weighs strictly more */
+	ck_assert_uint_gt(st_whole.unique_bytes, st_live.unique_bytes);
+
+	fy_generic_builder_destroy(dst);
+	fy_generic_builder_destroy(src);
+}
+END_TEST
+
 void libfyaml_case_generic(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -6429,6 +6642,10 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	/* continue with builders */
 	fy_check_testcase_add_test(ctc, gb_dedup_basics);
 	fy_check_testcase_add_test(ctc, gb_auto_anchor_billion_laughs);
+	fy_check_testcase_add_test(ctc, gb_copy_memoized_basic);
+	fy_check_testcase_add_test(ctc, gb_copy_memoized_shared_dag);
+	fy_check_testcase_add_test(ctc, gb_copy_memoized_cross_alloc);
+	fy_check_testcase_add_test(ctc, gb_copy_memoized_compacts);
 	fy_check_testcase_add_test(ctc, gb_scoping);
 
 	fy_check_testcase_add_test(ctc, gb_dedup_scoping);
