@@ -231,6 +231,9 @@ int fy_create_tmpfile(char *path, size_t pathsz, const void *data, size_t datasz
 /* wrapper for a file rename (atomic if possible on most platforms) */
 int fy_rename(const char *old_file, const char *new_file, bool no_replace);
 
+/* atomically exchange two existing paths (RENAME_EXCHANGE); -1/ENOSYS if unsupported */
+int fy_rename_exchange(const char *file_a, const char *file_b);
+
 /* wrapper for realpath */
 const char *fy_realpath(const char *path, char *buf, size_t bufsize);
 

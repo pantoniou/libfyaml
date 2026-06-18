@@ -1204,6 +1204,23 @@ int fy_rename(const char *old_file, const char *new_file, bool no_replace)
 	return rc;
 }
 
+int fy_rename_exchange(const char *file_a, const char *file_b)
+{
+#if defined(__linux__) && defined(RENAME_EXCHANGE)
+	return renameat2(AT_FDCWD, file_a, AT_FDCWD, file_b, RENAME_EXCHANGE);
+#elif defined(__linux__) && defined(SYS_renameat2)
+	return (int)syscall(SYS_renameat2, AT_FDCWD, file_a, AT_FDCWD, file_b,
+			    (1U << 1)); /* RENAME_EXCHANGE */
+#elif defined(__APPLE__) && defined(__MACH__) && defined(RENAME_SWAP)
+	return renameatx_np(AT_FDCWD, file_a, AT_FDCWD, file_b, RENAME_SWAP);
+#else
+	(void)file_a;
+	(void)file_b;
+	errno = ENOSYS;
+	return -1;
+#endif
+}
+
 const char *fy_realpath(const char *path, char *buf, size_t bufsize)
 {
 #ifndef _WIN32
