@@ -1340,6 +1340,326 @@ START_TEST(durable_separate_index_grow)
 }
 END_TEST
 
+#ifdef HAVE_GENERIC
+
+/* remove the arena dir plus the GC sibling dirs/lock file it may leave behind */
+static void gc_cleanup(const char *dir)
+{
+	char p[300];
+
+	rm_rf(dir);
+	snprintf(p, sizeof(p), "%s.gcnew", dir);
+	rm_rf(p);
+	snprintf(p, sizeof(p), "%s.gcscratch", dir);
+	rm_rf(p);
+	snprintf(p, sizeof(p), "%s.gclock", dir);
+	unlink(p);
+}
+
+/* one distinct ~2 KiB string for index @i, written into @buf */
+static const char *gc_make_string(char *buf, size_t bufsz, int i)
+{
+	int pfx = snprintf(buf, bufsz, "gc-string-%010d-", i);
+
+	memset(buf + pfx, 'a' + (i % 26), bufsz - 1 - (size_t)pfx);
+	buf[bufsz - 1] = '\0';
+	return buf;
+}
+
+/* a sequence of @n distinct ~2 KiB strings (indices [base, base+n)) */
+static fy_generic
+gc_build_string_seq(struct fy_generic_builder *gb, int base, int n)
+{
+	fy_generic *items, seq;
+	char buf[2048];
+	int i;
+
+	items = malloc(sizeof(*items) * (size_t)n);
+	ck_assert_ptr_ne(items, NULL);
+	for (i = 0; i < n; i++) {
+		items[i] = fy_value(gb, gc_make_string(buf, sizeof(buf), base + i));
+		ck_assert(!fy_generic_is_invalid(items[i]));
+	}
+	seq = fy_gb_sequence_create(gb, (size_t)n, items);
+	free(items);
+	return seq;
+}
+
+/*
+ * Build a big graph, publish it, then publish a small subset as the new root so
+ * the rest is garbage; GC must reclaim it (chunk count drops) while preserving
+ * the live root.
+ */
+START_TEST(gc_basic_compaction)
+{
+	char dir[256], want[2048];
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *da;
+	fy_generic big, small, root, v;
+	unsigned int chunks_before, chunks_after;
+	int i;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+
+	big = gc_build_string_seq(gb, 0, 1000);		/* ~2 MiB -> several 1 MiB chunks */
+	ck_assert(fy_generic_is_sequence(big));
+	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, (uint64_t)big.v,
+						   FY_ALLOC_REFS_CHECKPOINT), 0);
+
+	small = gc_build_string_seq(gb, 0, 8);		/* first 8 strings (deduped) */
+	ck_assert(fy_generic_is_sequence(small));
+	ck_assert_int_eq(fy_allocator_refs_publish(da, (uint64_t)big.v, (uint64_t)small.v,
+						   FY_ALLOC_REFS_CHECKPOINT), 0);
+
+	chunks_before = fy_allocator_chunk_count(da);
+	ck_assert_uint_gt(chunks_before, 1);
+
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	ck_assert_ptr_ne(da, NULL);
+
+	chunks_after = fy_allocator_chunk_count(da);
+	ck_assert_uint_lt(chunks_after, chunks_before);
+
+	root.v = (fy_generic_value)fy_allocator_refs_get(da);
+	ck_assert(fy_generic_is_sequence(root));
+	ck_assert_int_eq((int)fy_len(root), 8);
+	for (i = 0; i < 8; i++) {
+		v = fy_get(root, i, fy_invalid);
+		ck_assert(fy_generic_is_string(v));
+		ck_assert_str_eq(fy_generic_get_string_alloca(v),
+				 gc_make_string(want, sizeof(want), i));
+	}
+
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+/* after GC the canonical base is unchanged and the new root lives within it */
+START_TEST(gc_address_stable)
+{
+	char dir[256];
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *da;
+	fy_generic root;
+	uintptr_t p;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+	root = gc_build_string_seq(gb, 0, 16);
+	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, (uint64_t)root.v,
+						   FY_ALLOC_REFS_CHECKPOINT), 0);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	ck_assert_ptr_ne(da, NULL);
+	ck_assert_uint_eq(fy_allocator_region_base(da), TEST_REGION_BASE);
+	root.v = (fy_generic_value)fy_allocator_refs_get(da);
+	ck_assert(fy_generic_is_sequence(root));
+	p = (uintptr_t)fy_generic_resolve_ptr(root);
+	ck_assert_uint_ge(p, TEST_REGION_BASE);
+	ck_assert_uint_lt(p, TEST_REGION_BASE + TEST_REGION_SIZE);
+
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+/* a subtree shared twice still resolves to one node after GC (dedup rebuilt) */
+START_TEST(gc_dedup_identity)
+{
+	char dir[256];
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *da;
+	fy_generic sub, root, c0, c1;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+	sub = fy_gb_mapping(gb, "k", "a shared out of place value", "n", (long long)1 << 40);
+	ck_assert(fy_generic_is_mapping(sub));
+	root = fy_gb_sequence_create(gb, 2, (fy_generic[]){ sub, sub });
+	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, (uint64_t)root.v,
+						   FY_ALLOC_REFS_CHECKPOINT), 0);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	ck_assert_ptr_ne(da, NULL);
+	root.v = (fy_generic_value)fy_allocator_refs_get(da);
+	ck_assert(fy_generic_is_sequence(root));
+	c0 = fy_get(root, 0, fy_invalid);
+	c1 = fy_get(root, 1, fy_invalid);
+	ck_assert(fy_generic_is_valid(c0) && fy_generic_is_valid(c1));
+	ck_assert(c0.v == c1.v);
+
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+/* GC on an arena that never published a root is a successful no-op */
+START_TEST(gc_empty_noop)
+{
+	char dir[256];
+	struct fy_allocator *da;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+	fy_allocator_destroy(da);
+
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	ck_assert_ptr_ne(da, NULL);
+	ck_assert_uint_eq(fy_allocator_refs_get(da), 0);
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+/* a leftover staging dir from a crashed GC is cleaned, and GC still succeeds */
+START_TEST(gc_stale_staging_cleanup)
+{
+	char dir[256], gcnew[300], junk[400];
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *da;
+	struct stat st;
+	int fd;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+	ck_assert_int_eq(fy_allocator_refs_publish(da, 0,
+				(uint64_t)gc_build_string_seq(gb, 0, 16).v,
+				FY_ALLOC_REFS_CHECKPOINT), 0);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	/* plant a junk staging dir as if a prior GC had crashed mid-build */
+	snprintf(gcnew, sizeof(gcnew), "%s.gcnew", dir);
+	ck_assert_int_eq(mkdir(gcnew, 0755), 0);
+	snprintf(junk, sizeof(junk), "%s/arena-0.bin", gcnew);
+	fd = open(junk, O_RDWR | O_CREAT, 0644);
+	ck_assert_int_ge(fd, 0);
+	close(fd);
+
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	/* the staging dir is gone and the arena is valid */
+	ck_assert_int_ne(stat(gcnew, &st), 0);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	ck_assert_ptr_ne(da, NULL);
+	ck_assert(fy_generic_is_sequence((fy_generic){ .v = (fy_generic_value)fy_allocator_refs_get(da) }));
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+/* the SPARSE policy is read from the boot header, so GC reproduces it from dir */
+START_TEST(gc_sparse_roundtrip)
+{
+	const unsigned int flags = FY_DURABLE_ARENA_DEDUP | FY_DURABLE_ARENA_SPARSE;
+	char dir[256];
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *da;
+	fy_generic root;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, flags);
+	if (!da) {
+		gc_cleanup(dir);
+		return;
+	}
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+	ck_assert_int_eq(fy_allocator_refs_publish(da, 0,
+				(uint64_t)gc_build_string_seq(gb, 0, 16).v,
+				FY_ALLOC_REFS_CHECKPOINT), 0);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	/* dir-only GC must discover SPARSE from the header and round-trip */
+	ck_assert_int_eq(fy_durable_arena_gc(dir), 0);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, flags);
+	ck_assert_ptr_ne(da, NULL);
+	root.v = (fy_generic_value)fy_allocator_refs_get(da);
+	ck_assert(fy_generic_is_sequence(root));
+	ck_assert_int_eq((int)fy_len(root), 16);
+	fy_allocator_destroy(da);
+	gc_cleanup(dir);
+}
+END_TEST
+
+#endif /* HAVE_GENERIC */
+
 void libfyaml_case_durable_arena(struct fy_check_suite *cs);
 
 void libfyaml_case_durable_arena(struct fy_check_suite *cs)
@@ -1366,6 +1686,12 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, durable_builder_roundtrip);
 	fy_check_testcase_add_test(ctc, dedup_builder_cross_process);
+	fy_check_testcase_add_test(ctc, gc_basic_compaction);
+	fy_check_testcase_add_test(ctc, gc_address_stable);
+	fy_check_testcase_add_test(ctc, gc_dedup_identity);
+	fy_check_testcase_add_test(ctc, gc_empty_noop);
+	fy_check_testcase_add_test(ctc, gc_stale_staging_cleanup);
+	fy_check_testcase_add_test(ctc, gc_sparse_roundtrip);
 #endif
 	fy_check_testcase_add_test(ctc, durable_multi_chunk_grow);
 	fy_check_testcase_add_test(ctc, durable_concurrent_grow);
