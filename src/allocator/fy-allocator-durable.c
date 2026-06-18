@@ -21,6 +21,7 @@
 #include <stddef.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/file.h>
@@ -710,6 +711,7 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 {
 	const struct fy_durable_allocator_cfg *cfg = cfg_data;
 	struct fy_durable_allocator *da;
+	char rpbuf[PATH_MAX];
 	struct stat st;
 	int rc;
 
@@ -737,17 +739,21 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	if (fy_durable_region_geometry(da, &da->content, FY_DURABLE_CHUNK0_HDR_OFF) != 0)
 		goto err_out;
 
-	da->dir = strdup(cfg->dir);
-	if (!da->dir)
-		goto err_out;
-
 	/* create the directory if requested and missing */
-	if (stat(da->dir, &st) != 0) {
+	if (stat(cfg->dir, &st) != 0) {
 		if (!(cfg->flags & FY_DURABLE_ARENA_CREATE))
 			goto err_out;
-		if (mkdir(da->dir, 0755) != 0 && errno != EEXIST)
+		if (mkdir(cfg->dir, 0755) != 0 && errno != EEXIST)
 			goto err_out;
 	}
+
+	/* store the canonical path (resolves symlinks, strips trailing slashes,
+	 * makes it absolute) so it never leaks into derived paths */
+	if (!fy_realpath(cfg->dir, rpbuf, sizeof(rpbuf)))
+		goto err_out;
+	da->dir = strdup(rpbuf);
+	if (!da->dir)
+		goto err_out;
 
 	da->dirfd = open(da->dir, O_RDONLY | O_DIRECTORY);
 	if (da->dirfd < 0)
