@@ -20,8 +20,11 @@
 struct fy_dedup_tag;	/* in-arena dedup index anchor (fy-allocator-dedup.h) */
 
 /* on-disk format */
-#define FY_DURABLE_VERSION	1u
+#define FY_DURABLE_VERSION	2u
 #define FY_DURABLE_ENDIAN	0x12345678u
+
+/* persistent boot->flags bits (on-disk arena policy) */
+#define FY_DURABLE_BOOT_SPARSE	((uint64_t)1 << 0)	/* chunks are ftruncate'd, not fallocate'd */
 
 /* per-chunk integrity magics */
 #define FY_DURABLE_BOOT_MAGIC	0x594644555241424fULL	/* "OBARUDFY" little-endian-ish */
@@ -60,6 +63,7 @@ struct fy_durable_boot {
 	uint64_t region_size;
 	uint64_t chunk_size;
 	uint64_t boot_size;			/* sizeof(struct fy_durable_boot), validated */
+	uint64_t flags;				/* FY_DURABLE_BOOT_* on-disk policy (immutable) */
 	FY_ATOMIC(uint64_t) generation;		/* next generation id source (chunk 0 is id 0) */
 	FY_ATOMIC(struct fy_durable_chunk_hdr *) head;	/* chunk-list head */
 	FY_ATOMIC(uint64_t) refs_head;		/* branch-refs head word (S1.10); 0 = none. Opaque to the allocator. */

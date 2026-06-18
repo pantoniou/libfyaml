@@ -265,7 +265,7 @@ static int fy_durable_make_chunk(struct fy_durable_allocator *da,
 
 	tmp_created = true;
 
-	if (da->cfg.flags & FY_DURABLE_ARENA_SPARSE)
+	if (da->boot->flags & FY_DURABLE_BOOT_SPARSE)
 		rc = ftruncate(fd, (off_t)rg->chunk_size);
 	else
 		rc = fy_fallocate(fd, 0, (off_t)rg->chunk_size);
@@ -637,6 +637,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 	b->region_size = rg->region_size;
 	b->chunk_size = rg->chunk_size;
 	b->boot_size = sizeof(*b);
+	b->flags = (da->cfg.flags & FY_DURABLE_ARENA_SPARSE) ? FY_DURABLE_BOOT_SPARSE : 0;
 	b->refs_head = 0;
 
 	if (da->cfg.flags & FY_DURABLE_ARENA_SEPARATE_INDEX) {
