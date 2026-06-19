@@ -665,6 +665,7 @@ struct fy_auto_allocator_cfg {
 #define FY_DURABLE_ARENA_SPARSE		FY_BIT(2)	/* ftruncate chunks instead of fallocate */
 #define FY_DURABLE_ARENA_DEDUP		FY_BIT(3)	/* content-address (dedup) allocations in-arena */
 #define FY_DURABLE_ARENA_SEPARATE_INDEX	FY_BIT(4)	/* put the dedup index in its own file series (index-N.bin) */
+#define FY_DURABLE_ARENA_CHECKPOINT	FY_BIT(5)	/* arena supports checkpointing */
 
 /**
  * struct fy_durable_allocator_cfg - durable allocator configuration
