@@ -2467,12 +2467,17 @@ FyGeneric_set_at_unix_path(FyGenericObject *self, PyObject *args)
 
 /* Helper: Build emit flags for dump operations */
 static unsigned int
-build_emit_flags(int json_mode, int compact, int multi_document, int strip_newline)
+build_emit_flags(int json_mode, int compact, int multi_document, int strip_newline,
+                 int auto_anchor)
 {
     unsigned int emit_flags = FYOPEF_DISABLE_DIRECTORY;
 
     if (multi_document)
         emit_flags |= FYOPEF_MULTI_DOCUMENT;
+
+    /* emit anchors/aliases for repeated (deduplicated) values */
+    if (auto_anchor)
+        emit_flags |= FYOPEF_AUTO_ANCHOR;
 
     if (json_mode) {
         emit_flags |= FYOPEF_MODE_JSON;
@@ -2504,7 +2509,7 @@ write_to_file_object(PyObject *file_obj, PyObject *content_str)
     return 0;
 }
 
-/* FyGeneric: dump(file=None, mode='yaml', compact=False, strip_newline=False) - Dump to file or return string */
+/* FyGeneric: dump(file=None, mode='yaml', compact=False, strip_newline=False, auto_anchor=False) - Dump to file or return string */
 static PyObject *
 FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -2512,7 +2517,8 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
     const char *mode = "yaml";
     int compact = 0;
     int strip_newline = 0;
-    static char *kwlist[] = {"file", "mode", "compact", "strip_newline", NULL};
+    int auto_anchor = 0;
+    static char *kwlist[] = {"file", "mode", "compact", "strip_newline", "auto_anchor", NULL};
     int json_mode;
     struct fy_generic_builder *gb;
     unsigned int emit_flags;
@@ -2523,8 +2529,8 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
     int result_code;
     PyObject *yaml_str;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Ospp", kwlist,
-                                     &file_obj, &mode, &compact, &strip_newline))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Osppp", kwlist,
+                                     &file_obj, &mode, &compact, &strip_newline, &auto_anchor))
         return NULL;
 
     json_mode = (strcmp(mode, "json") == 0);
@@ -2537,7 +2543,7 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
     }
 
     /* Build emit flags */
-    emit_flags = build_emit_flags(json_mode, compact, 0, strip_newline);
+    emit_flags = build_emit_flags(json_mode, compact, 0, strip_newline, auto_anchor);
 
     /* If no file specified, return as string (like dumps()) */
     if (file_obj == NULL || file_obj == Py_None) {
@@ -2624,7 +2630,7 @@ static PyMethodDef FyGeneric_methods[] = {
     {"to_python", _PyCFunction_CAST(FyGeneric_to_python), METH_NOARGS,
      "Convert to Python object (recursive)"},
     {"dump", _PyCFunction_CAST(FyGeneric_dump), METH_VARARGS | METH_KEYWORDS,
-     "Dump to file or return as string"},
+     "Dump to file or return as string (auto_anchor=True emits anchors/aliases for repeated values)"},
     {"trim", _PyCFunction_CAST(FyGeneric_trim), METH_NOARGS,
      "Trim allocator to release unused memory"},
     {"clone", _PyCFunction_CAST(FyGeneric_clone), METH_NOARGS,
@@ -3951,7 +3957,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int json_mode = 0;
     const char *style = NULL;
     int indent = 0;  /* 0 means default/unset */
-    static char *kwlist[] = {"obj", "compact", "json", "style", "indent", NULL};
+    int auto_anchor = 0;
+    static char *kwlist[] = {"obj", "compact", "json", "style", "indent", "auto_anchor", NULL};
     struct fy_generic_builder *gb;
     fy_generic g;
     unsigned int emit_flags;
@@ -3959,8 +3966,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     fy_generic_sized_string szstr;
     PyObject *result;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppzi", kwlist,
-                                     &obj, &compact, &json_mode, &style, &indent))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppzip", kwlist,
+                                     &obj, &compact, &json_mode, &style, &indent, &auto_anchor))
         return NULL;
 
     /* Create generic builder */
@@ -3977,6 +3984,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 
     /* Determine emit flags based on options */
     emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING;
+    if (auto_anchor)
+        emit_flags |= FYOPEF_AUTO_ANCHOR;
 
     /* Apply indent flag based on requested indent value */
     if (indent > 0) {
@@ -4797,7 +4806,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     int compact = 0;
     int json_mode = 0;
     const char *style = NULL;
-    static char *kwlist[] = {"documents", "compact", "json", "style", NULL};
+    int auto_anchor = 0;
+    static char *kwlist[] = {"documents", "compact", "json", "style", "auto_anchor", NULL};
     struct fy_generic_builder *gb = NULL;
     fy_generic doc_sequence;
     unsigned int emit_flags;
@@ -4805,8 +4815,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
     fy_generic_sized_string szstr;
     PyObject *result;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppz", kwlist,
-                                     &documents, &compact, &json_mode, &style))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ppzp", kwlist,
+                                     &documents, &compact, &json_mode, &style, &auto_anchor))
         return NULL;
 
     /* Create generic builder for emitting */
@@ -4854,6 +4864,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
 
     /* Determine emit flags based on options - add MULTI_DOCUMENT flag */
     emit_flags = FYOPEF_DISABLE_DIRECTORY | FYOPEF_OUTPUT_TYPE_STRING | FYOPEF_MULTI_DOCUMENT;
+    if (auto_anchor)
+        emit_flags |= FYOPEF_AUTO_ANCHOR;
 
     if (json_mode) {
         emit_flags |= FYOPEF_MODE_JSON;
@@ -4918,11 +4930,12 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *documents;
     int compact = 0;
     int json_mode = 0;
-    static char *kwlist[] = {"file", "documents", "compact", "json", NULL};
+    int auto_anchor = 0;
+    static char *kwlist[] = {"file", "documents", "compact", "json", "auto_anchor", NULL};
     FyGenericObject *fyobj;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|pp", kwlist,
-                                     &file_obj, &documents, &compact, &json_mode))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|ppp", kwlist,
+                                     &file_obj, &documents, &compact, &json_mode, &auto_anchor))
         return NULL;
 
     /* documents must be a FyGeneric sequence */
@@ -4966,7 +4979,7 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
         }
 
         /* Build emit flags */
-        emit_flags = build_emit_flags(json_mode, compact, 1, 0);
+        emit_flags = build_emit_flags(json_mode, compact, 1, 0, auto_anchor);
 
         /* Emit to file using new API - returns int 0 on success */
         result_g = fy_gb_emit_file(gb, doc_sequence, emit_flags, path);
@@ -5986,7 +5999,7 @@ static PyMethodDef module_methods[] = {
     {"loads", _PyCFunction_CAST(libfyaml_loads), METH_VARARGS | METH_KEYWORDS,
      "Load YAML/JSON from string"},
     {"dumps", _PyCFunction_CAST(libfyaml_dumps), METH_VARARGS | METH_KEYWORDS,
-     "Dump Python object to YAML/JSON string"},
+     "Dump Python object to YAML/JSON string (auto_anchor=True emits anchors/aliases for repeated values)"},
     {"load", _PyCFunction_CAST(libfyaml_load), METH_VARARGS | METH_KEYWORDS,
      "Load YAML/JSON from file (path or file object)"},
     {"dump", _PyCFunction_CAST(libfyaml_dump), METH_VARARGS | METH_KEYWORDS,
@@ -5996,9 +6009,9 @@ static PyMethodDef module_methods[] = {
     {"load_all", _PyCFunction_CAST(libfyaml_load_all), METH_VARARGS | METH_KEYWORDS,
      "Load multiple YAML/JSON documents from file (path or file object)"},
     {"dumps_all", _PyCFunction_CAST(libfyaml_dumps_all), METH_VARARGS | METH_KEYWORDS,
-     "Dump multiple Python objects to YAML/JSON string"},
+     "Dump multiple Python objects to YAML/JSON string (auto_anchor=True emits anchors/aliases for repeated values)"},
     {"dump_all", _PyCFunction_CAST(libfyaml_dump_all), METH_VARARGS | METH_KEYWORDS,
-     "Dump multiple Python objects to file (path or file object)"},
+     "Dump multiple Python objects to file (auto_anchor=True emits anchors/aliases for repeated values)"},
     {"from_python", _PyCFunction_CAST(libfyaml_from_python), METH_VARARGS | METH_KEYWORDS,
      "Convert Python object to FyGeneric (with optional tag)"},
     {"path_list_to_unix_path", _PyCFunction_CAST(libfyaml_path_list_to_unix_path), METH_O,
