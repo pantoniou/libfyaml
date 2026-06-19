@@ -949,9 +949,39 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
     return NULL;
 }
 
-/* FyGeneric: to_python() - recursive conversion */
+/* Look up an already-converted container in the memo dict. */
 static PyObject *
-FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
+fy_to_python_memo_lookup(FyGenericObject *self, PyObject *memo, PyObject **key_out)
+{
+    PyObject *key, *cached;
+
+    *key_out = NULL;
+    if (memo == NULL)
+        return NULL;
+
+    key = PyLong_FromUnsignedLongLong((unsigned long long)self->fyg.v);
+    if (key == NULL)
+        return NULL;
+
+    cached = PyDict_GetItemWithError(memo, key);   /* borrowed */
+    if (cached != NULL) {
+        Py_DECREF(key);
+        Py_INCREF(cached);
+        return cached;
+    }
+    if (PyErr_Occurred()) {
+        Py_DECREF(key);
+        return NULL;
+    }
+
+    /* miss: hand the key back so the caller can store the result */
+    *key_out = key;
+    return NULL;
+}
+
+/* FyGeneric: recursive conversion with memoization of shared subtrees */
+static PyObject *
+FyGeneric_to_python_memo(FyGenericObject *self, PyObject *memo)
 {
     enum fy_generic_type type = fy_get_type(self->fyg);
 
@@ -990,15 +1020,38 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
         case FYGT_SEQUENCE: {
             fy_generic_sequence_handle seqh;
             PyObject *list;
+            PyObject *memo_key;
+            PyObject *cached;
             size_t i;
 
+            cached = fy_to_python_memo_lookup(self, memo, &memo_key);
+            if (cached != NULL)
+                return cached;          /* already converted */
+            if (memo_key == NULL && PyErr_Occurred())
+                return NULL;            /* lookup error */
+
             seqh = fy_cast(self->fyg, fy_seq_handle_null);
-            if (!seqh)
+            if (!seqh) {
+                Py_XDECREF(memo_key);
                 return PyList_New(0);  /* empty [] */
+            }
 
             list = PyList_New(seqh->count);
-            if (list == NULL)
+            if (list == NULL) {
+                Py_XDECREF(memo_key);
                 return NULL;
+            }
+
+            /*
+             * Memoize before recursing so that a self-referential subtree
+             * resolves to this same list rather than recursing forever.
+             */
+            if (memo_key != NULL) {
+                int rc = PyDict_SetItem(memo, memo_key, list);
+                Py_CLEAR(memo_key);
+                if (rc < 0)
+                    goto seq_err;
+            }
 
             for (i = 0; i < seqh->count; i++) {
                 // NOT VERY EFFICIENT
@@ -1011,7 +1064,7 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                 if (item_obj == NULL)
                     goto seq_err;
 
-                PyObject *converted = FyGeneric_to_python((FyGenericObject *)item_obj, NULL);
+                PyObject *converted = FyGeneric_to_python_memo((FyGenericObject *)item_obj, memo);
                 Py_XDECREF(item_obj);
                 if (converted == NULL)
                     goto seq_err;
@@ -1032,15 +1085,37 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
             PyObject *path_key;
             PyObject *conv_key;
             PyObject *conv_val;
+            PyObject *memo_key;
+            PyObject *cached;
             size_t i;
 
+            cached = fy_to_python_memo_lookup(self, memo, &memo_key);
+            if (cached != NULL)
+                return cached;          /* already converted */
+            if (memo_key == NULL && PyErr_Occurred())
+                return NULL;            /* lookup error */
+
             maph = fy_cast(self->fyg, fy_map_handle_null);
-            if (!maph)
+            if (!maph) {
+                Py_XDECREF(memo_key);
                 return PyDict_New();  /* empty {} */
+            }
 
             dict = PyDict_New();
-            if (dict == NULL)
+            if (dict == NULL) {
+                Py_XDECREF(memo_key);
                 return NULL;
+            }
+
+            /* memoize before recursing (see sequence case) */
+            if (memo_key != NULL) {
+                int rc = PyDict_SetItem(memo, memo_key, dict);
+                Py_CLEAR(memo_key);
+                if (rc < 0) {
+                    Py_DECREF(dict);
+                    return NULL;
+                }
+            }
 
             path_key = NULL;
             conv_key = NULL;
@@ -1055,7 +1130,7 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                 if (key_obj == NULL)
                     goto map_err;
 
-                conv_key = FyGeneric_to_python((FyGenericObject *)key_obj, NULL);
+                conv_key = FyGeneric_to_python_memo((FyGenericObject *)key_obj, memo);
                 Py_XDECREF(key_obj);
                 if (conv_key == NULL)
                     goto map_err;
@@ -1065,7 +1140,7 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
                 if (val_obj == NULL)
                     goto map_err;
 
-                conv_val = FyGeneric_to_python((FyGenericObject *)val_obj, NULL);
+                conv_val = FyGeneric_to_python_memo((FyGenericObject *)val_obj, memo);
                 Py_XDECREF(val_obj);
                 if (conv_val == NULL)
                     goto map_err;
@@ -1091,6 +1166,29 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
             PyErr_Format(PyExc_TypeError, "Unknown generic type: %d", type);
             return NULL;
     }
+}
+
+/*
+ * FyGeneric: to_python() - recursive conversion to native Python objects.
+ * We do memoization if object is immutable
+ */
+static PyObject *
+FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    PyObject *memo, *result;
+
+    if (!FYG_MUTABLE(self)) {
+        memo = PyDict_New();
+        if (memo == NULL)
+            return NULL;
+    } else
+        memo = NULL;
+
+    result = FyGeneric_to_python_memo(self, memo);
+
+    Py_XDECREF(memo);
+
+    return result;
 }
 
 /* FyGeneric: Type check methods */
