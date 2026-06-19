@@ -66,6 +66,7 @@ extern "C" {
 
 /* forward decl of allocator interfaces */
 struct fy_allocator;
+struct fy_thread_pool;	/* opaque; defined in libfyaml-thread.h */
 
 /* A tag that represents the default tag */
 #define FY_ALLOC_TAG_DEFAULT	0
@@ -689,6 +690,7 @@ struct fy_durable_allocator_cfg {
 	uint64_t index_region_base;
 	uint64_t index_region_size;
 	uint64_t index_chunk_size;
+	struct fy_thread_pool *tp;	/* optional thread pool for BLAKE3 hashing */
 };
 
 /**
@@ -845,6 +847,93 @@ fy_allocator_index_region_base(struct fy_allocator *a)
  */
 uint64_t
 fy_allocator_index_region_size(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_checkpoint() - Take a checkpoint of an allocator
+ *
+ * Take a checkpoint of an allocator - All the details are internal to
+ * the allocator, but it is directed at the durable iterator for now.
+ *
+ * Afterwards the state of the allocator can be verified, queried or
+ * even rolled back to a previous state.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_allocator_checkpoint(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_verify() - Verify a previous checkpoint'ed allocator
+ *
+ * Verify that allocator is in a consistent state against the
+ * latest checkpoint.
+ *
+ * @a: The allocator
+ *
+ * Returns:
+ * 0 on success, -1 on error.
+ */
+int
+fy_allocator_verify(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * typedef fy_alloc_checkpoint_iter_fn - Checkpoint callback
+ *
+ * Called once per valid slot, oldest-to-newest.
+ *
+ * @slot_gen: The slot generation
+ * @head_chunk_gen: The head chunk generation
+ * @head_chunk_bump: The bump allocation for that chunk
+ * @refs_head_snap: The refs head snapshot value
+ * @arg: User supplied argument to fy_allocator_checkpoint_iterate()
+ *
+ * Returns:
+ * true to continue iterating
+ * false to stop iterating
+ */
+typedef bool (*fy_alloc_checkpoint_iter_fn)(
+	uint64_t slot_gen,
+	uint64_t head_chunk_gen,
+	uint64_t head_chunk_bump,
+	uint64_t refs_head_snap,
+	void *arg);
+
+/**
+ * fy_allocator_checkpoint_iterate() - Iterate over valid checkpoints
+ *
+ * @a: The allocator
+ * @cb: The checkpoint callback
+ * @arg: A user supplied argument to the callback
+ *
+ * Returns:
+ * 0 if at least one checkpoint, -1 if none
+ */
+int
+fy_allocator_checkpoint_iterate(struct fy_allocator *a,
+				fy_alloc_checkpoint_iter_fn cb,
+				void *arg)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_checkpoint_recover() - Rollback to the given generation
+ *
+ * Roll back the allocator to the checkpoint identified by @slot_gen.
+ *
+ * @a: The allocator
+ * @slot_gen: The generation of the slot to restore to
+ *
+ * Returns:
+ * 0 if recovery was successful, -1 on error
+ */
+int
+fy_allocator_checkpoint_recover(struct fy_allocator *a,
+				uint64_t slot_gen)
 	FY_EXPORT;
 
 /**

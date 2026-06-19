@@ -828,6 +828,41 @@ fy_allocator_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return fy_allocator_contains_nocheck(a, tag, ptr);
 }
 
+int
+fy_allocator_checkpoint(struct fy_allocator *a)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_checkpoint_nocheck(a);
+}
+
+int
+fy_allocator_verify(struct fy_allocator *a)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_verify_nocheck(a);
+}
+
+int
+fy_allocator_checkpoint_iterate(struct fy_allocator *a,
+				fy_alloc_checkpoint_iter_fn cb,
+				void *arg)
+{
+	if (!a || !cb)
+		return -1;
+	return fy_allocator_checkpoint_iterate_nocheck(a, cb, arg);
+}
+
+int
+fy_allocator_checkpoint_recover(struct fy_allocator *a,
+				uint64_t slot_gen)
+{
+	if (!a)
+		return -1;
+	return fy_allocator_checkpoint_recover_nocheck(a, slot_gen);
+}
+
 /* respects the parent allocator (or uses posix_memalign if NULL) */
 void *fy_early_parent_allocator_alloc(struct fy_allocator *parent, int parent_tag, size_t size, size_t align)
 {

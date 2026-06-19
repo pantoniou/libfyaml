@@ -69,6 +69,12 @@ struct fy_allocator_ops {
 	uint64_t (*region_size)(struct fy_allocator *a);		/* reserved region size, or 0 */
 	uint64_t (*index_region_base)(struct fy_allocator *a);		/* separate dedup-index base, or 0 */
 	uint64_t (*index_region_size)(struct fy_allocator *a);		/* separate dedup-index size, or 0 */
+	int (*checkpoint)(struct fy_allocator *a);			/* write a new content integrity slot */
+	int (*verify)(struct fy_allocator *a);				/* verify against the latest valid slot; 0=ok */
+	int (*checkpoint_iterate)(struct fy_allocator *a,		/* iterate valid slots oldest-to-newest */
+				  fy_alloc_checkpoint_iter_fn cb, void *arg);
+	int (*checkpoint_recover)(struct fy_allocator *a,		/* roll back arena to a given slot */
+				  uint64_t slot_gen);
 };
 
 /* a durable snapshot of an allocator */
@@ -445,6 +451,37 @@ static inline uint64_t fy_allocator_index_region_size_nocheck(struct fy_allocato
 	if (!a->ops->index_region_size)
 		return 0;
 	return a->ops->index_region_size(a);
+}
+
+static inline int fy_allocator_checkpoint_nocheck(struct fy_allocator *a)
+{
+	if (!a->ops->checkpoint)
+		return -1;
+	return a->ops->checkpoint(a);
+}
+
+static inline int fy_allocator_verify_nocheck(struct fy_allocator *a)
+{
+	if (!a->ops->verify)
+		return -1;
+	return a->ops->verify(a);
+}
+
+static inline int fy_allocator_checkpoint_iterate_nocheck(struct fy_allocator *a,
+						   fy_alloc_checkpoint_iter_fn cb,
+						   void *arg)
+{
+	if (!a->ops->checkpoint_iterate)
+		return -1;
+	return a->ops->checkpoint_iterate(a, cb, arg);
+}
+
+static inline int fy_allocator_checkpoint_recover_nocheck(struct fy_allocator *a,
+						   uint64_t slot_gen)
+{
+	if (!a->ops->checkpoint_recover)
+		return -1;
+	return a->ops->checkpoint_recover(a, slot_gen);
 }
 
 #endif
