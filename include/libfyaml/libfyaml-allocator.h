@@ -660,11 +660,11 @@ struct fy_auto_allocator_cfg {
  */
 
 /* fy_durable_allocator_cfg.flags */
-#define FY_DURABLE_ARENA_CREATE		(1u << 0)	/* create the directory/chunk 0 if absent */
-#define FY_DURABLE_ARENA_READONLY	(1u << 1)	/* map read-only; no allocation/grow */
-#define FY_DURABLE_ARENA_SPARSE		(1u << 2)	/* ftruncate chunks instead of fallocate */
-#define FY_DURABLE_ARENA_DEDUP		(1u << 3)	/* content-address (dedup) allocations in-arena */
-#define FY_DURABLE_ARENA_SEPARATE_INDEX	(1u << 4)	/* put the dedup index in its own file series (index-N.bin) */
+#define FY_DURABLE_ARENA_CREATE		FY_BIT(0)	/* create the directory/chunk 0 if absent */
+#define FY_DURABLE_ARENA_READONLY	FY_BIT(1)	/* map read-only; no allocation/grow */
+#define FY_DURABLE_ARENA_SPARSE		FY_BIT(2)	/* ftruncate chunks instead of fallocate */
+#define FY_DURABLE_ARENA_DEDUP		FY_BIT(3)	/* content-address (dedup) allocations in-arena */
+#define FY_DURABLE_ARENA_SEPARATE_INDEX	FY_BIT(4)	/* put the dedup index in its own file series (index-N.bin) */
 
 /**
  * struct fy_durable_allocator_cfg - durable allocator configuration
@@ -729,7 +729,7 @@ fy_allocator_refs_get(struct fy_allocator *a)
 	FY_EXPORT;
 
 /* flags for fy_allocator_refs_publish() */
-#define FY_ALLOC_REFS_CHECKPOINT	(1u << 0)	/* enforce the durability ordering barrier */
+#define FY_ALLOC_REFS_CHECKPOINT	FY_BIT(0)	/* enforce the durability ordering barrier */
 
 /**
  * fy_allocator_refs_publish() - Atomically publish a new durable refs head
