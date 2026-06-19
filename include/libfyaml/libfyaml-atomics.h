@@ -132,6 +132,21 @@ extern "C++" {
  * We unconditionally enable it if we have stdatomic.h
  */
 #define FY_HAVE_C11_ATOMICS
+#elif defined(__cplusplus) && defined(__clang__) && \
+	(__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))
+/*
+ * Clang supports the ``_Atomic`` qualifier as a native compiler builtin in
+ * C++ mode too, independently of whether <stdatomic.h> is included (unlike
+ * GCC, which only understands ``_Atomic`` via the macros <stdatomic.h>
+ * itself defines). This must stay decoupled from FY_HAVE_STDATOMIC_H: when
+ * the latter is unset pre-C++23 (see above), Clang still natively supports
+ * ``_Atomic``, and libc++'s own <atomic> implementation relies internally
+ * on that exact builtin qualifier. If FY_HAVE_C11_ATOMICS were left unset
+ * here, the #else branch below would redefine ``_Atomic(_x)`` as a
+ * no-op macro, which corrupts libc++'s internal use of ``_Atomic(_Tp)``
+ * the moment <atomic> is included later in the same translation unit.
+ */
+#define FY_HAVE_C11_ATOMICS
 #endif
 
 /* Decide macro */
