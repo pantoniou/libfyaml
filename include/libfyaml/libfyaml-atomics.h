@@ -132,7 +132,7 @@ extern "C++" {
  * We unconditionally enable it if we have stdatomic.h
  */
 #define FY_HAVE_C11_ATOMICS
-#elif defined(__cplusplus) && defined(__clang__) && \
+#elif defined(__cplusplus) && defined(__clang__) && !defined(_WIN32) && \
 	(__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))
 /*
  * Clang supports the ``_Atomic`` qualifier as a native compiler builtin in
@@ -145,6 +145,16 @@ extern "C++" {
  * here, the #else branch below would redefine ``_Atomic(_x)`` as a
  * no-op macro, which corrupts libc++'s internal use of ``_Atomic(_Tp)``
  * the moment <atomic> is included later in the same translation unit.
+ *
+ * Restricted to non-Windows targets: Clang on Windows links against
+ * MSVC's STL, not libc++, so none of the above applies there -- MSVC's
+ * <atomic> does not rely on Clang's _Atomic qualifier internally. Keeping
+ * Windows on the plain (non-_Atomic-qualified) fallback below also avoids
+ * a real-world codegen bug observed with __c11_atomic_fetch_add() under
+ * Clang-on-Windows Debug builds (wrong return value, reproducible on both
+ * windows-2022 and windows-latest CI images; release builds are
+ * unaffected, suggesting a Debug-codegen-specific lowering bug for this
+ * builtin on that target rather than anything in this header's logic).
  */
 #define FY_HAVE_C11_ATOMICS
 #endif
@@ -267,16 +277,18 @@ typedef bool fy_priv_atomic_flag;
 #define fy_priv_atomic_flag_test_and_set(_ptr) \
 	([&]() -> bool { volatile fy_priv_atomic_flag *__p = (_ptr); bool __ret = *__p; *__p = true; return __ret; }())
 
-#elif defined(__cplusplus) && defined(__clang__)
+#elif defined(__cplusplus) && defined(__clang__) && !defined(_WIN32)
 
-/* Clang C++ pre-C++23 (FY_HAVE_STDATOMIC_H is intentionally unset here, see
- * above, to avoid mixing <stdatomic.h> with <atomic> before C++23). Unlike
- * GCC, Clang still genuinely qualifies FY_ATOMIC()-declared storage as
- * ``_Atomic`` (see FY_HAVE_C11_ATOMICS above), so the naive __typeof__-based
- * fallback used in the last-resort branch below does not apply here: in
- * C++, ``__typeof__(*(_ptr))`` on a real ``_Atomic``-qualified lvalue yields
- * an ``_Atomic``-qualified type too, and C++ (unlike C) has no implicit
- * conversion stripping that qualifier back to a plain type, so e.g.
+/* Clang C++ pre-C++23 on non-Windows targets (FY_HAVE_STDATOMIC_H is
+ * intentionally unset here, see above, to avoid mixing <stdatomic.h> with
+ * <atomic> before C++23; Windows is excluded, see the matching note on
+ * FY_HAVE_C11_ATOMICS above). Unlike GCC, Clang still genuinely qualifies
+ * FY_ATOMIC()-declared storage as ``_Atomic`` here (see FY_HAVE_C11_ATOMICS
+ * above), so the naive __typeof__-based fallback used in the last-resort
+ * branch below does not apply: in C++, ``__typeof__(*(_ptr))`` on a real
+ * ``_Atomic``-qualified lvalue yields an ``_Atomic``-qualified type too, and
+ * C++ (unlike C) has no implicit conversion stripping that qualifier back
+ * to a plain type, so e.g.
  * ``int old = fy_atomic_fetch_add(&v, 3);`` fails to compile.
  *
  * Use Clang's ``__c11_atomic_*`` builtins instead: they operate directly on
