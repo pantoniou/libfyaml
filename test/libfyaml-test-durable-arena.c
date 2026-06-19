@@ -1660,6 +1660,334 @@ END_TEST
 
 #endif /* HAVE_GENERIC */
 
+/* ------------------------------------------------------------------ */
+/* checkpoint / verify tests                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Basic: checkpoint + verify pass on a fresh single-chunk arena.
+ */
+START_TEST(verify_checkpoint_basic)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	const char *p;
+	int i;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	/* write some content */
+	for (i = 0; i < 100; i++) {
+		p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "hello", 6, 8);
+		ck_assert_ptr_ne(p, NULL);
+	}
+
+	/* no checkpoint yet: verify must fail */
+	ck_assert_int_eq(fy_allocator_verify(da), -1);
+
+	/* take a checkpoint then verify should pass */
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * verify must detect a modification made to arena content after the checkpoint.
+ */
+START_TEST(verify_detects_corruption)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	char *p;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	p = (char *)fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "original", 9, 8);
+	ck_assert_ptr_ne(p, NULL);
+
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	/* corrupt the stored content */
+	p[0] = 'X';
+
+	/* verify must now fail */
+	ck_assert_int_eq(fy_allocator_verify(da), -1);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * Rotating FIFO: take more than FY_DURABLE_VERIFY_SLOTS (16) checkpoints and
+ * confirm that verify still finds a valid recent slot.
+ */
+START_TEST(verify_slot_rotation)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	int i;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	/* fill with some data so each checkpoint covers real content */
+	for (i = 0; i < 200; i++) {
+		const char *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "data", 5, 8);
+		ck_assert_ptr_ne(p, NULL);
+	}
+
+	/* take 20 checkpoints (> 16 slots) */
+	for (i = 0; i < 20; i++)
+		ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+
+	/* latest slot must still be valid */
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * Multi-chunk: force a grow so chunk 0 gets sealed, then checkpoint + verify.
+ * The seal must compute chunk 0's content_hash; verify must replay correctly.
+ */
+START_TEST(verify_multi_chunk)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	size_t fill, chunk_cap;
+	const char pad[64];
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+	memset((void *)pad, 0xAB, sizeof(pad));
+
+	/* stuff chunk 0 until it overflows into a second chunk */
+	chunk_cap = TEST_CHUNK_SIZE;
+	for (fill = 0; fill + sizeof(pad) < chunk_cap; fill += sizeof(pad)) {
+		const char *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT,
+							   pad, sizeof(pad), 8);
+		ck_assert_ptr_ne(p, NULL);
+	}
+	/* a couple more to trigger the grow */
+	ck_assert_ptr_ne(fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pad, sizeof(pad), 8), NULL);
+	ck_assert_ptr_ne(fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pad, sizeof(pad), 8), NULL);
+
+	/* must have grown to chunk 1 */
+	ck_assert(durable_chunk_file_exists(dir, "arena", 1));
+
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * Cross-session: write + checkpoint, reopen read-only, verify must pass.
+ * This validates that content_hash and verify_slots survive close/reopen.
+ */
+START_TEST(verify_cross_session)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	const char *p;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "persist-me", 11, 8);
+	ck_assert_ptr_ne(p, NULL);
+
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	fy_allocator_destroy(da);
+
+	/* reopen in write mode: verify must still pass without a new checkpoint */
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	ck_assert_ptr_ne(da, NULL);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+	fy_allocator_destroy(da);
+
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * checkpoint_iterate: take N checkpoints; verify all N slots are visited in
+ * strictly ascending generation order.
+ */
+struct iter_state {
+	int count;
+	uint64_t last_gen;
+};
+
+static bool iter_ascending_cb(uint64_t slot_gen, uint64_t head_chunk_gen FY_UNUSED,
+			       uint64_t head_chunk_bump FY_UNUSED,
+			       uint64_t refs_head_snap FY_UNUSED, void *arg)
+{
+	struct iter_state *s = arg;
+	ck_assert_uint_gt(slot_gen, s->last_gen);
+	s->last_gen = slot_gen;
+	s->count++;
+	return true;
+}
+
+START_TEST(verify_checkpoint_iterate)
+{
+	char dir[256];
+	struct fy_allocator *da, *a;
+	struct iter_state st = { .count = 0, .last_gen = 0 };
+	const char *p;
+	int i;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	/* no checkpoints yet: iterate returns -1 */
+	ck_assert_int_lt(fy_allocator_checkpoint_iterate(da, iter_ascending_cb, &st), 0);
+	ck_assert_int_eq(st.count, 0);
+
+	/* write some data and take 5 checkpoints */
+	for (i = 0; i < 5; i++) {
+		p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "iter", 5, 8);
+		ck_assert_ptr_ne(p, NULL);
+		ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	}
+
+	/* iterate: must visit exactly 5 slots in ascending generation order */
+	ck_assert_int_eq(fy_allocator_checkpoint_iterate(da, iter_ascending_cb, &st), 0);
+	ck_assert_int_eq(st.count, 5);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
+ * checkpoint_recover: write data, checkpoint, grow to a second chunk, then
+ * recover to the first checkpoint.  The second chunk file must disappear and
+ * the arena must remain usable.
+ */
+START_TEST(verify_checkpoint_recover)
+{
+	char dir[256];
+	struct fy_allocator *da, *a;
+	const char *p;
+	char pad[64];
+	size_t fill, chunk_cap;
+	uint64_t target_gen;
+	int i;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
+	if (!da) {
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+	memset(pad, 0xCD, sizeof(pad));
+
+	/* write some initial data into chunk 0 */
+	for (i = 0; i < 50; i++) {
+		p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "before", 7, 8);
+		ck_assert_ptr_ne(p, NULL);
+	}
+
+	/* checkpoint: this is our recovery target (slot generation 1) */
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	target_gen = 1;
+
+	/* fill chunk 0 to overflow and grow into chunk 1 */
+	chunk_cap = TEST_CHUNK_SIZE;
+	for (fill = 0; fill + sizeof(pad) < chunk_cap; fill += sizeof(pad)) {
+		p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT,
+					       pad, sizeof(pad), 8);
+		ck_assert_ptr_ne(p, NULL);
+	}
+	/* a couple more to ensure we cross into chunk 1 */
+	ck_assert_ptr_ne(fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT,
+						    pad, sizeof(pad), 8), NULL);
+	ck_assert_ptr_ne(fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT,
+						    pad, sizeof(pad), 8), NULL);
+
+	/* chunk 1 must exist before recovery */
+	ck_assert(durable_chunk_file_exists(dir, "arena", 1));
+
+	/* take a post-grow checkpoint so the two-chunk state has a slot */
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	/* recover to the pre-grow checkpoint */
+	ck_assert_int_eq(fy_allocator_checkpoint_recover(da, target_gen), 0);
+
+	/* chunk 1 must have been deleted */
+	ck_assert(!durable_chunk_file_exists(dir, "arena", 1));
+
+	/* take a fresh checkpoint so verify has a clean reference point */
+	ck_assert_int_eq(fy_allocator_checkpoint(da), 0);
+	ck_assert_int_eq(fy_allocator_verify(da), 0);
+
+	/* arena must still accept new allocations */
+	p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "post-recovery", 14, 8);
+	ck_assert_ptr_ne(p, NULL);
+
+	/* close and reopen: the recovered state must survive */
+	fy_allocator_destroy(da);
+	da = open_test_arena(dir, TEST_REGION_BASE, 0);
+	ck_assert_ptr_ne(da, NULL);
+
+	/* chunk 1 must still be absent after reopening */
+	ck_assert(!durable_chunk_file_exists(dir, "arena", 1));
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
 void libfyaml_case_durable_arena(struct fy_check_suite *cs);
 
 void libfyaml_case_durable_arena(struct fy_check_suite *cs)
@@ -1707,6 +2035,13 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, durable_combined_no_index);
 	fy_check_testcase_add_test(ctc, durable_separate_index_cross_session);
 	fy_check_testcase_add_test(ctc, durable_separate_index_grow);
+	fy_check_testcase_add_test(ctc, verify_checkpoint_basic);
+	fy_check_testcase_add_test(ctc, verify_detects_corruption);
+	fy_check_testcase_add_test(ctc, verify_slot_rotation);
+	fy_check_testcase_add_test(ctc, verify_multi_chunk);
+	fy_check_testcase_add_test(ctc, verify_cross_session);
+	fy_check_testcase_add_test(ctc, verify_checkpoint_iterate);
+	fy_check_testcase_add_test(ctc, verify_checkpoint_recover);
 }
 
 #endif /* !_WIN32 */
