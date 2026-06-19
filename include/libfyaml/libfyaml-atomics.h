@@ -154,30 +154,62 @@ extern "C++" {
  * therefore only safe in single-threaded contexts.
  */
 #define FY_HAVE_SAFE_ATOMIC_OPS
+
+/* Alias the real <stdatomic.h> names under our own fy_priv_ prefix so that
+ * fy_atomic_*() below can delegate uniformly regardless of backend, without
+ * ever introducing macros under the bare (unprefixed) C11 names itself --
+ * see the rationale in the #else branches for why that matters. */
+#define fy_priv_atomic_flag atomic_flag
+#define fy_priv_atomic_load(_ptr) atomic_load((_ptr))
+#define fy_priv_atomic_store(_ptr, _v) atomic_store((_ptr), (_v))
+#define fy_priv_atomic_exchange(_ptr, _v) atomic_exchange((_ptr), (_v))
+#define fy_priv_atomic_compare_exchange_strong(_ptr, _exp, _des) \
+	atomic_compare_exchange_strong((_ptr), (_exp), (_des))
+#define fy_priv_atomic_compare_exchange_weak(_ptr, _exp, _des) \
+	atomic_compare_exchange_weak((_ptr), (_exp), (_des))
+#define fy_priv_atomic_fetch_add(_ptr, _v) atomic_fetch_add((_ptr), (_v))
+#define fy_priv_atomic_fetch_sub(_ptr, _v) atomic_fetch_sub((_ptr), (_v))
+#define fy_priv_atomic_fetch_or(_ptr, _v) atomic_fetch_or((_ptr), (_v))
+#define fy_priv_atomic_fetch_xor(_ptr, _v) atomic_fetch_xor((_ptr), (_v))
+#define fy_priv_atomic_fetch_and(_ptr, _v) atomic_fetch_and((_ptr), (_v))
+#define fy_priv_atomic_flag_clear(_ptr) atomic_flag_clear((_ptr))
+#define fy_priv_atomic_flag_set(_ptr) atomic_flag_set((_ptr))
+#define fy_priv_atomic_flag_test_and_set(_ptr) atomic_flag_test_and_set((_ptr))
+
 #elif defined(_MSC_VER) && defined(__cplusplus)
 
 /* MSVC C++ fallback (C++17 and earlier, where <stdatomic.h> is unavailable).
  * MSVC does not support GCC statement-expressions ({ }) or __typeof__, so we
  * use decltype and immediately-invoked C++ lambdas for the fetch-and-modify
  * operations.  These are plain (non-atomic) loads/stores; safe only in
- * single-threaded contexts. */
+ * single-threaded contexts.
+ *
+ * These are deliberately defined under a fy_priv_ prefix rather than the
+ * bare C11 names (atomic_load, atomic_compare_exchange_strong, ...): the
+ * bare names collide with unrelated, non-std::-namespaced overloads of the
+ * same names that some C++ standard libraries declare for std::shared_ptr
+ * (e.g. libstdc++'s <bits/shared_ptr_atomic.h>). Because the preprocessor
+ * doesn't parse template angle brackets, a comma inside a template argument
+ * list such as __shared_ptr<_Tp, _Lp> is seen as an extra macro argument,
+ * silently corrupting those declarations if such a header is included later
+ * in the same translation unit. */
 
 #undef FY_HAVE_SAFE_ATOMIC_OPS
 
-typedef bool atomic_flag;
+typedef bool fy_priv_atomic_flag;
 
-#define atomic_load(_ptr) \
+#define fy_priv_atomic_load(_ptr) \
 	(*(_ptr))
 
-#define atomic_store(_ptr, _val) \
+#define fy_priv_atomic_store(_ptr, _val) \
 	do { \
 		*(_ptr) = (_val); \
 	} while(0)
 
-#define atomic_exchange(_ptr, _v) \
+#define fy_priv_atomic_exchange(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) = (_v); return __old; }())
 
-#define atomic_compare_exchange_strong(_ptr, _exp, _des) \
+#define fy_priv_atomic_compare_exchange_strong(_ptr, _exp, _des) \
 	([&]() -> bool { \
 		bool __res; \
 		if (*(_ptr) == *(_exp)) { *(_ptr) = (_des); __res = true; } \
@@ -185,52 +217,60 @@ typedef bool atomic_flag;
 		return __res; \
 	}())
 
-#define atomic_compare_exchange_weak(_ptr, _exp, _des) \
-	atomic_compare_exchange_strong((_ptr), (_exp), (_des))
+#define fy_priv_atomic_compare_exchange_weak(_ptr, _exp, _des) \
+	fy_priv_atomic_compare_exchange_strong((_ptr), (_exp), (_des))
 
-#define atomic_fetch_add(_ptr, _v) \
+#define fy_priv_atomic_fetch_add(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) += (_v); return __old; }())
 
-#define atomic_fetch_sub(_ptr, _v) \
+#define fy_priv_atomic_fetch_sub(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) -= (_v); return __old; }())
 
-#define atomic_fetch_or(_ptr, _v) \
+#define fy_priv_atomic_fetch_or(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) |= (_v); return __old; }())
 
-#define atomic_fetch_xor(_ptr, _v) \
+#define fy_priv_atomic_fetch_xor(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) ^= (_v); return __old; }())
 
-#define atomic_fetch_and(_ptr, _v) \
+#define fy_priv_atomic_fetch_and(_ptr, _v) \
 	([&]() -> decltype(*(_ptr)) { decltype(*(_ptr)) __old = *(_ptr); *(_ptr) &= (_v); return __old; }())
 
-#define atomic_flag_clear(_ptr) \
+#define fy_priv_atomic_flag_clear(_ptr) \
 	do { \
 		*(_ptr) = false; \
 	} while(0)
 
-#define atomic_flag_set(_ptr) \
+#define fy_priv_atomic_flag_set(_ptr) \
 	do { \
 		*(_ptr) = true; \
 	} while(0)
 
-#define atomic_flag_test_and_set(_ptr) \
-	([&]() -> bool { volatile atomic_flag *__p = (_ptr); bool __ret = *__p; *__p = true; return __ret; }())
+#define fy_priv_atomic_flag_test_and_set(_ptr) \
+	([&]() -> bool { volatile fy_priv_atomic_flag *__p = (_ptr); bool __ret = *__p; *__p = true; return __ret; }())
 
 #else
 
+/* Last-resort fallback for toolchains with neither <stdatomic.h> nor GCC
+ * statement-expression/__typeof__ support outside of MSVC C++ (e.g. GCC in
+ * C++ mode, which intentionally avoids <stdatomic.h> -- see the comment on
+ * FY_HAVE_STDATOMIC_H above). These are deliberately defined under a
+ * fy_priv_ prefix rather than the bare C11 names; see the rationale in the
+ * MSVC C++ branch above -- the same collision with e.g. libstdc++'s
+ * <bits/shared_ptr_atomic.h> applies here. */
+
 #undef FY_HAVE_SAFE_ATOMIC_OPS
 
-typedef bool atomic_flag;
+typedef bool fy_priv_atomic_flag;
 
-#define atomic_load(_ptr) \
+#define fy_priv_atomic_load(_ptr) \
 	(*(_ptr))
 
-#define atomic_store(_ptr, _val) \
+#define fy_priv_atomic_store(_ptr, _val) \
 	do { \
 		*(_ptr) = (_val); \
 	} while(0)
 
-#define atomic_exchange(_ptr, _v) \
+#define fy_priv_atomic_exchange(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -238,7 +278,7 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_compare_exchange_strong(_ptr, _exp, _des) \
+#define fy_priv_atomic_compare_exchange_strong(_ptr, _exp, _des) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -251,10 +291,10 @@ typedef bool atomic_flag;
 		__res; \
 	})
 
-#define atomic_compare_exchange_weak(_ptr, _exp, _des) \
-	atomic_compare_exchange_strong((_ptr), (_exp), (_des))
+#define fy_priv_atomic_compare_exchange_weak(_ptr, _exp, _des) \
+	fy_priv_atomic_compare_exchange_strong((_ptr), (_exp), (_des))
 
-#define atomic_fetch_add(_ptr, _v) \
+#define fy_priv_atomic_fetch_add(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -262,7 +302,7 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_fetch_sub(_ptr, _v) \
+#define fy_priv_atomic_fetch_sub(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -270,7 +310,7 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_fetch_or(_ptr, _v) \
+#define fy_priv_atomic_fetch_or(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -278,7 +318,7 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_fetch_xor(_ptr, _v) \
+#define fy_priv_atomic_fetch_xor(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -286,7 +326,7 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_fetch_and(_ptr, _v) \
+#define fy_priv_atomic_fetch_and(_ptr, _v) \
 	({ \
 		__typeof__(_ptr) __ptr = (_ptr); \
 		__typeof__(*(_ptr)) __old = *__ptr; \
@@ -294,12 +334,12 @@ typedef bool atomic_flag;
 		__old; \
 	})
 
-#define atomic_flag_clear(_ptr) \
+#define fy_priv_atomic_flag_clear(_ptr) \
 	do { \
 		*(_ptr) = false; \
 	} while(0)
 
-#define atomic_flag_set(_ptr) \
+#define fy_priv_atomic_flag_set(_ptr) \
 	do { \
 		*(_ptr) = true; \
 	} while(0)
@@ -310,9 +350,9 @@ typedef bool atomic_flag;
  * return values inverted (returning true on a previously-clear flag), which
  * caused fy_atomic_flag_test_and_set() to misreport state on every compiler
  * that falls back to these macros (e.g. GCC in C++ mode). */
-#define atomic_flag_test_and_set(_ptr) \
+#define fy_priv_atomic_flag_test_and_set(_ptr) \
 	({ \
-		volatile atomic_flag *__ptr = (_ptr); \
+		volatile fy_priv_atomic_flag *__ptr = (_ptr); \
 		bool __ret = *__ptr; \
 		*__ptr = true; \
 		__ret; \
@@ -340,7 +380,7 @@ typedef bool atomic_flag;
  * Backed by ``atomic_flag`` from ``<stdatomic.h>`` when available, or a plain
  * ``bool`` in the fallback path.
  */
-#define fy_atomic_flag atomic_flag
+#define fy_atomic_flag fy_priv_atomic_flag
 
 /**
  * fy_atomic_load() - Atomically load the value at @_ptr.
@@ -350,7 +390,7 @@ typedef bool atomic_flag;
  * Returns: The current value.
  */
 #define fy_atomic_load(_ptr) \
-	atomic_load((_ptr))
+	fy_priv_atomic_load((_ptr))
 
 /**
  * fy_atomic_store() - Atomically store @_v at @_ptr.
@@ -359,7 +399,7 @@ typedef bool atomic_flag;
  * @_v:   Value to store.
  */
 #define fy_atomic_store(_ptr, _v) \
-	atomic_store((_ptr), (_v))
+	fy_priv_atomic_store((_ptr), (_v))
 
 /**
  * fy_atomic_exchange() - Atomically replace the value at @_ptr with @_v.
@@ -370,7 +410,7 @@ typedef bool atomic_flag;
  * Returns: The old value that was at @_ptr before the exchange.
  */
 #define fy_atomic_exchange(_ptr, _v) \
-	atomic_exchange((_ptr), (_v))
+	fy_priv_atomic_exchange((_ptr), (_v))
 
 /**
  * fy_atomic_compare_exchange_strong() - Strong CAS: replace @_ptr's value if it equals @_e.
@@ -386,7 +426,7 @@ typedef bool atomic_flag;
  * Returns: true if the exchange succeeded, false otherwise.
  */
 #define fy_atomic_compare_exchange_strong(_ptr, _e, _d) \
-	atomic_compare_exchange_strong((_ptr), (_e), (_d))
+	fy_priv_atomic_compare_exchange_strong((_ptr), (_e), (_d))
 
 /**
  * fy_atomic_compare_exchange_weak() - Weak CAS: may spuriously fail.
@@ -402,7 +442,7 @@ typedef bool atomic_flag;
  * Returns: true if the exchange succeeded, false otherwise.
  */
 #define fy_atomic_compare_exchange_weak(_ptr, _e, _d) \
-	atomic_compare_exchange_weak((_ptr), (_e), (_d))
+	fy_priv_atomic_compare_exchange_weak((_ptr), (_e), (_d))
 
 /**
  * fy_atomic_fetch_add() - Atomically add @_v to @_ptr and return the old value.
@@ -413,7 +453,7 @@ typedef bool atomic_flag;
  * Returns: The value of @_ptr before the addition.
  */
 #define fy_atomic_fetch_add(_ptr, _v) \
-	atomic_fetch_add((_ptr), (_v))
+	fy_priv_atomic_fetch_add((_ptr), (_v))
 
 /**
  * fy_atomic_fetch_sub() - Atomically subtract @_v from @_ptr and return the old value.
@@ -424,7 +464,7 @@ typedef bool atomic_flag;
  * Returns: The value of @_ptr before the subtraction.
  */
 #define fy_atomic_fetch_sub(_ptr, _v) \
-	atomic_fetch_sub((_ptr), (_v))
+	fy_priv_atomic_fetch_sub((_ptr), (_v))
 
 /**
  * fy_atomic_fetch_or() - Atomically OR @_v into @_ptr and return the old value.
@@ -435,7 +475,7 @@ typedef bool atomic_flag;
  * Returns: The value of @_ptr before the operation.
  */
 #define fy_atomic_fetch_or(_ptr, _v) \
-	atomic_fetch_or((_ptr), (_v))
+	fy_priv_atomic_fetch_or((_ptr), (_v))
 
 /**
  * fy_atomic_fetch_xor() - Atomically XOR @_v into @_ptr and return the old value.
@@ -446,7 +486,7 @@ typedef bool atomic_flag;
  * Returns: The value of @_ptr before the operation.
  */
 #define fy_atomic_fetch_xor(_ptr, _v) \
-	atomic_fetch_xor((_ptr), (_v))
+	fy_priv_atomic_fetch_xor((_ptr), (_v))
 
 /**
  * fy_atomic_fetch_and() - Atomically AND @_v into @_ptr and return the old value.
@@ -457,7 +497,7 @@ typedef bool atomic_flag;
  * Returns: The value of @_ptr before the operation.
  */
 #define fy_atomic_fetch_and(_ptr, _v) \
-	atomic_fetch_and((_ptr), (_v))
+	fy_priv_atomic_fetch_and((_ptr), (_v))
 
 /**
  * fy_atomic_flag_clear() - Atomically clear a flag (set to false).
@@ -465,7 +505,7 @@ typedef bool atomic_flag;
  * @_ptr: Pointer to an fy_atomic_flag.
  */
 #define fy_atomic_flag_clear(_ptr) \
-	atomic_flag_clear((_ptr))
+	fy_priv_atomic_flag_clear((_ptr))
 
 /**
  * fy_atomic_flag_set() - Atomically set a flag (set to true).
@@ -477,7 +517,7 @@ typedef bool atomic_flag;
  * @_ptr: Pointer to an fy_atomic_flag.
  */
 #define fy_atomic_flag_set(_ptr) \
-	atomic_flag_set((_ptr))
+	fy_priv_atomic_flag_set((_ptr))
 
 /**
  * fy_atomic_flag_test_and_set() - Atomically set a flag and return its old value.
@@ -490,7 +530,7 @@ typedef bool atomic_flag;
  * Returns: true if the flag was already set, false if it was clear.
  */
 #define fy_atomic_flag_test_and_set(_ptr) \
-	atomic_flag_test_and_set((_ptr))
+	fy_priv_atomic_flag_test_and_set((_ptr))
 
 /**
  * fy_cpu_relax() - Emit a CPU relaxation hint inside a spin-wait loop.
