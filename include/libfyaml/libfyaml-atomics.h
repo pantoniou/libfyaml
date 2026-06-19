@@ -267,6 +267,72 @@ typedef bool fy_priv_atomic_flag;
 #define fy_priv_atomic_flag_test_and_set(_ptr) \
 	([&]() -> bool { volatile fy_priv_atomic_flag *__p = (_ptr); bool __ret = *__p; *__p = true; return __ret; }())
 
+#elif defined(__cplusplus) && defined(__clang__)
+
+/* Clang C++ pre-C++23 (FY_HAVE_STDATOMIC_H is intentionally unset here, see
+ * above, to avoid mixing <stdatomic.h> with <atomic> before C++23). Unlike
+ * GCC, Clang still genuinely qualifies FY_ATOMIC()-declared storage as
+ * ``_Atomic`` (see FY_HAVE_C11_ATOMICS above), so the naive __typeof__-based
+ * fallback used in the last-resort branch below does not apply here: in
+ * C++, ``__typeof__(*(_ptr))`` on a real ``_Atomic``-qualified lvalue yields
+ * an ``_Atomic``-qualified type too, and C++ (unlike C) has no implicit
+ * conversion stripping that qualifier back to a plain type, so e.g.
+ * ``int old = fy_atomic_fetch_add(&v, 3);`` fails to compile.
+ *
+ * Use Clang's ``__c11_atomic_*`` builtins instead: they operate directly on
+ * genuinely ``_Atomic``-qualified objects, are real (memory-ordered) atomic
+ * operations, and -- being compiler builtins rather than functions declared
+ * by a header -- never pull in <stdatomic.h> or collide with anything
+ * <atomic> declares. */
+
+#define FY_HAVE_SAFE_ATOMIC_OPS
+
+/* Plain (non-_Atomic-qualified) bool: braced/zero-initializers such as
+ * ``fy_priv_atomic_flag flag = {};`` are not valid on an _Atomic-qualified
+ * type in C++ (it is not an aggregate there). The flag/clear/set/test_and_set
+ * macros below reinterpret the pointer as _Atomic(bool)* only at the point
+ * of each __c11_atomic_*() call. */
+typedef bool fy_priv_atomic_flag;
+
+#define fy_priv_atomic_load(_ptr) \
+	__c11_atomic_load((_ptr), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_store(_ptr, _val) \
+	__c11_atomic_store((_ptr), (_val), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_exchange(_ptr, _v) \
+	__c11_atomic_exchange((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_compare_exchange_strong(_ptr, _exp, _des) \
+	__c11_atomic_compare_exchange_strong((_ptr), (_exp), (_des), __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_compare_exchange_weak(_ptr, _exp, _des) \
+	__c11_atomic_compare_exchange_weak((_ptr), (_exp), (_des), __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_fetch_add(_ptr, _v) \
+	__c11_atomic_fetch_add((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_fetch_sub(_ptr, _v) \
+	__c11_atomic_fetch_sub((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_fetch_or(_ptr, _v) \
+	__c11_atomic_fetch_or((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_fetch_xor(_ptr, _v) \
+	__c11_atomic_fetch_xor((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_fetch_and(_ptr, _v) \
+	__c11_atomic_fetch_and((_ptr), (_v), __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_flag_clear(_ptr) \
+	__c11_atomic_store((_Atomic(bool) *)(_ptr), false, __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_flag_set(_ptr) \
+	__c11_atomic_store((_Atomic(bool) *)(_ptr), true, __ATOMIC_SEQ_CST)
+
+#define fy_priv_atomic_flag_test_and_set(_ptr) \
+	__c11_atomic_exchange((_Atomic(bool) *)(_ptr), true, __ATOMIC_SEQ_CST)
+
 #else
 
 /* Last-resort fallback for toolchains with neither <stdatomic.h> nor GCC
