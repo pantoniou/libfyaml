@@ -3970,8 +3970,8 @@ libfyaml_dumps(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
                                      &obj, &compact, &json_mode, &style, &indent, &auto_anchor))
         return NULL;
 
-    /* Create generic builder */
-    gb = fy_generic_builder_create(NULL);
+    /* create generic builder with dedup enabled for auto_anchor */
+    gb = create_builder_with_config(auto_anchor, 64 * 1024);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
@@ -4331,10 +4331,11 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *obj;
     const char *mode = "yaml";
     int compact = 0;
-    static char *kwlist[] = {"file", "obj", "mode", "compact", NULL};
+    int auto_anchor = 0;
+    static char *kwlist[] = {"file", "obj", "mode", "compact", "auto_anchor", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|sp", kwlist,
-                                     &file_obj, &obj, &mode, &compact))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|spp", kwlist,
+                                     &file_obj, &obj, &mode, &compact, &auto_anchor))
         return NULL;
 
     int json_mode = (strcmp(mode, "json") == 0);
@@ -4353,8 +4354,8 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
         if (path == NULL)
             return NULL;
 
-        /* Create generic builder */
-        gb = fy_generic_builder_create(NULL);
+        /* Create generic builder (dedup when anchoring repeated values) */
+        gb = create_builder_with_config(auto_anchor, 64 * 1024);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
@@ -4367,6 +4368,8 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
 
         /* Determine emit flags based on options */
         emit_flags = FYOPEF_DISABLE_DIRECTORY;
+        if (auto_anchor)
+            emit_flags |= FYOPEF_AUTO_ANCHOR;
 
         if (json_mode) {
             emit_flags |= FYOPEF_MODE_JSON;
@@ -4425,6 +4428,10 @@ libfyaml_dump(PyObject *self, PyObject *args, PyObject *kwargs)
 
         tmp = PyBool_FromLong(json_mode);
         PyDict_SetItemString(dumps_kwargs, "json", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(auto_anchor);
+        PyDict_SetItemString(dumps_kwargs, "auto_anchor", tmp);
         Py_CLEAR(tmp);
 
         dumps_args = Py_BuildValue("(O)", obj);
@@ -4819,8 +4826,8 @@ libfyaml_dumps_all(PyObject *self FY_UNUSED, PyObject *args, PyObject *kwargs)
                                      &documents, &compact, &json_mode, &style, &auto_anchor))
         return NULL;
 
-    /* Create generic builder for emitting */
-    gb = fy_generic_builder_create(NULL);
+    /* Create generic builder for emitting (dedup when anchoring repeated values) */
+    gb = create_builder_with_config(auto_anchor, 64 * 1024);
     if (gb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
         return NULL;
@@ -4964,8 +4971,8 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
         if (path == NULL)
             return NULL;
 
-        /* Create generic builder for emitting */
-        gb = fy_generic_builder_create(NULL);
+        /* Create generic builder for emitting (dedup when anchoring repeated values) */
+        gb = create_builder_with_config(auto_anchor, 64 * 1024);
         if (gb == NULL) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create generic builder");
             return NULL;
@@ -5025,6 +5032,10 @@ libfyaml_dump_all(PyObject *self, PyObject *args, PyObject *kwargs)
 
         tmp = PyBool_FromLong(json_mode);
         PyDict_SetItemString(dumps_all_kwargs, "json", tmp);
+        Py_CLEAR(tmp);
+
+        tmp = PyBool_FromLong(auto_anchor);
+        PyDict_SetItemString(dumps_all_kwargs, "auto_anchor", tmp);
         Py_CLEAR(tmp);
 
         dumps_all_args = PyTuple_Pack(1, documents);
@@ -6003,7 +6014,7 @@ static PyMethodDef module_methods[] = {
     {"load", _PyCFunction_CAST(libfyaml_load), METH_VARARGS | METH_KEYWORDS,
      "Load YAML/JSON from file (path or file object)"},
     {"dump", _PyCFunction_CAST(libfyaml_dump), METH_VARARGS | METH_KEYWORDS,
-     "Dump Python object to file (path or file object)"},
+     "Dump Python object to file (auto_anchor=True emits anchors/aliases for repeated values)"},
     {"loads_all", _PyCFunction_CAST(libfyaml_loads_all), METH_VARARGS | METH_KEYWORDS,
      "Load multiple YAML/JSON documents from string"},
     {"load_all", _PyCFunction_CAST(libfyaml_load_all), METH_VARARGS | METH_KEYWORDS,
