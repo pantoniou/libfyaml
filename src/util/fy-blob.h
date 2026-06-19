@@ -14,37 +14,21 @@
 
 #include <string.h>
 #include <stdint.h>
-#ifdef HAVE_BYTESWAP_H
-#include <byteswap.h>
-#else
-#ifdef HAVE___BUILTIN_BSWAP16
-#define bswap_16(value) __builtin_bswap16(value)
-#else
-#define bswap_16(value) ((((value)&0xff) << 8) | ((value) >> 8))
-#endif
-
-#ifdef HAVE___BUILTIN_BSWAP32
-#define bswap_32(value) __builtin_bswap32(value)
-#else
-#define bswap_32(value)                                                                            \
-  (((uint32_t)bswap_16((uint16_t)((value)&0xffff)) << 16) |                                        \
-   (uint32_t)bswap_16((uint16_t)((value) >> 16)))
-#endif
-
-#ifdef HAVE___BUILTIN_BSWAP64
-#define bswap_64(value) __builtin_bswap64(value)
-#else
-#define bswap_64(value)                                                                            \
-  (((uint64_t)bswap_32((uint32_t)((value)&0xffffffff)) << 32) |                                    \
-   (uint64_t)bswap_32((uint32_t)((value) >> 32)))
-#endif
-#endif
-
 #include <stdbool.h>
 #include <time.h>
 
 #include "fy-utils.h"
 #include "fy-endian.h"
+
+#ifndef bswap_16
+#define bswap_16(value) fy_bswap16(value)
+#endif
+#ifndef bswap_32
+#define bswap_32(value) fy_bswap32(value)
+#endif
+#ifndef bswap_64
+#define bswap_64(value) fy_bswap64(value)
+#endif
 
 /* special unaligned types for pointer accesses */
 
