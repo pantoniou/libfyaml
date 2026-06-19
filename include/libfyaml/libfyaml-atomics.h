@@ -68,22 +68,26 @@ extern "C" {
  * and all ``fy_atomic_*`` macros delegate to them.
  *
  * C mode  : STDC version >= 201112L, GCC >= 4.9, Clang >= 3.6, MSVC >= 1928
- * C++ mode: Clang >= 3.6 (supports <stdatomic.h> and _Atomic as extensions),
- *           MSVC >= 1938 + C++23 (_MSVC_LANG >= 202302L): MSVC's <stdatomic.h>
- *           is a stub before C++23 (STL4038 warning) and _Atomic is not
- *           provided as an extension keyword, so older MSVC C++ modes cannot
- *           use it.  Build the test executables with /std:c++latest on MSVC.
+ * C++ mode: only when the active C++ standard is C++23 or later
+ *           (__cplusplus >= 202302L, or MSVC's _MSVC_LANG >= 202302L), since
+ *           that is the first standard version to officially mandate
+ *           <stdatomic.h>/<atomic> interoperability. Before C++23 this header
+ *           uses its own private (fy_priv_atomic_*) fallback implementation
+ *           instead, built on GCC/Clang statement-expression and __typeof__
+ *           extensions -- both compilers support these even pre-C++23.
  *
- *           GCC C++ intentionally excluded: it falls back to its own
- *           ({ }/__typeof__) extension macros instead, which is sufficient
- *           and avoids pulling <stdatomic.h> into C++ translation units on
- *           libstdc++ where the interaction is less well-tested.
- *           Clang must use <stdatomic.h> because libc++'s <atomic> declares
- *           functions named atomic_load/atomic_store/... that collide with
- *           the fallback macros when any C++ header transitively includes
- *           <atomic> (e.g. <optional>, <string_view> on libc++).
+ *           Mixing the two pre-C++23 is unsafe in general: some C++ standard
+ *           libraries (e.g. recent libc++ on Xcode 16 / macOS 15) now emit a
+ *           hard #error if <stdatomic.h> was already included when <atomic>
+ *           is processed (which can happen transitively, e.g. via <optional>
+ *           or <string_view>, in any C++ translation unit downstream of this
+ *           header). Before that hard error existed, this same combination
+ *           could instead silently collide on libc++ via unprefixed names
+ *           like atomic_load/atomic_store declared by <atomic> -- which is
+ *           why this header no longer defines its own fallback macros under
+ *           those bare names (see fy_priv_atomic_* below).
  *
- * The check is required only for _really_ old compilers
+ * The check is required only for _really_ old compilers in C mode.
  */
 #if !defined(__STDC__NO_ATOMICS__) && \
 	((!defined(__cplusplus) && \
@@ -92,7 +96,7 @@ extern "C" {
 	   (defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))) || \
 	   (defined(_MSC_VER) && _MSC_VER >= 1928))) || \
 	 (defined(__cplusplus) && \
-	  ((defined(__clang__) && (__clang_major__ > 3 || (__clang_major__ == 3 && __clang_minor__ >= 6))) || \
+	  ((__cplusplus >= 202302L) || \
 	   (defined(_MSC_VER) && _MSC_VER >= 1938 && \
 	    defined(_MSVC_LANG) && _MSVC_LANG >= 202302L))))
 #define FY_HAVE_STDATOMIC_H
