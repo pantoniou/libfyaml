@@ -1256,8 +1256,13 @@ foreach(blake3_target ${BLAKE3_TARGETS})
     target_sources(fyaml_static PRIVATE $<TARGET_OBJECTS:${blake3_target}>)
 endforeach()
 
+set(FYAML_STATIC_OUTPUT_NAME fyaml_static)
+if(BUILD_SHARED_LIBS AND NOT WIN32)
+    set(FYAML_STATIC_OUTPUT_NAME fyaml)
+endif()
+
 set_target_properties(fyaml_static PROPERTIES
-    OUTPUT_NAME $<IF:$<BOOL:${BUILD_SHARED_LIBS}>,fyaml,fyaml_static>
+    OUTPUT_NAME ${FYAML_STATIC_OUTPUT_NAME}
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Libraries"
 )
