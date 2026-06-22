@@ -1257,7 +1257,7 @@ foreach(blake3_target ${BLAKE3_TARGETS})
 endforeach()
 
 set_target_properties(fyaml_static PROPERTIES
-    OUTPUT_NAME fyaml
+    OUTPUT_NAME $<IF:$<BOOL:${BUILD_SHARED_LIBS}>,fyaml,fyaml_static>
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Libraries"
 )

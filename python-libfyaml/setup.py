@@ -276,11 +276,11 @@ class CustomBuildExt(build_ext):
 
         run_command(cmake_args)
         run_command(
-            ["cmake", "--build", str(build_dir), "--config", "Release", "--target", "fyaml_static"]
+            ["cmake", "--build", str(build_dir), "--config", "Release", "--target", "fyaml"]
         )
 
         static_library = build_dir / (
-            "fyaml_static.lib" if sys.platform == "win32" else "libfyaml_static.a"
+            "fyaml.lib" if sys.platform == "win32" else "libfyaml.a"
         )
         if not static_library.exists():
             raise RuntimeError(f"Bundled static library was not produced: {static_library}")
