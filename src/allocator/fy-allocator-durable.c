@@ -1291,7 +1291,7 @@ fy_durable_dedup_enable(struct fy_durable_allocator *da, struct fy_allocator *ba
 
 	memset(&dcfg, 0, sizeof(dcfg));
 	dcfg.parent_allocator = base;
-	dcfg.dedup_threshold = 16;
+	dcfg.dedup_threshold = 0;
 	dcfg.estimated_content_size = da->content.chunk_size;
 	if (da->separate_index) {
 		/* route the index structures to the separate index region (tag 1),
