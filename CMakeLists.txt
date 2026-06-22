@@ -1257,7 +1257,7 @@ foreach(blake3_target ${BLAKE3_TARGETS})
 endforeach()
 
 set_target_properties(fyaml_static PROPERTIES
-    OUTPUT_NAME fyaml_static
+    OUTPUT_NAME fyaml
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Libraries"
 )
@@ -1849,6 +1849,13 @@ install(TARGETS fyaml fy-tool
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+if(BUILD_SHARED_LIBS)
+    install(TARGETS fyaml_static
+        EXPORT libfyaml-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
 
 # Install sub-headers into <prefix>/include/libfyaml/
 install(FILES ${LIBHDRSPUB}
