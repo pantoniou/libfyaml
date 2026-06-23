@@ -54,8 +54,6 @@ struct fy_dedup_tag_data {
 	unsigned int bucket_count_mask;
 	size_t bucket_count;
 	FY_ATOMIC(struct fy_dedup_entry *) *buckets;
-	size_t bucket_id_count;
-	fy_id_bits *buckets_in_use;
 	size_t dedup_threshold;
 	unsigned int chain_length_grow_trigger;
 	FY_ATOMIC(uint32_t) in_flight_state;

@@ -587,8 +587,9 @@ struct fy_mremap_allocator_cfg {
  * @dedup_threshold: Number of bytes over which dedup takes place (default 0=always)
  * @chain_length_grow_trigger: Chain length of a bucket over which a grow takes place (or 0 for auto)
  * @estimated_content_size: Estimated content size (or 0 for don't know)
- * @minimum_bucket_occupancy: The minimum amount that a tag bucket must be full before
- * 			      growth is allowed (default 50%, or 0.0)
+ * @minimum_bucket_occupancy: Minimum bloom-filter fill ratio before a
+ * 			      chain-length-triggered grow is allowed (default 50%,
+ * 			      or 0.0 to grow on the trigger alone)
  */
 struct fy_dedup_allocator_cfg {
 	struct fy_allocator *parent_allocator;

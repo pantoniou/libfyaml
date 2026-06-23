@@ -21,7 +21,7 @@
 struct fy_dedup_tag;	/* in-arena dedup index anchor (fy-allocator-dedup.h) */
 
 /* on-disk format */
-#define FY_DURABLE_VERSION	3u
+#define FY_DURABLE_VERSION	4u
 #define FY_DURABLE_ENDIAN	0x12345678u
 
 /* persistent boot->flags bits (on-disk arena policy) */

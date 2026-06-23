@@ -173,7 +173,6 @@ static void fy_dedup_tag_data_cleanup(struct fy_dedup_allocator *da, struct fy_d
 {
 	fy_allocator_free(da->parent_allocator, entries_tag, (void *)dtd->buckets);
 	fy_allocator_free(da->parent_allocator, entries_tag, (void *)dtd->bloom_id);
-	fy_allocator_free(da->parent_allocator, entries_tag, (void *)dtd->buckets_in_use);
 }
 
 static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
@@ -235,14 +234,6 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
 	for (i = 0; i < dtd->bucket_count; i++)
 		atomic_store(&dtd->buckets[i], NULL);
 
-	dtd->bucket_id_count = (((size_t)1 << dtd->bucket_count_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
-	assert(dtd->bucket_id_count > 0);
-	tmpsz = dtd->bucket_id_count * sizeof(*dtd->buckets_in_use);
-	dtd->buckets_in_use = fy_allocator_alloc_nocheck(da->parent_allocator, entries_tag, tmpsz, _Alignof(fy_id_bits));
-	if (!dtd->buckets_in_use)
-		goto err_out;
-	fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
-
 	return 0;
 
 err_out:
@@ -268,9 +259,8 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 		fprintf(stderr, "%s: bloom count=%u used=%lu\n",
 				__func__, 1 << dtd->bloom_filter_bits,
 				fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count));
-		fprintf(stderr, "%s: bucket count=%u used=%lu\n",
-				__func__, 1 << dtd->bucket_count_bits,
-				fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count));
+		fprintf(stderr, "%s: bucket count=%u\n",
+				__func__, 1 << dtd->bucket_count_bits);
 #endif
 
 		/*
@@ -415,8 +405,8 @@ static int
 fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
-	size_t bucket_count, bucket_used;
 	struct fy_dedup_tag_data *dtd, *new_dtd = NULL, *expected_dtd;
+	size_t bloom_count, bloom_used;
 	float occupancy_ratio;
 	uint32_t in_flight;
 	bool swapped FY_DEBUG_UNUSED;	/* this is unused on non-debug builds */
@@ -438,18 +428,26 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		return -1;
 	}
 
-	bucket_count = (size_t)1 << dtd->bucket_count_bits;
-	bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
-	occupancy_ratio = (float)((double)bucket_used/(double)bucket_count);
-
-	/* do not grow until we're over 60% full */
-	if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
+	/*
+	 * The caller only reaches here on the chain-length trigger. When an
+	 * occupancy floor is configured, gate the actual resize on the
+	 * bloom-filter fill ratio: a long chain on a sparse table is just a hash
+	 * collision and growing would not help, so only grow once the bloom is at
+	 * least minimum_bucket_occupancy full. A zero floor grows on the trigger
+	 * alone (and skips the popcount).
+	 */
+	if (da->cfg.minimum_bucket_occupancy > 0.0f) {
+		bloom_count = (size_t)1 << dtd->bloom_filter_bits;
+		bloom_used = fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count);
+		occupancy_ratio = (float)((double)bloom_used / (double)bloom_count);
+		if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
 #ifdef DEBUG_GROWS
-		fprintf(stderr, "grow: abort due to less that %f%% full (is %f)\n",
-				100 * da->cfg.minimum_bucket_occupancy,
-				100 * occupancy_ratio);
+			fprintf(stderr, "grow: abort, bloom %2.2f%% < %2.2f%% full\n",
+					100.0 * occupancy_ratio, 100.0 * da->cfg.minimum_bucket_occupancy);
 #endif
-		goto out_ok;
+			rc = 0;
+			goto out;
+		}
 	}
 
 	new_dtd = fy_allocator_alloc_nocheck(da->parent_allocator, dt->entries_tag,
@@ -466,21 +464,19 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 #ifdef DEBUG_GROWS
 	{
 		size_t bloom_count, new_bloom_count, bloom_used;
-		size_t bucket_count, new_bucket_count, bucket_used;
+		size_t bucket_count, new_bucket_count;
 
 		bloom_count = 1U << dtd->bloom_filter_bits;
 		new_bloom_count = 1U << new_dtd->bloom_filter_bits;
 		bloom_used = fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count);
 		bucket_count = 1U << dtd->bucket_count_bits;
 		new_bucket_count = 1U << new_dtd->bucket_count_bits;
-		bucket_used = fy_id_count_used(dtd->buckets_in_use, dtd->bucket_id_count);
 
 		fprintf(stderr, "grow: chain_length_grow_trigger=%u->%u bloom %zu->%zu used %zu (%2.2f%%) ",
 				dtd->chain_length_grow_trigger, new_dtd->chain_length_grow_trigger,
 				bloom_count, new_bloom_count,
 				bloom_used, 100.0*(double)bloom_used/(double)bloom_count);
-		fprintf(stderr, "bucket %zu->%zu used %zu (%2.2f%%)\n", bucket_count, new_bucket_count,
-				bucket_used, 100.0*(double)bucket_used/(double)bucket_count);
+		fprintf(stderr, "bucket %zu->%zu\n", bucket_count, new_bucket_count);
 	}
 #endif
 
@@ -505,7 +501,6 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	swapped = fy_atomic_compare_exchange_strong(&dt->tag_datas, &expected_dtd, new_dtd);
 	assert(swapped);	/* @growing serializes resize; the swap is uncontested */
 
-out_ok:
 	rc = 0;
 out:
 	fy_atomic_flag_clear(&dt->growing);
@@ -566,7 +561,6 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
 		for (i = 0; i < dtd->bucket_count; i++)
 			atomic_store(&dtd->buckets[i], NULL);
-		fy_id_reset(dtd->buckets_in_use, dtd->bucket_id_count);
 		fy_atomic_store(&dt->tag_datas, dtd);
 	}
 }
@@ -1009,11 +1003,6 @@ int fy_dedup_index_relocate(const struct fy_arena_reloc *arenas, unsigned int nu
 		return -1;
 	dtd->bloom_id = p;
 
-	p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, dtd->buckets_in_use);
-	if (!p)
-		return -1;
-	dtd->buckets_in_use = p;
-
 	p = fy_arena_reloc_ptr(arenas, num_arenas, start, size, dtd->buckets);
 	if (!p)
 		return -1;
@@ -1312,8 +1301,7 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 			fy_iovec_copy_from(iov, iovcnt, de->mem);
 		}
 
-		/* Publish presence in the bloom / in-use bitmaps BEFORE linking */
-		fy_id_set_used(head0->buckets_in_use, head0->bucket_id_count, bucket_pos);
+		/* Publish presence in the bloom filter BEFORE linking */
 		fy_id_set_used(head0->bloom_id, head0->bloom_id_count, bloom_pos);
 
 		/* always update the next entry with it */
@@ -1753,7 +1741,6 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 	merged->bucket_count_bits = head->bucket_count_bits;
 	merged->bucket_count_mask = head->bucket_count_mask;
 	merged->bucket_count = head->bucket_count;
-	merged->bucket_id_count = head->bucket_id_count;
 	merged->dedup_threshold = head->dedup_threshold;
 	merged->chain_length_grow_trigger = head->chain_length_grow_trigger;
 
@@ -1761,13 +1748,10 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 			merged->bloom_id_count * sizeof(*merged->bloom_id), _Alignof(fy_id_bits));
 	merged->buckets = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
 			merged->bucket_count * sizeof(*merged->buckets), _Alignof(struct fy_dedup_entry *));
-	merged->buckets_in_use = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
-			merged->bucket_id_count * sizeof(*merged->buckets_in_use), _Alignof(fy_id_bits));
-	if (!merged->bloom_id || !merged->buckets || !merged->buckets_in_use)
+	if (!merged->bloom_id || !merged->buckets)
 		goto err_out;
 
 	fy_id_reset(merged->bloom_id, merged->bloom_id_count);
-	fy_id_reset(merged->buckets_in_use, merged->bucket_id_count);
 	for (b = 0; b < merged->bucket_count; b++)
 		fy_atomic_store(&merged->buckets[b], NULL);
 
@@ -1792,7 +1776,6 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 				bloom_pos = de->hash & merged->bloom_filter_mask;
 				nde->next = fy_atomic_load(&merged->buckets[bucket_pos]);
 				fy_atomic_store(&merged->buckets[bucket_pos], nde);
-				fy_id_set_used(merged->buckets_in_use, merged->bucket_id_count, (int)bucket_pos);
 				fy_id_set_used(merged->bloom_id, merged->bloom_id_count, (int)bloom_pos);
 			}
 		}
