@@ -769,9 +769,34 @@ END_TEST
 #define DCS_NTHREADS	16
 #define DCS_NPAYLOAD	8000
 
+/*
+ * The 16-thread/8000-payload defaults keep the normal run cheap. To make the
+ * dedup insert/grow race far more likely to surface (e.g. when hunting a flake),
+ * oversubscribe the scheduler and/or grow the table harder via env vars:
+ *   FY_TEST_DCS_THREADS   - worker count (default 16; try 128-512 to oversubscribe)
+ *   FY_TEST_DCS_PAYLOADS  - unique payloads per worker (default 8000; drives grows)
+ *   FY_TEST_DCS_ROUNDS    - repeat the concurrent phase N times (default 1)
+ */
+static int dcs_env_int(const char *name, int dflt, int lo, int hi)
+{
+	const char *s = getenv(name);
+	long v;
+	char *end;
+
+	if (!s || !*s)
+		return dflt;
+	v = strtol(s, &end, 10);
+	if (*end || v < lo)
+		return dflt;
+	if (v > hi)
+		v = hi;
+	return (int)v;
+}
+
 struct dcs_job {
 	struct fy_allocator *a;
 	int tag;
+	int npayload;
 	char (*payloads)[48];
 	const void **canon;	/* this thread's returned pointer per payload */
 	int fail;
@@ -782,7 +807,7 @@ static void dcs_worker(void *arg)
 	struct dcs_job *j = arg;
 	int i;
 
-	for (i = 0; i < DCS_NPAYLOAD; i++) {
+	for (i = 0; i < j->npayload; i++) {
 		size_t len = strlen(j->payloads[i]) + 1;
 		const void *p = fy_allocator_store(j->a, j->tag, j->payloads[i], len, 16);
 
@@ -805,13 +830,25 @@ START_TEST(allocator_dedup_concurrent_store)
 	struct fy_allocator *base, *d;
 	struct fy_thread_pool_cfg tpcfg;
 	struct fy_thread_pool *tp;
-	struct fy_thread *th[DCS_NTHREADS];
-	struct fy_thread_work work[DCS_NTHREADS];
-	struct dcs_job jobs[DCS_NTHREADS];
-	static char payloads[DCS_NPAYLOAD][48];
-	static const void *canon[DCS_NTHREADS][DCS_NPAYLOAD];
-	const void *ref[DCS_NPAYLOAD];
-	int k, i, tag;
+	struct fy_thread **th;
+	struct fy_thread_work *work;
+	struct dcs_job *jobs;
+	char (*payloads)[48];
+	const void **canon;	/* nthreads * npayload, row-major */
+	const void **ref;
+	int nthreads, npayload, rounds, r, k, i, tag, bad;
+
+	nthreads = dcs_env_int("FY_TEST_DCS_THREADS", DCS_NTHREADS, 1, 4096);
+	npayload = dcs_env_int("FY_TEST_DCS_PAYLOADS", DCS_NPAYLOAD, 1, 1 << 24);
+	rounds   = dcs_env_int("FY_TEST_DCS_ROUNDS", 1, 1, 1 << 20);
+
+	th = calloc(nthreads, sizeof(*th));
+	work = calloc(nthreads, sizeof(*work));
+	jobs = calloc(nthreads, sizeof(*jobs));
+	payloads = malloc((size_t)npayload * sizeof(*payloads));
+	canon = calloc((size_t)nthreads * npayload, sizeof(*canon));
+	ref = calloc(npayload, sizeof(*ref));
+	ck_assert(th && work && jobs && payloads && canon && ref);
 
 	base = fy_allocator_create("mremap", NULL);
 	ck_assert_ptr_ne(base, NULL);
@@ -826,66 +863,92 @@ START_TEST(allocator_dedup_concurrent_store)
 	tag = fy_allocator_get_tag(d);
 	ck_assert_int_ne(tag, -1);
 
-	for (i = 0; i < DCS_NPAYLOAD; i++)
+	for (i = 0; i < npayload; i++)
 		snprintf(payloads[i], sizeof(payloads[i]),
 			 "dedup-concurrent-payload-%010d", i);
 
 	memset(&tpcfg, 0, sizeof(tpcfg));
-	tpcfg.num_threads = DCS_NTHREADS;
+	tpcfg.num_threads = nthreads;
 	tp = fy_thread_pool_create(&tpcfg);
 	ck_assert_ptr_ne(tp, NULL);
 
-	for (k = 0; k < DCS_NTHREADS; k++) {
-		jobs[k].a = d;
-		jobs[k].tag = tag;
-		jobs[k].payloads = payloads;
-		jobs[k].canon = canon[k];
-		jobs[k].fail = 0;
-
+	for (k = 0; k < nthreads; k++) {
 		th[k] = fy_thread_reserve(tp);
 		ck_assert_ptr_ne(th[k], NULL);
-
-		work[k].fn = dcs_worker;
-		work[k].arg = &jobs[k];
-		work[k].wp = NULL;
-		ck_assert_int_eq(fy_thread_submit_work(th[k], &work[k]), 0);
 	}
-	for (k = 0; k < DCS_NTHREADS; k++) {
-		ck_assert_int_eq(fy_thread_wait_work(th[k]), 0);
-		fy_thread_unreserve(th[k]);
-	}
-
-	fy_thread_pool_destroy(tp);
-
-	/* no thread hit a NULL store (the crash) or a content mismatch */
-	for (k = 0; k < DCS_NTHREADS; k++)
-		ck_assert_int_eq(jobs[k].fail, 0);
 
 	/*
-	 * canonical identity: every thread that stored a given payload must have
-	 * received the identical pointer, even under the insert race.
+	 * Each round re-runs the concurrent store over the same payloads. Round 0
+	 * grows the table from empty (insert race); later rounds hammer the
+	 * lookup/insert race against a populated table. More rounds -> a wider
+	 * window for a scheduling-sensitive race to surface.
 	 */
-	int bad = 0;
-	for (i = 0; i < DCS_NPAYLOAD; i++) {
-		ref[i] = canon[0][i];
-		if (!ref[i])
-			bad++;
-		for (k = 1; k < DCS_NTHREADS; k++)
-			if (canon[k][i] != ref[i])
+	for (r = 0; r < rounds; r++) {
+		for (k = 0; k < nthreads; k++) {
+			jobs[k].a = d;
+			jobs[k].tag = tag;
+			jobs[k].npayload = npayload;
+			jobs[k].payloads = payloads;
+			jobs[k].canon = canon + (size_t)k * npayload;
+			jobs[k].fail = 0;
+
+			work[k].fn = dcs_worker;
+			work[k].arg = &jobs[k];
+			work[k].wp = NULL;
+			ck_assert_int_eq(fy_thread_submit_work(th[k], &work[k]), 0);
+		}
+		for (k = 0; k < nthreads; k++)
+			ck_assert_int_eq(fy_thread_wait_work(th[k]), 0);
+
+		/* no thread hit a NULL store (fail==1) or a content mismatch
+		 * (fail==2). Distinguish the two: fail==1 is an allocation failure
+		 * from the parent (memory pressure), fail==2 is corruption. */
+		{
+			int nullfail = 0, mismatchfail = 0;
+
+			for (k = 0; k < nthreads; k++) {
+				if (jobs[k].fail == 1)
+					nullfail++;
+				else if (jobs[k].fail == 2)
+					mismatchfail++;
+			}
+			if (nullfail || mismatchfail)
+				fprintf(stderr, "dcs round %d: null-store=%d content-mismatch=%d\n",
+					r, nullfail, mismatchfail);
+			ck_assert_int_eq(mismatchfail, 0);
+			ck_assert_int_eq(nullfail, 0);
+		}
+
+		/*
+		 * canonical identity: every thread that stored a given payload must
+		 * have received the identical pointer, even under the insert race.
+		 */
+		bad = 0;
+		for (i = 0; i < npayload; i++) {
+			ref[i] = canon[i];	/* thread 0, payload i */
+			if (!ref[i])
 				bad++;
+			for (k = 1; k < nthreads; k++)
+				if (canon[(size_t)k * npayload + i] != ref[i])
+					bad++;
+		}
+		ck_assert_int_eq(bad, 0);
 	}
-	ck_assert_int_eq(bad, 0);
+
+	for (k = 0; k < nthreads; k++)
+		fy_thread_unreserve(th[k]);
+	fy_thread_pool_destroy(tp);
 
 	/* distinct payloads -> distinct pointers, and a serial re-store still
 	 * dedups to the same canonical pointer */
 	bad = 0;
-	for (i = 1; i < DCS_NPAYLOAD; i++)
+	for (i = 1; i < npayload; i++)
 		if (ref[i] == ref[i - 1])
 			bad++;
 	ck_assert_int_eq(bad, 0);
 
 	bad = 0;
-	for (i = 0; i < DCS_NPAYLOAD; i++) {
+	for (i = 0; i < npayload; i++) {
 		size_t len = strlen(payloads[i]) + 1;
 		const void *p = fy_allocator_store(d, tag, payloads[i], len, 16);
 		if (p != ref[i])
@@ -895,6 +958,13 @@ START_TEST(allocator_dedup_concurrent_store)
 
 	fy_allocator_destroy(d);
 	fy_allocator_destroy(base);
+
+	free(ref);
+	free(canon);
+	free(payloads);
+	free(jobs);
+	free(work);
+	free(th);
 }
 END_TEST
 
