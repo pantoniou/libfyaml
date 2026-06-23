@@ -511,34 +511,42 @@ create_arena:
 	/* it's a relatively small allocation, try to resize until we fit */
 	if (!mra->big_alloc_threshold || size < mra->big_alloc_threshold) {
 
-		do {
-			/* increase by the ratio until we're over */
-			old_next_arena_sz = fy_atomic_load(&mrt->next_arena_sz);
-			next_arena_sz = old_next_arena_sz;
-			while (fy_mremap_useable_arena_size(mra, next_arena_sz) < size) {
-				next_sz = (size_t)(next_arena_sz * mra->grow_ratio);
-
-				/* very very unlikely */
-				if (next_sz <= next_arena_sz)
-					goto err_out;
-
-				next_arena_sz = next_sz;
-			}
-
-			/* update to the next possible arena size */
+		/* grow the hint until we can hold the allocation */
+		old_next_arena_sz = fy_atomic_load(&mrt->next_arena_sz);
+		next_arena_sz = old_next_arena_sz;
+		while (fy_mremap_useable_arena_size(mra, next_arena_sz) < size) {
 			next_sz = (size_t)(next_arena_sz * mra->grow_ratio);
-			if (next_sz > next_arena_sz)
-				next_arena_sz = next_sz;
 
-		} while (!fy_atomic_compare_exchange_strong(&mrt->next_arena_sz,
-					&old_next_arena_sz, next_arena_sz));
+			/* very very unlikely */
+			if (next_sz <= next_arena_sz)
+				goto err_out;
+
+			next_arena_sz = next_sz;
+		}
+
+		/* advance the shared hint by a single ratio step.
+		 * If we fail the CAS it's fine, someone else beat us to it
+		 */
+		next_sz = (size_t)(next_arena_sz * mra->grow_ratio);
+		if (next_sz > next_arena_sz)
+			(void)fy_atomic_compare_exchange_strong(&mrt->next_arena_sz,
+						&old_next_arena_sz, next_sz);
 	} else
 		next_arena_sz = size;	/* something big, just use it as is */
 
-	/* all failed, just new */
-	mran = fy_mremap_arena_create(mra, mrt, next_arena_sz);
-	if (!mran)
-		goto err_out;
+	/* create the arena; if we can't create it keep trying until we
+	 * are at minimum size. Then failure is true OOM
+	 */
+	for (;;) {
+		mran = fy_mremap_arena_create(mra, mrt, next_arena_sz);
+		if (mran)
+			break;
+		if (next_arena_sz <= size)
+			goto err_out;	/* cannot map even a minimal arena: OOM */
+		next_arena_sz /= 2;
+		if (next_arena_sz < size)
+			next_arena_sz = size;
+	}
 
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "allocated new %p mran->size=%zu size=%zu\n", mran, mran->size, size);
