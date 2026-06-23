@@ -3967,7 +3967,7 @@ START_TEST(get_at_path)
 			buf, sizeof(buf));
 	ck_assert_ptr_ne(gb, NULL);
 
-	/* Test 1: fy_local_lookup with sequence */
+	/* Test 1: fy_local_get_at_path with sequence */
 	seq = fy_local_sequence(10, 20, 30, 40, 50);
 	fy_generic_emit_default(seq);
 	v = fy_local_get_at_path(seq, 2);  /* index 2 -> value 30 */
@@ -3975,7 +3975,7 @@ START_TEST(get_at_path)
 	printf("> fy_local_get_at_path(seq, 2) = 30\n");
 	fy_generic_emit_default(v);
 
-	/* Test 2: fy_local_lookup with mapping */
+	/* Test 2: fy_local_get_at_path with mapping */
 	map = fy_local_mapping("a", 1, "b", 2, "c", 3);
 	fy_generic_emit_default(map);
 	v = fy_local_get_at_path(map, "b");  /* key "b" -> value 2 */
@@ -3983,32 +3983,32 @@ START_TEST(get_at_path)
 	printf("> fy_local_get_at_path(map, \"b\") = 2\n");
 	fy_generic_emit_default(v);
 
-	/* Test 3: fy_local_lookup with nested path */
+	/* Test 3: fy_local_get_at_path with nested path */
 	seq = fy_local_sequence(10, 20, 30);
 	nested_map = fy_local_mapping("data", seq, "name", "test");
 	v = fy_local_get_at_path(nested_map, "data", 1);  /* nested_map["data"][1] -> 20 */
 	ck_assert(fy_cast(v, -1) == 20);
 	printf("> fy_local_get_at_path(nested_map, \"data\", 1) = 20\n");
 
-	/* Test 4: fy_gb_lookup with sequence */
+	/* Test 4: fy_gb_get_at_path with sequence */
 	seq = fy_gb_sequence(gb, 100, 200, 300);
 	v = fy_gb_get_at_path(gb, seq, 1);  /* index 1 -> value 200 */
 	ck_assert(fy_cast(v, -1) == 200);
 	printf("> fy_gb_get_at_path(gb, seq, 1) = 200\n");
 
-	/* Test 5: fy_gb_lookup with mapping */
+	/* Test 5: fy_gb_get_at_path with mapping */
 	map = fy_gb_mapping(gb, "x", 10, "y", 20, "z", 30);
 	v = fy_gb_get_at_path(gb, map, "z");  /* key "z" -> value 30 */
 	ck_assert(fy_cast(v, -1) == 30);
 	printf("> fy_gb_get_at_path(gb, map, \"z\") = 30\n");
 
-	/* Test 6: fy_lookup auto-detection (local) */
+	/* Test 6: fy_local_get_at_path auto-detection (local) */
 	seq = fy_local_sequence(5, 15, 25);
 	v = fy_local_get_at_path(seq, 2);  /* local, index 2 -> value 25 */
 	ck_assert(fy_cast(v, -1) == 25);
 	printf("> fy_local_get_at_path(seq, 2) = 25 [local]\n");
 
-	/* Test 7: fy_lookup auto-detection (builder) */
+	/* Test 7: fy_local_get_at_path auto-detection (builder) */
 	map = fy_gb_mapping(gb, "p", 7, "q", 8, "r", 9);
 	v = fy_gb_get_at_path(gb, map, "q");  /* builder, key "q" -> value 8 */
 	ck_assert(fy_cast(v, -1) == 8);
@@ -4019,12 +4019,30 @@ START_TEST(get_at_path)
 	v = fy_local_get_at_path(seq, "not_an_index");  /* wrong type for sequence */
 	fy_generic_emit_default(v);
 	ck_assert(!fy_generic_is_valid(v));
-	printf("> fy_local_lookup with wrong type returns fy_invalid\n");
+	printf("> fy_local_get_at_path with wrong type returns fy_invalid\n");
 
 	/* Test 9: out of bounds get at returns fy_invalid */
 	v = fy_local_get_at_path(seq, 99);  /* index out of bounds */
 	ck_assert(!fy_generic_is_valid(v));
-	printf("> fy_local_lookup out of bounds returns fy_invalid\n");
+	printf("> fy_local_get_at_path out of bounds returns fy_invalid\n");
+
+	/* Test 10: fy_get_at_path with sequence */
+	seq = fy_sequence(100, 200, 300);
+	v = fy_get_at_path(seq, 1);  /* index 1 -> value 200 */
+	ck_assert(fy_cast(v, -1) == 200);
+	printf("> fy_get_at_path(gb, seq, 1) = 200\n");
+
+	/* Test 11: fy_get_at_path with sequence and builder */
+	seq = fy_gb_sequence(gb, 100, 200, 300);
+	v = fy_get_at_path(gb, seq, 1);  /* index 1 -> value 200 */
+	ck_assert(fy_cast(v, -1) == 200);
+	printf("> fy_get_at_path(gb, seq, 1) = 200\n");
+
+	/* Test 12: fy_get_at_path with mapping */
+	map = fy_mapping("x", 10, "y", 20, "z", 30);
+	v = fy_get_at_path(map, "z");  /* key "z" -> value 30 */
+	ck_assert(fy_cast(v, -1) == 30);
+	printf("> fy_gb_get_at_path(gb, map, \"z\") = 30\n");
 }
 END_TEST
 

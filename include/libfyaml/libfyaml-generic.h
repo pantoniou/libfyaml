@@ -9781,9 +9781,6 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		FY_LOCAL_OP(FYGBOPF_GET_AT_PATH, __fy_in, _count, _items); \
 	})
 
-/* fy_get_at_path() - Traverse nested path; dispatches to fy_gb_get_at_path or fy_local_get_at_path */
-#define fy_get_at_path(...) (FY_CPP_THIRD(__VA_ARGS__, fy_gb_get_at_path, fy_local_get_at_path)(__VA_ARGS__))
-
 /* fy_gb_set() - Update key/value pair(s) in @_col */
 #define fy_gb_set(_gb, _col, ...) \
 	(fy_generic_op((_gb), \
@@ -10759,6 +10756,10 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 /* fy_set_at_path() - Set a value at a dot-separated path, creating intermediate mappings; optional leading builder */
 #define fy_set_at_path(_first, ...) \
 	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+/* fy_get_at_path() - Get a value at a dot-separated path; optional leading builder */
+#define fy_get_at_path(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_GET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
 
 /* fy_parse() - Parse YAML/JSON text into a generic; dispatches to fy_gb_parse or fy_local_parse */
 #define fy_parse(...) \
