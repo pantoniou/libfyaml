@@ -39,6 +39,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <libfyaml.h>
 
 #include "fy-check.h"
+#include "fy-allocator.h"	/* fy_allocator_get_parent: reach the durable under the dedup wrapper */
 
 #ifdef HAVE_GENERIC
 #include <libfyaml/libfyaml-generic.h>
@@ -1202,6 +1203,80 @@ START_TEST(durable_separate_index_basic)
 END_TEST
 
 /*
+ * The dedup index *structures* (bucket head-pointer array, bloom-filter bits and
+ * bucket-occupancy bits, plus the tag_data headers) must live in the index
+ * region, not the content region. The content region must hold only the
+ * deduped payloads. We verify this by byte accounting: durable get_info routes
+ * a tag to its region (tag 0 -> content, tag 1 -> index), so the per-tag used
+ * bytes tell us exactly what landed where.
+ *
+ * Many small unique payloads make the structural arrays a large fraction of the
+ * index: if any of them leaked into content, content_used would balloon well
+ * past the raw payload total. (Regression guard: before the index-tag routing
+ * fix the bucket/bloom/occupancy arrays were allocated from the content tag.)
+ */
+START_TEST(durable_separate_index_structures_in_index)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	struct fy_allocator_usage cu, iu;
+	const int K = 30000;
+	size_t payload_total = 0;
+	int i, bad_dedup = 0;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	da = open_test_arena_sep(dir, TEST_REGION_BASE, TEST_INDEX_REGION_BASE,
+				 FY_DURABLE_ARENA_DEDUP | FY_DURABLE_ARENA_SEPARATE_INDEX);
+	if (!da) {	/* a base was unavailable in the sandbox: soft-skip */
+		rm_rf(dir);
+		return;
+	}
+	a = da;
+
+	for (i = 0; i < K; i++) {
+		unsigned char pl[8];
+		const void *p, *q;
+
+		/* 8-byte unique payload (no alignment waste at align 8) */
+		memcpy(pl, &i, sizeof(i));
+		memcpy(pl + 4, &i, sizeof(i));
+
+		p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, sizeof(pl), 8);
+		q = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, sizeof(pl), 8);
+		if (!p || q != p)
+			bad_dedup++;
+		else
+			payload_total += sizeof(pl);
+	}
+	ck_assert_int_eq(bad_dedup, 0);
+
+	/* The DEDUP arena is returned as a dedup wrapper; query the underlying
+	 * durable, whose get_info routes a tag to its region:
+	 * tag 0 -> content region, tag 1 -> index region. */
+	a = fy_allocator_get_parent(a);
+	ck_assert_ptr_ne(a, NULL);
+	ck_assert_int_eq(fy_allocator_get_usage(a, FY_ALLOC_TAG_DEFAULT, &cu), 0);
+	ck_assert_int_eq(fy_allocator_get_usage(a, 1, &iu), 0);
+
+	/* content holds only payloads: used must stay close to the payload total.
+	 * The structural arrays (hundreds of KiB here) would push it far past this
+	 * bound if they leaked into content. */
+	ck_assert_uint_ge(cu.used, payload_total);
+	ck_assert_uint_lt(cu.used, payload_total * 2);
+
+	/* the index region carries the entries plus the structural arrays, so it is
+	 * substantial and (with tiny payloads) dwarfs the content region. */
+	ck_assert_uint_gt(iu.used, payload_total);
+	ck_assert_uint_gt(iu.used, cu.used);
+
+	fy_allocator_sync(da);
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
+/*
  * The default (combined) layout is unchanged: no index region, no index-N.bin,
  * and the index colocates with content.
  */
@@ -1305,8 +1380,10 @@ START_TEST(durable_separate_index_grow)
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
-	/* a deliberately tiny index chunk so the index series grows on its own
-	 * after only a few thousand entries, independently of content growth */
+	/* a small index chunk so the index series grows on its own after only a
+	 * few thousand entries, independently of content growth. It must still be
+	 * large enough to hold a single growing bucket-array layer (the dedup
+	 * head pointers, bloom and occupancy bitmaps all live in the index now). */
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.dir = dir;
 	cfg.region_base = TEST_REGION_BASE;
@@ -1314,7 +1391,7 @@ START_TEST(durable_separate_index_grow)
 	cfg.chunk_size = TEST_CHUNK_SIZE;
 	cfg.index_region_base = TEST_INDEX_REGION_BASE;
 	cfg.index_region_size = TEST_INDEX_REGION_SIZE;
-	cfg.index_chunk_size = 0x10000;	/* 64 KiB */
+	cfg.index_chunk_size = 0x100000;	/* 1 MiB */
 	cfg.flags = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_DEDUP |
 		    FY_DURABLE_ARENA_SEPARATE_INDEX;
 	da = fy_allocator_create("durable", &cfg);
@@ -2032,6 +2109,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, refs_checkpoint_crash);
 	fy_check_testcase_add_test(ctc, refs_cas_contention);
 	fy_check_testcase_add_test(ctc, durable_separate_index_basic);
+	fy_check_testcase_add_test(ctc, durable_separate_index_structures_in_index);
 	fy_check_testcase_add_test(ctc, durable_combined_no_index);
 	fy_check_testcase_add_test(ctc, durable_separate_index_cross_session);
 	fy_check_testcase_add_test(ctc, durable_separate_index_grow);
