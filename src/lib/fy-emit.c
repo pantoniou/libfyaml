@@ -16,6 +16,11 @@
 #include <limits.h>
 #include <ctype.h>
 #include <errno.h>
+#ifndef _WIN32
+#include <unistd.h>	/* isatty, STDOUT_FILENO, STDERR_FILENO */
+#endif
+
+#include "fy-picolibc.h"	/* isatty()/STD*_FILENO shims on picolibc */
 
 #include <libfyaml.h>
 
