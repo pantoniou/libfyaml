@@ -9844,7 +9844,9 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 
 /* FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE - Maximum stack-buffer size tried by FY_LOCAL_OP before giving up */
+#ifndef FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE
 #define FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE	65536
+#endif
 
 /**
  * FY_LOCAL_OP() - Execute a generic operation using a stack-allocated (alloca) builder.
