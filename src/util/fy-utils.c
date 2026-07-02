@@ -1557,15 +1557,40 @@ char *fy_mkdtemp(char *tmpl)
 
 /*
  * Well-separated high canonical-VA bases for large fixed-base mmap regions.
- * The addresses live in a free part of the 64-bit user address space on
- * Linux/macOS; on a 32-bit target there is no room for a multi-GiB fixed
- * reservation, so 0 ("unsupported") is returned. The 4 TiB stride keeps
- * successive regions clear of each other for any practical region size.
+ *
+ * The default is chosen from address ranges that are normal application memory
+ * under AddressSanitizer, not shadow memory or shadow gaps. In LLVM
+ * compiler-rt's asan_mapping.h:
+ *
+ *   Linux/x86_64:
+ *     HighMem     [0x10007fff8000, 0x7fffffffffff]
+ *     HighShadow  [0x02008fff7000, 0x10007fff7fff]
+ *
+ *   Linux/AArch64, 48-bit VMA:
+ *     HighMem     [0x201000000000, 0xffffffffffff]
+ *     HighShadow  [0x041200000000, 0x200fffffffff]
+ *
+ *   macOS/x86_64:
+ *     HighMem starts at 0x200000000000 with ASAN shadow offset
+ *     0x100000000000.
+ *
+ * 0x201000000000 is therefore mutually usable by the supported targets:
+ * Linux/x86_64, Linux/AArch64 with 48-bit-or-larger userspace VA, and
+ * macOS/x86_64. It is intentionally not suitable for AArch64 39/42-bit VMA,
+ * whose user address spaces are too small to overlap x86_64 ASAN HighMem.
+ *
+ * ASAN's allocator may still reserve dynamic HighMem ranges, so callers that
+ * require stronger guarantees should reserve their chosen range early.
+ * Unsupported OS/architecture targets, including macOS/arm64 until its ASAN
+ * range is pinned here, return 0. The 4 TiB stride keeps successive regions
+ * clear of each other for any practical region size.
  */
 uint64_t fy_default_fixed_vm_base(unsigned int region)
 {
-#if UINTPTR_MAX > 0xffffffffULL
-	return 0x500000000000ULL + (uint64_t)region * 0x040000000000ULL;
+#if (defined(__linux__) || defined(__APPLE__)) && defined(__x86_64__)
+	return 0x201000000000ULL + (uint64_t)region * 0x040000000000ULL;
+#elif defined(__linux__) && defined(__aarch64__)
+	return 0x201000000000ULL + (uint64_t)region * 0x040000000000ULL;
 #else
 	(void)region;
 	return 0;
