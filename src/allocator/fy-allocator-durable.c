@@ -40,10 +40,6 @@ static const uint8_t fy_durable_boot_magic[8] = {
 	'O', 'B', 'A', 'R', 'U', 'D', 'F', 'Y'
 };
 
-#ifndef MAP_FIXED_NOREPLACE
-#define MAP_FIXED_NOREPLACE 0
-#endif
-
 static inline void *fy_durable_chunk_base(struct fy_durable_region *rg, uint64_t gen)
 {
 	return (char *)rg->region + (gen << rg->chunk_shift);
@@ -104,9 +100,9 @@ static int fy_durable_map_chunk_file(struct fy_durable_allocator *da,
 	if (fd < 0)
 		return -1;
 
-	mem = mmap(base, rg->chunk_size,
-		   da->read_only ? PROT_READ : PROT_READ | PROT_WRITE,
-		   MAP_SHARED | MAP_FIXED, fd, 0);
+	mem = fy_mmap(base, rg->chunk_size,
+		      da->read_only ? PROT_READ : PROT_READ | PROT_WRITE,
+		      FY_MMAP_SHARED | FY_MMAP_FIXED, fd, 0);
 	close(fd);
 	/* not only it must not fail, it must use the provided address */
 	if (mem == MAP_FAILED)
@@ -114,7 +110,7 @@ static int fy_durable_map_chunk_file(struct fy_durable_allocator *da,
 
 	if (mem != base) {
 		/* unmap this */
-		munmap(mem, rg->chunk_size);
+		fy_munmap(mem, rg->chunk_size);
 		return -1;
 	}
 
@@ -297,8 +293,8 @@ static void fy_durable_init_chunk_hdr(struct fy_durable_region *rg,
 /* re-reserve a slot as PROT_NONE (loser cleanup / bad chunk) */
 static void fy_durable_unmap_to_reserved(struct fy_durable_region *rg, uint64_t gen)
 {
-	void *p = mmap(fy_durable_chunk_base(rg, gen), rg->chunk_size, PROT_NONE,
-		       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+	void *p = fy_mmap(fy_durable_chunk_base(rg, gen), rg->chunk_size, PROT_NONE,
+			  FY_MMAP_ANON | FY_MMAP_FIXED | FY_MMAP_NORESERVE, -1, 0);
 	(void)p;	/* best-effort slot re-reservation */
 }
 
@@ -327,15 +323,15 @@ static int fy_durable_make_chunk(struct fy_durable_allocator *da,
 		goto err_out;
 
 	base = fy_durable_chunk_base(rg, gen);
-	mem = mmap(base, rg->chunk_size, PROT_READ | PROT_WRITE,
-		   MAP_SHARED | MAP_FIXED, fd, 0);
+	mem = fy_mmap(base, rg->chunk_size, PROT_READ | PROT_WRITE,
+		      FY_MMAP_SHARED | FY_MMAP_FIXED, fd, 0);
 	close(fd);
 	fd = -1;
 	if (mem == MAP_FAILED)
 		goto err_out;
 
 	if (mem != base) {
-		munmap(mem, rg->chunk_size);
+		fy_munmap(mem, rg->chunk_size);
 		goto err_out;
 	}
 
@@ -545,13 +541,13 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg)
 {
 	void *p;
 
-	p = mmap((void *)(uintptr_t)rg->region_base, rg->region_size, PROT_NONE,
-		 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE,
-		 -1, 0);
+	p = fy_mmap((void *)(uintptr_t)rg->region_base, rg->region_size, PROT_NONE,
+		    FY_MMAP_ANON | FY_MMAP_FIXED_NOREPLACE | FY_MMAP_NORESERVE,
+		    -1, 0);
 	if (p == MAP_FAILED)
 		return -1;
 	if (p != (void *)(uintptr_t)rg->region_base) {
-		munmap(p, rg->region_size);
+		fy_munmap(p, rg->region_size);
 		fprintf(stderr,
 			"libfyaml durable arena: region base 0x%llx (%s) is unavailable "
 			"(got %p); reconfigure the base\n",
@@ -672,8 +668,8 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 		goto err_out;
 
 	base = (void *)(uintptr_t)rg->region_base;
-	mem = mmap(base, rg->chunk_size, PROT_READ | PROT_WRITE,
-		   MAP_SHARED | MAP_FIXED, fd, 0);
+	mem = fy_mmap(base, rg->chunk_size, PROT_READ | PROT_WRITE,
+		      FY_MMAP_SHARED | FY_MMAP_FIXED, fd, 0);
 	close(fd);
 	fd = -1;
 	if (mem == MAP_FAILED)
@@ -681,7 +677,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 
 	/* base must match */
 	if (mem != base) {
-		munmap(mem, rg->chunk_size);
+		fy_munmap(mem, rg->chunk_size);
 		goto err_out;
 	}
 
@@ -915,13 +911,13 @@ static void fy_durable_region_cleanup(struct fy_durable_region *rg)
 	if (rg->chunks) {
 		for (i = 0; i < rg->max_chunks; i++) {
 			if (fy_atomic_load(&rg->chunks[i]))
-				munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+				fy_munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
 		}
 		free(rg->chunks);
 		rg->chunks = NULL;
 	}
 	if (rg->region) {
-		munmap(rg->region, rg->region_size);
+		fy_munmap(rg->region, rg->region_size);
 		rg->region = NULL;
 	}
 }
@@ -1491,7 +1487,7 @@ static int fy_durable_probe_boot(const char *dir, struct fy_durable_boot *out)
 	fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
 		return -1;
-	p = mmap(NULL, sizeof(*b), PROT_READ, MAP_PRIVATE, fd, 0);
+	p = fy_mmap(NULL, sizeof(*b), PROT_READ, 0, fd, 0);
 	close(fd);
 	if (p == MAP_FAILED)
 		return -1;
@@ -1501,7 +1497,7 @@ static int fy_durable_probe_boot(const char *dir, struct fy_durable_boot *out)
 		*out = *b;
 		rc = 0;
 	}
-	munmap(p, sizeof(*b));
+	fy_munmap(p, sizeof(*b));
 	return rc;
 }
 
@@ -2085,7 +2081,7 @@ static void fy_durable_prune_chunks_after(struct fy_durable_allocator *da,
 	for (i = max_gen + 1; i < total_gen && i < rg->max_chunks; i++) {
 		hdr = fy_atomic_load(&rg->chunks[i]);
 		if (hdr) {
-			munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+			fy_munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
 			fy_atomic_store(&rg->chunks[i], NULL);
 			fy_durable_unmap_to_reserved(rg, i);
 		}

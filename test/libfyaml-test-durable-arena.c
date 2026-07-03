@@ -31,11 +31,6 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 
 #include <check.h>
 
-/* not present on macOS; a plain hinted mmap there has no-clobber semantics */
-#ifndef MAP_FIXED_NOREPLACE
-#define MAP_FIXED_NOREPLACE 0
-#endif
-
 #include <libfyaml.h>
 
 #include "fy-check.h"
@@ -433,12 +428,13 @@ START_TEST(durable_base_conflict)
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	/* occupy the chosen base so the reservation must fail */
-	occupy = mmap((void *)(uintptr_t)base, TEST_CHUNK_SIZE, PROT_NONE,
-		      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE, -1, 0);
+	occupy = fy_mmap((void *)(uintptr_t)base, TEST_CHUNK_SIZE, PROT_NONE,
+			 FY_MMAP_ANON | FY_MMAP_FIXED_NOREPLACE | FY_MMAP_NORESERVE,
+			 -1, 0);
 	if (occupy != (void *)(uintptr_t)base) {
 		/* couldn't even occupy it; environmental, soft-skip */
 		if (occupy != MAP_FAILED)
-			munmap(occupy, TEST_CHUNK_SIZE);
+			fy_munmap(occupy, TEST_CHUNK_SIZE);
 		rm_rf(dir);
 		return;
 	}
@@ -446,7 +442,7 @@ START_TEST(durable_base_conflict)
 	da = open_test_arena(dir, base, 0);
 	ck_assert_ptr_eq(da, NULL);	/* must fail gracefully, no crash, no reloc */
 
-	munmap(occupy, TEST_CHUNK_SIZE);
+	fy_munmap(occupy, TEST_CHUNK_SIZE);
 	rm_rf(dir);
 }
 END_TEST
