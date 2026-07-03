@@ -76,6 +76,7 @@ extern "C" {
  * (macros and constants).
  */
 
+#include <libfyaml/libfyaml-cpp.h>
 #include <libfyaml/libfyaml-util.h>
 #include <libfyaml/libfyaml-core.h>
 #include <libfyaml/libfyaml-path-exec.h>

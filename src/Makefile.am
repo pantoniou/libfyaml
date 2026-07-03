@@ -203,6 +203,7 @@ include_HEADERS = \
 
 libfyamldir = $(includedir)/libfyaml
 libfyaml_HEADERS = \
+	$(top_srcdir)/include/libfyaml/libfyaml-cpp.h \
 	$(top_srcdir)/include/libfyaml/libfyaml-util.h \
 	$(top_srcdir)/include/libfyaml/libfyaml-core.h \
 	$(top_srcdir)/include/libfyaml/libfyaml-path-exec.h \
