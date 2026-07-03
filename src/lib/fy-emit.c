@@ -2040,13 +2040,6 @@ fy_emit_token_is_null_scalar(struct fy_emitter *emit FY_UNUSED,
 }
 
 static inline bool
-fy_emit_token_is_size0(struct fy_emitter *emit FY_UNUSED,
-		       struct fy_token *fyt)
-{
-	return !fyt || fy_token_atom(fyt)->size0;
-}
-
-static inline bool
 fy_emit_token_is_json_plain(struct fy_emitter *emit, struct fy_token *fyt)
 {
 	struct fy_atom *atom;
