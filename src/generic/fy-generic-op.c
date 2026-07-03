@@ -3689,9 +3689,16 @@ fy_generic_op_convert(const struct fy_generic_op_desc *desc FY_UNUSED,
 	/* same type? we're done */
 	in_type = fy_generic_get_type(in);
 	if (in_type == args->convert.type) {
-		/* but we have to strip out the indirect value */
-		out = !fy_generic_is_indirect(in) ? in : fy_generic_indirect_get_value(in);
-		goto out;
+		/*
+		 * Pure pass-through, no internalize: the caller already owns
+		 * @in, so the result lives at least as long as the input.
+		 * Internalizing here is not just pointless - it can fail for
+		 * values larger than the builder (the local-op stack builder
+		 * is capped), silently degrading a valid convert to
+		 * fy_invalid. Only the indirect wrapper is stripped.
+		 */
+		return !fy_generic_is_indirect(in) ? in :
+			fy_generic_indirect_get_value(in);
 	}
 
 	switch (args->convert.type) {
