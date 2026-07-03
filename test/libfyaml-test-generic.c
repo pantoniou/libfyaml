@@ -134,6 +134,99 @@ START_TEST(generic_basics)
 }
 END_TEST
 
+/* Test: variadic constructor macros at high arity and deep nesting.
+ *
+ * The fy_sequence()/fy_mapping() macro machinery historically exhausted
+ * clang's source-location space on wide or nested literals; this exercises
+ * the worst shapes (64-element sequences, 32-pair mappings, 3-deep nesting,
+ * both local and builder paths) and verifies the produced values.
+ */
+START_TEST(generic_macro_stress)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic v, inner;
+	fy_generic_sequence_handle seqh;
+	fy_generic_mapping_handle maph;
+	unsigned int i;
+	int bad;
+
+	/* 64-element local sequence (maximum supported arity) */
+	v = fy_sequence(
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+		33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+		49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64);
+	ck_assert(fy_generic_is_sequence(v));
+	seqh = fy_cast(v, fy_seq_handle_null);
+	ck_assert_ptr_ne(seqh, NULL);
+	ck_assert_uint_eq(fy_len(seqh), 64);
+	bad = 0;
+	for (i = 0; i < 64; i++)
+		bad += fy_cast(seqh->items[i], -1) != (int)(i + 1);
+	ck_assert_int_eq(bad, 0);
+
+	/* 8-pair local mapping with mixed scalar types */
+	v = fy_mapping(
+		"k1", 1, "k2", 2.5, "k3", "three", "k4", true,
+		"k5", 5, "k6", "six", "k7", 7.5, "k8", false);
+	ck_assert(fy_generic_is_mapping(v));
+	maph = fy_cast(v, fy_map_handle_null);
+	ck_assert_ptr_ne(maph, NULL);
+	ck_assert_uint_eq(fy_len(maph), 8);
+	ck_assert_int_eq(fy_generic_mapping_get_default(v, "k1", -1), 1);
+	ck_assert(!strcmp(fy_generic_mapping_get_default(v, "k3", ""), "three"));
+	ck_assert(fy_generic_mapping_get_default(v, "k4", false));
+
+	/* 3-deep nested local literal */
+	v = fy_mapping(
+		"config", fy_mapping(
+			"listen", fy_sequence(
+				fy_mapping("host", "localhost", "port", 8080),
+				fy_mapping("host", "0.0.0.0", "port", 9090)),
+			"debug", true),
+		"names", fy_sequence("a", "b", fy_sequence("c", "d")));
+	ck_assert(fy_generic_is_mapping(v));
+	inner = fy_get_at_path(v, "config", "listen", 1, "port");
+	ck_assert_int_eq(fy_cast(inner, -1), 9090);
+	inner = fy_get_at_path(v, "names", 2, 1);
+	ck_assert(!strcmp(fy_cast(inner, ""), "d"));
+
+	/* builder path: wide and nested */
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert(gb != NULL);
+
+	v = fy_sequence(gb,
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
+	ck_assert(fy_generic_is_sequence(v));
+	seqh = fy_cast(v, fy_seq_handle_null);
+	ck_assert_ptr_ne(seqh, NULL);
+	ck_assert_uint_eq(fy_len(seqh), 32);
+	bad = 0;
+	for (i = 0; i < 32; i++)
+		bad += fy_cast(seqh->items[i], -1) != (int)(i + 1);
+	ck_assert_int_eq(bad, 0);
+
+	v = fy_mapping(gb,
+		"outer", fy_sequence(gb, 1, fy_mapping(gb, "inner", fy_sequence(gb, 2, 3))));
+	ck_assert(fy_generic_is_mapping(v));
+	inner = fy_get_at_path(v, "outer", 1, "inner", 0);
+	ck_assert_int_eq(fy_cast(inner, -1), 2);
+
+	/* empty forms */
+	v = fy_sequence();
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert_uint_eq(fy_len(fy_cast(v, fy_seq_handle_null)), 0);
+	v = fy_mapping();
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert_uint_eq(fy_len(fy_cast(v, fy_map_handle_null)), 0);
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* Test: testing bool range */
 START_TEST(generic_bool_range)
 {
@@ -6622,6 +6715,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* baby steps first */
 	fy_check_testcase_add_test(ctc, generic_basics);
+	fy_check_testcase_add_test(ctc, generic_macro_stress);
 	fy_check_testcase_add_test(ctc, generic_bool_range);
 	fy_check_testcase_add_test(ctc, generic_int_range);
 	fy_check_testcase_add_test(ctc, generic_float_range);
