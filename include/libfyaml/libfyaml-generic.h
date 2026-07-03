@@ -2515,12 +2515,14 @@ static inline const fy_generic *fy_generic_sequence_get_items(fy_generic seq, si
  */
 static inline const fy_generic *fy_generic_sequencep_get_itemp(const fy_generic_sequence *seqp, const size_t idx)
 {
+	const fy_generic *vp;
+
 	if (!seqp || idx >= seqp->count)
 		return NULL;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	const fy_generic *vp = &seqp->items[idx];
+	vp = &seqp->items[idx];
 	FY_DIAG_POP;
 	return vp;
 }
@@ -2822,12 +2824,14 @@ int fy_generic_signature(fy_generic v, enum fy_generic_signature_flags flags,
  */
 static inline const fy_generic *fy_generic_mappingp_get_at_keyp(const fy_generic_mapping *mapp, const size_t idx)
 {
+	const fy_generic *vp;
+
 	if (!mapp || idx >= mapp->count)
 		return NULL;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	const fy_generic *vp = &mapp->pairs[idx].key;
+	vp = &mapp->pairs[idx].key;
 	FY_DIAG_POP;
 	return vp;
 }
@@ -2857,12 +2861,14 @@ static inline const fy_generic *fy_generic_mapping_get_at_keyp(fy_generic map, c
  */
 static inline fy_generic fy_generic_mappingp_get_at_key(const fy_generic_mapping *mapp, const size_t idx)
 {
+	fy_generic v;
+
 	if (!mapp || idx >= mapp->count)
 		return fy_invalid;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	fy_generic v = mapp->pairs[idx].key;
+	v = mapp->pairs[idx].key;
 	FY_DIAG_POP;
 	return v;
 }
@@ -2940,12 +2946,14 @@ static inline const fy_generic *fy_generic_mappingp_get_valuep(const fy_generic_
  */
 static inline const fy_generic *fy_generic_mappingp_get_at_valuep(const fy_generic_mapping *mapp, const size_t idx)
 {
+	const fy_generic *vp;
+
 	if (!mapp || idx >= mapp->count)
 		return NULL;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	const fy_generic *vp = &mapp->pairs[idx].value;
+	vp = &mapp->pairs[idx].value;
 	FY_DIAG_POP;
 	return vp;
 }
@@ -3034,12 +3042,14 @@ static inline fy_generic fy_generic_mapping_get_value(fy_generic map, fy_generic
  */
 static inline fy_generic fy_generic_mappingp_get_at_value(const fy_generic_mapping *mapp, const size_t idx)
 {
+	fy_generic v;
+
 	if (!mapp || idx >= mapp->count)
 		return fy_invalid;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	fy_generic v = mapp->pairs[idx].value;
+	v = mapp->pairs[idx].value;
 	FY_DIAG_POP;
 	return v;
 }
@@ -6476,12 +6486,14 @@ static inline char *fy_generic_mapping_get_at_char_ptr_default(fy_generic map, c
 /* fy_generic_mappingp_get_at_map_pairp_default() - Pointer to map pair at index (pointer variant) */
 static inline const fy_generic_map_pair *fy_generic_mappingp_get_at_map_pairp_default(const fy_generic_mapping *mapp, const size_t idx, const fy_generic_map_pair *default_value)
 {
+	const fy_generic_map_pair *mpp;
+
 	if (!mapp || idx >= mapp->count)
 		return default_value;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	const fy_generic_map_pair *mpp = &mapp->pairs[idx];
+	mpp = &mapp->pairs[idx];
 	FY_DIAG_POP;
 	return mpp;
 }
@@ -6489,12 +6501,14 @@ static inline const fy_generic_map_pair *fy_generic_mappingp_get_at_map_pairp_de
 /* fy_generic_mappingp_get_at_map_pair_default() - Map pair by value at index (pointer variant) */
 static inline fy_generic_map_pair fy_generic_mappingp_get_at_map_pair_default(const fy_generic_mapping *mapp, const size_t idx, fy_generic_map_pair default_value)
 {
+	fy_generic_map_pair mp;
+
 	if (!mapp || idx >= mapp->count)
 		return default_value;
 	/* the poor compiler gets really really confused sometimes */
 	FY_DIAG_PUSH;
 	FY_DIAG_IGNORE_ARRAY_BOUNDS;
-	const fy_generic_map_pair mp = mapp->pairs[idx];
+	mp = mapp->pairs[idx];
 	FY_DIAG_POP;
 	return mp;
 }
