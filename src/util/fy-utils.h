@@ -273,4 +273,18 @@ bool fy_fd_fs_is_local(int fd);
 /* portable file pre-allocation like posix_fallocate() */
 int fy_fallocate(int fd, off_t offset, off_t len);
 
+/*
+ * Portable mmap abstraction. The FY_MMAP_* flags below map onto the native
+ * mmap() flags, except FY_MMAP_FIXED_NOREPLACE which is platform specific.
+ */
+#define FY_MMAP_SHARED		FY_BIT(0)	/* MAP_SHARED (else MAP_PRIVATE) */
+#define FY_MMAP_ANON		FY_BIT(1)	/* MAP_ANONYMOUS */
+#define FY_MMAP_NORESERVE	FY_BIT(2)	/* MAP_NORESERVE (advisory) */
+#define FY_MMAP_FIXED		FY_BIT(3)	/* MAP_FIXED (map at addr, replace) */
+#define FY_MMAP_FIXED_NOREPLACE	FY_BIT(4)	/* map at addr, fail if occupied */
+
+void *fy_mmap(void *addr, size_t len, int prot, unsigned int flags,
+	      int fd, off_t offset);
+int fy_munmap(void *addr, size_t len);
+
 #endif

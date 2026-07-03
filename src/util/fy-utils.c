@@ -23,7 +23,13 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <fcntl.h>
+#endif
+
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
 #endif
 
 #include "fy-win32.h"
@@ -1589,7 +1595,8 @@ uint64_t fy_default_fixed_vm_base(unsigned int region)
 {
 #if (defined(__linux__) || defined(__APPLE__)) && defined(__x86_64__)
 	return 0x201000000000ULL + (uint64_t)region * 0x040000000000ULL;
-#elif defined(__linux__) && defined(__aarch64__)
+#elif (defined(__linux__) || defined(__APPLE__)) && defined(__aarch64__)
+	/* Darwin/arm64 honours fixed maps in this high window (verified) */
 	return 0x201000000000ULL + (uint64_t)region * 0x040000000000ULL;
 #else
 	(void)region;
@@ -1641,6 +1648,89 @@ bool fy_fd_fs_is_local(int fd)
 	return true;	/* no query available; allow */
 #endif
 }
+
+#ifndef _WIN32
+
+#if defined(__APPLE__)
+/*
+ * Darwin has no MAP_FIXED_NOREPLACE. Emulate it with mach_vm_map(): a
+ * VM_FLAGS_FIXED map (without VM_FLAGS_OVERWRITE) places the mapping at exactly
+ * @addr and fails with KERN_NO_SPACE if any part of the range is already
+ * mapped, so it never relocates and never clobbers. Only anonymous
+ * reservations are needed here (the file-backed chunk maps use plain
+ * MAP_FIXED, which happily overwrites our own reservation).
+ */
+static void *fy_mach_map_fixed_noreplace(void *addr, size_t len, int prot)
+{
+	mach_vm_address_t a = (mach_vm_address_t)(uintptr_t)addr;
+	vm_prot_t cur = VM_PROT_NONE;
+	kern_return_t kr;
+
+	if (prot & PROT_READ)
+		cur |= VM_PROT_READ;
+	if (prot & PROT_WRITE)
+		cur |= VM_PROT_WRITE;
+	if (prot & PROT_EXEC)
+		cur |= VM_PROT_EXECUTE;
+
+	kr = mach_vm_map(mach_task_self(), &a, (mach_vm_size_t)len, 0,
+			 VM_FLAGS_FIXED, MEMORY_OBJECT_NULL, 0, FALSE,
+			 cur, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE,
+			 VM_INHERIT_DEFAULT);
+	if (kr != KERN_SUCCESS) {
+		errno = (kr == KERN_NO_SPACE) ? EEXIST : ENOMEM;
+		return MAP_FAILED;
+	}
+	if ((void *)(uintptr_t)a != addr) {
+		/* should not happen with VM_FLAGS_FIXED, but stay safe */
+		mach_vm_deallocate(mach_task_self(), a, (mach_vm_size_t)len);
+		errno = EEXIST;
+		return MAP_FAILED;
+	}
+	return (void *)(uintptr_t)a;
+}
+#endif
+
+void *fy_mmap(void *addr, size_t len, int prot, unsigned int flags,
+	      int fd, off_t offset)
+{
+	int mflags;
+
+	mflags = (flags & FY_MMAP_SHARED) ? MAP_SHARED : MAP_PRIVATE;
+	if (flags & FY_MMAP_ANON)
+		mflags |= MAP_ANONYMOUS;
+#ifdef MAP_NORESERVE
+	if (flags & FY_MMAP_NORESERVE)
+		mflags |= MAP_NORESERVE;
+#endif
+	if (flags & FY_MMAP_FIXED)
+		mflags |= MAP_FIXED;
+
+	if (flags & FY_MMAP_FIXED_NOREPLACE) {
+#if defined(MAP_FIXED_NOREPLACE)
+		return mmap(addr, len, prot, mflags | MAP_FIXED_NOREPLACE,
+			    fd, offset);
+#elif defined(__APPLE__)
+		/* only anonymous no-replace reservations are supported */
+		if (!(flags & FY_MMAP_ANON) || fd >= 0) {
+			errno = EINVAL;
+			return MAP_FAILED;
+		}
+		return fy_mach_map_fixed_noreplace(addr, len, prot);
+#else
+		/* no platform primitive: fall back to a plain hinted map. */
+#endif
+	}
+
+	return mmap(addr, len, prot, mflags, fd, offset);
+}
+
+int fy_munmap(void *addr, size_t len)
+{
+	return munmap(addr, len);
+}
+
+#endif /* !_WIN32 */
 
 int fy_fallocate(int fd, off_t offset, off_t len)
 {
