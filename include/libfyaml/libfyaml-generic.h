@@ -5040,105 +5040,38 @@ fy_generic_out_of_place_put_generic_builderp(void *buf FY_UNUSED,
 	((fy_generic) { .v = fy_local_sequence_create_value((_count), (_items)) })
 
 /*
- * FY_CPP_SHORT_NAMES / long-name helper macros
+ * Variadic generic-item helpers.
  *
- * Two implementations of the variadic generic-item helpers:
- *  - Short names (FY_CPP_SHORT_NAMES defined): use abbreviated internal names
- *    (_FLI1, _FLIL, …) to work around compiler limits on macro argument counts.
- *  - Long names (default): readable _FY_CPP_* prefix.
+ * Item lists expand with a trailing comma (valid in an initializer list), so
+ * each variadic argument is substituted exactly once - there is no
+ * FIRST/REST splitting and no separate count expansion inside the literal.
+ * Keeping the number of __VA_ARGS__ substitutions minimal matters: every
+ * additional use multiplies the token (and clang source-location) cost of
+ * nested fy_sequence()/fy_mapping() literals.
  *
- * Public API exposed in both cases:
- *   FY_CPP_VA_GITEMS(_count, ...)    - build a (fy_generic [_count]){…} literal
+ * Public API:
+ *   FY_CPP_GITEM_LIST(...)              - fy_to_generic(x), for each argument
+ *   FY_CPP_GBITEM_LIST(_gb, ...)        - fy_gb_to_generic(_gb, x), for each argument
+ *   FY_CPP_VA_GITEMS(_count, ...)       - build a (fy_generic [_count]){...} literal
  *   FY_CPP_VA_GBITEMS(_count, _gb, ...) - same but through a builder
  */
-#ifdef FY_CPP_SHORT_NAMES
-
-/* Short-name implementation */
-#define _FLI1(a) fy_to_generic(a)
-#define _FLIL(a) , _FLI1(a)
-#define _FLILS(...) _FM(_FLIL, __VA_ARGS__)
-
-#define _FVLIS(...)          \
-    _FLI1(_F1F(__VA_ARGS__)) \
-    _FLILS(_FRF(__VA_ARGS__))
+#define _FLI1(a) fy_to_generic(a),
+#define _FLILS(...) _FM(_FLI1, __VA_ARGS__)
 
 #define _FVLISF(_c, ...) \
-	((fy_generic [(_c)]) { __VA_OPT__(_FVLIS(__VA_ARGS__)) })
+	((fy_generic [(_c)]) { __VA_OPT__(_FLILS(__VA_ARGS__)) })
 
-#define _FGBI1(_g, a) fy_gb_to_generic(_g, a)
-#define _FGBIL(_g, a) , _FGBI1(_g, a)
-#define _FGBILS(_g, ...) _FM2(_g, _FGBIL, __VA_ARGS__)
-
-#define _FVGBIS(_g, ...) \
-	_FGBI1(_g, _F1F(__VA_ARGS__)) \
-	_FGBILS(_g, _FRF(__VA_ARGS__))
+#define _FGBI1(_g, a) fy_gb_to_generic(_g, a),
+#define _FGBILS(_g, ...) _FM2(_g, _FGBI1, __VA_ARGS__)
 
 #define _FVGBISF(_c, _g, ...) \
-	((fy_generic [(_c)]) { _FVGBIS((_g), __VA_ARGS__) })
+	((fy_generic [(_c)]) { __VA_OPT__(_FGBILS((_g), __VA_ARGS__)) })
 
 /* Public API */
-#define _FY_CPP_GITEM_ONE		_FLI1
-#define _FY_CPP_GITEM_LATER_ARG		_FLIL
-#define _FY_CPP_GITEM_LIST		_FLILS
-#define _FY_CPP_VA_GITEMS		_FVLIS
+#define FY_CPP_GITEM_LIST(...)		_FLILS(__VA_ARGS__)
 #define FY_CPP_VA_GITEMS		_FVLISF
-
-#define _FY_CPP_GBITEM_ONE		_FGBI1
-#define _FY_CPP_GBITEM_LATER_ARG	_FGBIL
-#define _FY_CPP_GBITEM_LIST		_FGBILS
-#define _FY_CPP_VA_GBITEMS		_FVGBIS
+#define FY_CPP_GBITEM_LIST(_gb, ...)	_FGBILS(_gb, __VA_ARGS__)
 #define FY_CPP_VA_GBITEMS		_FVGBISF
-
-#else /* !FY_CPP_SHORT_NAMES */
-
-/* Original long-name implementation */
-#define _FY_CPP_GITEM_ONE(arg) fy_to_generic(arg)
-#define _FY_CPP_GITEM_LATER_ARG(arg) , _FY_CPP_GITEM_ONE(arg)
-#define _FY_CPP_GITEM_LIST(...) FY_CPP_MAP(_FY_CPP_GITEM_LATER_ARG, __VA_ARGS__)
-
-#define _FY_CPP_VA_GITEMS(...)          \
-    _FY_CPP_GITEM_ONE(FY_CPP_FIRST(__VA_ARGS__)) \
-    _FY_CPP_GITEM_LIST(FY_CPP_REST(__VA_ARGS__))
-
-/**
- * FY_CPP_VA_GITEMS() - Build a compound-literal fy_generic array from variadic arguments.
- *
- * Each argument is passed through fy_to_generic() for automatic type conversion.
- *
- * @_count: Number of elements (must equal the number of variadic arguments).
- * @...:    Values to convert.
- *
- * Returns:
- * A (fy_generic [_count]){…} compound literal.
- */
-#define FY_CPP_VA_GITEMS(_count, ...) \
-	((fy_generic [(_count)]) { __VA_OPT__(_FY_CPP_VA_GITEMS(__VA_ARGS__)) })
-
-#define _FY_CPP_GBITEM_ONE(_gb, arg) fy_gb_to_generic(_gb, arg)
-#define _FY_CPP_GBITEM_LATER_ARG(_gb, arg) , _FY_CPP_GBITEM_ONE(_gb, arg)
-#define _FY_CPP_GBITEM_LIST(_gb, ...) FY_CPP_MAP2(_gb, _FY_CPP_GBITEM_LATER_ARG, __VA_ARGS__)
-
-#define _FY_CPP_VA_GBITEMS(_gb, ...)          \
-	_FY_CPP_GBITEM_ONE(_gb, FY_CPP_FIRST(__VA_ARGS__)) \
-	_FY_CPP_GBITEM_LIST(_gb, FY_CPP_REST(__VA_ARGS__))
-
-/**
- * FY_CPP_VA_GBITEMS() - Build a compound-literal fy_generic array from variadic arguments via a builder.
- *
- * Like FY_CPP_VA_GITEMS() but each item is internalized into @_gb via
- * fy_gb_to_generic(), ensuring persistent heap storage.
- *
- * @_count: Number of elements.
- * @_gb:    Builder to internalize values into.
- * @...:    Values to convert.
- *
- * Returns:
- * A (fy_generic [_count]){…} compound literal.
- */
-#define FY_CPP_VA_GBITEMS(_count, _gb, ...) \
-	((fy_generic [(_count)]) { _FY_CPP_VA_GBITEMS((_gb), __VA_ARGS__) })
-
-#endif /* FY_CPP_SHORT_NAMES */
 
 
 /**
@@ -5153,10 +5086,11 @@ fy_generic_out_of_place_put_generic_builderp(void *buf FY_UNUSED,
  * fy_generic_value encoding the sequence (stack lifetime).
  */
 #define fy_local_sequence_value(...) \
-	fy_local_sequence_create_value( \
-			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GITEMS( \
-				FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
+	({ \
+		fy_generic _fylsv_items[] = { FY_CPP_GITEM_LIST(__VA_ARGS__) }; \
+		fy_local_sequence_create_value( \
+			sizeof(_fylsv_items)/sizeof(_fylsv_items[0]), _fylsv_items); \
+	})
 
 /**
  * fy_local_sequence() - Build a fy_generic sequence from variadic arguments.
@@ -5229,9 +5163,11 @@ fy_generic_out_of_place_put_generic_builderp(void *buf FY_UNUSED,
  * fy_generic_value encoding the mapping (stack lifetime).
  */
 #define fy_local_mapping_value(...) \
-	fy_local_mapping_create_value( \
-		FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
-		FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__))
+	({ \
+		fy_generic _fylmv_items[] = { FY_CPP_GITEM_LIST(__VA_ARGS__) }; \
+		fy_local_mapping_create_value( \
+			sizeof(_fylmv_items)/(2 * sizeof(_fylmv_items[0])), _fylmv_items); \
+	})
 
 /**
  * fy_local_mapping() - Build a fy_generic mapping from variadic key-value arguments.
@@ -9111,9 +9047,11 @@ fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
  */
 #define fy_gb_sequence_value(_gb, ...) \
 	((0 __VA_OPT__(+1)) ? \
-		__VA_OPT__(fy_gb_sequence_create((_gb), \
-			FY_CPP_VA_COUNT(__VA_ARGS__), \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v) : \
+		__VA_OPT__(({ \
+			fy_generic _fygsv_items[] = { FY_CPP_GBITEM_LIST((_gb), __VA_ARGS__) }; \
+			fy_gb_sequence_create((_gb), \
+				sizeof(_fygsv_items)/sizeof(_fygsv_items[0]), _fygsv_items).v; \
+		})) : \
 		fy_seq_empty_value)
 
 /**
@@ -9144,9 +9082,11 @@ fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
  */
 #define fy_gb_mapping_value(_gb, ...) \
 	((0 __VA_OPT__(+1)) ? \
-		__VA_OPT__(fy_gb_mapping_create((_gb), \
-			FY_CPP_VA_COUNT(__VA_ARGS__) / 2, \
-			FY_CPP_VA_GBITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), (_gb), __VA_ARGS__)).v) : \
+		__VA_OPT__(({ \
+			fy_generic _fygmv_items[] = { FY_CPP_GBITEM_LIST((_gb), __VA_ARGS__) }; \
+			fy_gb_mapping_create((_gb), \
+				sizeof(_fygmv_items)/(2 * sizeof(_fygmv_items[0])), _fygmv_items).v; \
+		})) : \
 		fy_map_empty_value)
 
 /**
