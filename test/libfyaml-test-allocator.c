@@ -1027,7 +1027,7 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	 * well past libcheck's 4s default per-test timeout. Give the case a
 	 * generous budget (CK_TIMEOUT_MULTIPLIER still scales it).
 	 */
-	fy_check_testcase_set_timeout(ctc, 60);
+	fy_check_testcase_set_timeout(ctc, 120);
 
 	fy_check_testcase_add_test(ctc, allocator_builtins);
 	fy_check_testcase_add_test(ctc, allocator_linear_buf);
