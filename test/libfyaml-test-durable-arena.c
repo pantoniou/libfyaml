@@ -1856,7 +1856,7 @@ START_TEST(verify_multi_chunk)
 	struct fy_allocator *da;
 	struct fy_allocator *a;
 	size_t fill, chunk_cap;
-	const char pad[64];
+	char pad[64];
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
@@ -1865,7 +1865,7 @@ START_TEST(verify_multi_chunk)
 		return;
 	}
 	a = da;
-	memset((void *)pad, 0xAB, sizeof(pad));
+	memset(pad, 0xAB, sizeof(pad));
 
 	/* stuff chunk 0 until it overflows into a second chunk */
 	chunk_cap = TEST_CHUNK_SIZE;
