@@ -4593,6 +4593,62 @@ START_TEST(sorted_collections)
 }
 END_TEST
 
+START_TEST(equal_ops)
+{
+	fy_generic v, seq;
+
+	/* strings */
+	v = fy_value("foo");
+	ck_assert(fy_equal(v, "foo"));
+	ck_assert(fy_not_equal(v, "bar"));
+
+	/* numbers, mixed operand forms */
+	v = fy_value(42);
+	ck_assert(fy_equal(v, 42));
+	ck_assert(fy_not_equal(v, 43));
+	ck_assert(fy_equal(42, v));
+
+	/* bool and null */
+	ck_assert(fy_equal(fy_value(true), true));
+	ck_assert(fy_equal(fy_null, fy_null));
+	ck_assert(fy_not_equal(fy_null, 0));
+
+	/* collections compare deeply */
+	seq = fy_sequence(1, 2, 3);
+	ck_assert(fy_equal(seq, fy_sequence(1, 2, 3)));
+	ck_assert(fy_not_equal(seq, fy_sequence(1, 2)));
+	ck_assert(fy_equal(fy_mapping("a", 1), fy_mapping("a", 1)));
+
+	/* an invalid operand is never equal to anything, including itself */
+	ck_assert(fy_not_equal(fy_invalid, 1));
+	ck_assert(fy_not_equal(fy_invalid, fy_invalid));
+
+	/* direct polymorphic operands, no generics involved */
+	ck_assert(fy_equal("foo", "foo"));
+	ck_assert(fy_not_equal("foo", "bar"));
+	ck_assert(fy_equal(10, 10));
+	ck_assert(fy_not_equal(10, 100));
+	ck_assert(fy_equal(1.5, 1.5));
+	ck_assert(fy_equal(true, true));
+	ck_assert(fy_not_equal(true, false));
+
+	/* ordering */
+	ck_assert(fy_lesser(1, 2));
+	ck_assert(fy_greater(2, 1));
+	ck_assert(!fy_lesser(2, 2));
+	ck_assert(fy_lesser_or_equal(2, 2));
+	ck_assert(fy_greater_or_equal(2, 2));
+	ck_assert(fy_greater_or_equal(3, 2));
+	ck_assert(fy_lesser("abc", "abd"));
+	ck_assert(fy_greater("b", "a"));
+	v = fy_value(1.5);
+	ck_assert(fy_lesser(v, 2.5));
+	ck_assert(fy_greater(v, 0.5));
+
+	printf("> fy_equal/fy_not_equal and ordering OK\n");
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -7122,6 +7178,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, gb_intern_string);
 	fy_check_testcase_add_test(ctc, null_filtered_collections);
 	fy_check_testcase_add_test(ctc, sorted_collections);
+	fy_check_testcase_add_test(ctc, equal_ops);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
