@@ -1881,7 +1881,7 @@ fy_generic_op_set_at_path(const struct fy_generic_op_desc *desc FY_UNUSED,
 	assert(path_count == i);
 	while (i-- > 0) {
 		value = fy_generic_op(gb, FYGBOPF_SET, items[i], 2, (fy_generic []) { path[i], value });
-		if (fy_generic_is_invalid(v))
+		if (fy_generic_is_invalid(value))
 			goto err_out;
 	}
 	out = value;
