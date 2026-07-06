@@ -4685,19 +4685,25 @@ START_TEST(pathseq_pathstr_ops)
 	ps = fy_gb_path_split(gb, "config/listen/1/port");
 	v = fy_get_at_pathseq(gb, map, ps);
 	ck_assert(fy_cast(v, -1) == 443);
-	v = fy_gb_get_at_pathstr(gb, map, "config/listen/1/port");
+	v = fy_get_at_pathstr(gb, map, "config/listen/1/port");
 	ck_assert(fy_cast(v, -1) == 443);
 	printf("> get at pathseq/pathstr = 443\n");
 
 	/* local pathseq get */
 	v = fy_get_at_pathseq(map, ps);
 	ck_assert(fy_cast(v, -1) == 443);
+	v = fy_get_at_pathstr(map, "config/listen/1/port");
+	ck_assert(fy_cast(v, -1) == 443);
 
 	/* set via pathstr, creating intermediates */
-	v = fy_gb_set_at_pathstr(gb, map, "config/tls/enabled", fy_value(gb, true));
+	v = fy_set_at_pathstr(gb, map, "config/tls/enabled", true);
 	ck_assert(fy_cast(fy_get_at_path(v, "config", "tls", "enabled"), false) == true);
 	printf("> set at pathstr created /config/tls/enabled: ");
 	fy_generic_emit_default(v);
+
+	/* local pathstr set */
+	v = fy_set_at_pathstr(map, "config/tls/enabled", true);
+	ck_assert(fy_cast(fy_get_at_path(v, "config", "tls", "enabled"), false) == true);
 
 	/* set via pathseq (polymorphic value encode) */
 	v = fy_set_at_pathseq(gb, map, fy_gb_path_split(gb, "config/name"), "srv1");
@@ -4708,11 +4714,13 @@ START_TEST(pathseq_pathstr_ops)
 	ck_assert(fy_cast(fy_get_at_path(v, "config", "listen", 1, "port"), -1) == 8443);
 
 	/* delete via pathstr; missing is a no-op */
-	v = fy_gb_delete_at_pathstr(gb, map, "config/listen/0/port");
+	v = fy_delete_at_pathstr(gb, map, "config/listen/0/port");
 	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "config", "listen", 0, "port")));
-	v = fy_gb_delete_at_pathstr(gb, map, "config/nope/port");
+	v = fy_delete_at_pathstr(gb, map, "config/nope/port");
 	ck_assert(fy_generic_is_valid(v));
 	ck_assert(fy_cast(fy_get_at_path(v, "config", "listen", 1, "port"), -1) == 443);
+	v = fy_delete_at_pathstr(map, "config/listen/0/port");
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "config", "listen", 0, "port")));
 
 	/* local pathseq delete */
 	v = fy_delete_at_pathseq(map, ps);

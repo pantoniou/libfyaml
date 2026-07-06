@@ -10384,6 +10384,91 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		__output; \
 	})
 
+/* fy_local_get_at_pathstr() - Get at a unix-style path using a stack builder */
+#define fy_local_get_at_pathstr(_in, _path) \
+	({ \
+		size_t _sz = FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE; \
+		char *_buf = NULL; \
+		struct fy_generic_builder *_gb = NULL; \
+		void *_stack_save; \
+		fy_generic _output = fy_invalid; \
+		bool _need_to_break; \
+		\
+		_stack_save = FY_STACK_SAVE(); \
+		for (;;) { \
+			fy_generic _ps; \
+			_buf = alloca(_sz); \
+			_gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL, _buf, _sz); \
+			_ps = fy_gb_path_split(_gb, (_path)); \
+			_output = fy_generic_is_valid(_ps) ? fy_gb_get_at_pathseq(_gb, (_in), _ps) : fy_invalid; \
+			if (fy_generic_is_valid(_output)) \
+				break; \
+			_need_to_break = !fy_gb_allocation_failures(_gb) || _sz > FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE; \
+			FY_STACK_RESTORE(_stack_save); \
+			if (_need_to_break) \
+				break; \
+			_sz = _sz * 2; \
+		} \
+		_output; \
+	})
+
+/* fy_local_set_at_pathstr() - Set at a unix-style path using a stack builder */
+#define fy_local_set_at_pathstr(_in, _path, _v) \
+	({ \
+		size_t _sz = FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE; \
+		char *_buf = NULL; \
+		struct fy_generic_builder *_gb = NULL; \
+		void *_stack_save; \
+		fy_generic _output = fy_invalid; \
+		bool _need_to_break; \
+		\
+		_stack_save = FY_STACK_SAVE(); \
+		for (;;) { \
+			fy_generic _ps; \
+			_buf = alloca(_sz); \
+			_gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL, _buf, _sz); \
+			_ps = fy_gb_path_split(_gb, (_path)); \
+			_output = fy_generic_is_valid(_ps) ? \
+				fy_gb_set_at_pathseq(_gb, (_in), _ps, fy_value(_gb, (_v))) : fy_invalid; \
+			if (fy_generic_is_valid(_output)) \
+				break; \
+			_need_to_break = !fy_gb_allocation_failures(_gb) || _sz > FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE; \
+			FY_STACK_RESTORE(_stack_save); \
+			if (_need_to_break) \
+				break; \
+			_sz = _sz * 2; \
+		} \
+		_output; \
+	})
+
+/* fy_local_delete_at_pathstr() - Delete at a unix-style path using a stack builder */
+#define fy_local_delete_at_pathstr(_in, _path) \
+	({ \
+		size_t _sz = FY_GENERIC_BUILDER_LINEAR_IN_PLACE_MIN_SIZE; \
+		char *_buf = NULL; \
+		struct fy_generic_builder *_gb = NULL; \
+		void *_stack_save; \
+		fy_generic _output = fy_invalid; \
+		bool _need_to_break; \
+		\
+		_stack_save = FY_STACK_SAVE(); \
+		for (;;) { \
+			fy_generic _ps; \
+			_buf = alloca(_sz); \
+			_gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL, _buf, _sz); \
+			_ps = fy_gb_path_split(_gb, (_path)); \
+			_output = fy_generic_is_valid(_ps) ? fy_gb_delete_at_pathseq(_gb, (_in), _ps) : fy_invalid; \
+			if (fy_generic_is_valid(_output)) \
+				break; \
+			_need_to_break = !fy_gb_allocation_failures(_gb) || _sz > FY_GENERIC_BUILDER_IN_PLACE_MAX_SIZE; \
+			FY_STACK_RESTORE(_stack_save); \
+			if (_need_to_break) \
+				break; \
+			_sz = _sz * 2; \
+		} \
+		_output; \
+	})
+
 /* fy_local_parse() - Parse @_v/input_data as YAML/JSON using a stack builder */
 #define fy_local_parse(_v, _parse_flags, _input_data, ...) \
 	({ \
@@ -11051,6 +11136,10 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_get_at_pathseq(...) \
 	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_get_at_pathseq, fy_local_get_at_pathseq)(__VA_ARGS__))
 
+/* fy_get_at_pathstr() - Get at a unix-style path; optional leading builder */
+#define fy_get_at_pathstr(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_get_at_pathstr, fy_local_get_at_pathstr)(__VA_ARGS__))
+
 /* internal: encode the polymorphic value before calling the pathseq set function */
 #define fy_gb_set_at_pathseq_helper(_gb, _in, _pathseq, _v) \
 	fy_gb_set_at_pathseq((_gb), (_in), (_pathseq), fy_value((_gb), (_v)))
@@ -11059,9 +11148,21 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_set_at_pathseq(...) \
 	(FY_CPP_FIFTH(__VA_ARGS__, fy_gb_set_at_pathseq_helper, fy_local_set_at_pathseq)(__VA_ARGS__))
 
+/* internal: encode the polymorphic value before calling the pathstr set function */
+#define fy_gb_set_at_pathstr_helper(_gb, _in, _path, _v) \
+	fy_gb_set_at_pathstr((_gb), (_in), (_path), fy_value((_gb), (_v)))
+
+/* fy_set_at_pathstr() - Set at a unix-style path, creating intermediate mappings; optional leading builder */
+#define fy_set_at_pathstr(...) \
+	(FY_CPP_FIFTH(__VA_ARGS__, fy_gb_set_at_pathstr_helper, fy_local_set_at_pathstr)(__VA_ARGS__))
+
 /* fy_delete_at_pathseq() - Delete at a path given as a sequence generic; optional leading builder */
 #define fy_delete_at_pathseq(...) \
 	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_delete_at_pathseq, fy_local_delete_at_pathseq)(__VA_ARGS__))
+
+/* fy_delete_at_pathstr() - Delete at a unix-style path; optional leading builder */
+#define fy_delete_at_pathstr(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_delete_at_pathstr, fy_local_delete_at_pathstr)(__VA_ARGS__))
 
 /* fy_parse() - Parse YAML/JSON text into a generic; dispatches to fy_gb_parse or fy_local_parse */
 #define fy_parse(...) \
