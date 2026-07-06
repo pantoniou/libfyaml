@@ -7992,6 +7992,7 @@ fy_gb_string_createf(struct fy_generic_builder *gb, const char *fmt, ...)
  * @FYGBOP_EMIT:            Emit a generic value as YAML/JSON text
  * @FYGBOP_CONVERT:         Convert a generic value to a different type
  * @FYGBOP_JOIN:            Convert arguments to strings and join with a separator
+ * @FYGBOP_DELETE_AT_PATH:  Remove the key at a nested path (missing key is a no-op)
  */
 enum fy_gb_op {
 	FYGBOP_CREATE_INV,
@@ -8036,9 +8037,10 @@ enum fy_gb_op {
 	FYGBOP_EMIT,
 	FYGBOP_CONVERT,
 	FYGBOP_JOIN,
+	FYGBOP_DELETE_AT_PATH,
 };
 /* FYGBOP_COUNT - Total number of generic builder opcodes */
-#define FYGBOP_COUNT	(FYGBOP_JOIN + 1)
+#define FYGBOP_COUNT	(FYGBOP_DELETE_AT_PATH + 1)
 
 /**
  * typedef fy_generic_filter_pred_fn - Predicate function for filter operations.
@@ -8836,6 +8838,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_EMIT:            Emit generic value as YAML/JSON
  * @FYGBOPF_CONVERT:         Convert to a different type
  * @FYGBOPF_JOIN:            Join values as strings with a separator
+ * @FYGBOPF_DELETE_AT_PATH:  Remove the key at a nested path (missing key is a no-op)
  * @FYGBOPF_DONT_INTERNALIZE: Skip copying items into the builder arena
  * @FYGBOPF_DEEP_VALIDATE:    Recursively validate all elements
  * @FYGBOPF_NO_CHECKS:        Skip all input validity checks
@@ -8845,6 +8848,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_CREATE_PATH:      Create intermediate path nodes (like mkdir -p)
  * @FYGBOPF_UNSIGNED:         Integer scalar is unsigned (shares bit 23 with CREATE_PATH)
  * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
+ * @FYGBOPF_PRUNE:            With DELETE_AT_PATH, drop parent mappings that become empty
  */
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -8883,6 +8887,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_EMIT		= FYGBOPF_OP(FYGBOP_EMIT),
 	FYGBOPF_CONVERT		= FYGBOPF_OP(FYGBOP_CONVERT),
 	FYGBOPF_JOIN		= FYGBOPF_OP(FYGBOP_JOIN),
+	FYGBOPF_DELETE_AT_PATH	= FYGBOPF_OP(FYGBOP_DELETE_AT_PATH),
 	FYGBOPF_DONT_INTERNALIZE= FY_BIT(16),			// do not internalize items
 	FYGBOPF_DEEP_VALIDATE	= FY_BIT(17),			// perform deep validation
 	FYGBOPF_NO_CHECKS	= FY_BIT(18),			// do not perform any checks on the items
@@ -8892,6 +8897,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
 	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
 	FYGBOPF_NO_CLOBBER	= FY_BIT(24),			// with CREATE_PATH, do not overwrite non-collection intermediates
+	FYGBOPF_PRUNE		= FY_BIT(25),			// with DELETE_AT_PATH, remove parent mappings that become empty
 };
 
 /*
@@ -9751,6 +9757,13 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
+/* fy_gb_delete_at_path() - Remove the key at nested path @... in @_col; missing key is a no-op */
+#define fy_gb_delete_at_path(_gb, _col, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
 /* fy_gb_parse() - Parse @_v (or input_data) as YAML/JSON and return a generic */
 #define fy_gb_parse(_gb, _v, _parse_flags, _input_data, ...) \
 	(fy_generic_op((_gb), FYGBOPF_PARSE | FYGBOPF_MAP_ITEM_COUNT, \
@@ -10061,6 +10074,15 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
 		FY_LOCAL_OP(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH, \
 			__col, _count, _items); \
+	})
+
+/* fy_local_delete_at_path() - Remove key at nested path using a stack builder */
+#define fy_local_delete_at_path(_col, ...) \
+	({ \
+		__typeof__(_col) __col = (_col); \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
 /* fy_local_parse() - Parse @_v/input_data as YAML/JSON using a stack builder */
@@ -10715,6 +10737,11 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 /* fy_set_at_path() - Set a value at a dot-separated path, creating intermediate mappings; optional leading builder */
 #define fy_set_at_path(_first, ...) \
 	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH, \
+		_first __VA_OPT__(,) __VA_ARGS__)
+
+/* fy_delete_at_path() - Remove the key at a nested path (missing key is a no-op); optional leading builder */
+#define fy_delete_at_path(_first, ...) \
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, \
 		_first __VA_OPT__(,) __VA_ARGS__)
 
 /* fy_get_at_path() - Get a value at a dot-separated path; optional leading builder */

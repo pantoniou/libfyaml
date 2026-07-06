@@ -1902,6 +1902,145 @@ err_out:
 	goto out;
 }
 
+/* remove @key (mapping key or sequence index) from collection @col;
+ * a key/index that is not present sets *missingp and returns fy_invalid */
+static fy_generic
+fy_generic_op_col_delete_one(struct fy_generic_builder *gb,
+			     fy_generic col, fy_generic key, bool *missingp)
+{
+	const fy_generic_sequence *seqp;
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	fy_generic *items;
+	fy_generic out = fy_invalid;
+	size_t idx, i, j;
+
+	*missingp = false;
+
+	if (fy_generic_is_mapping(col)) {
+		if (fy_generic_is_invalid(fy_generic_mapping_get_value(col, key))) {
+			*missingp = true;
+			return fy_invalid;
+		}
+		return fy_generic_op(gb, FYGBOPF_DISASSOC,
+				     col, 1, (fy_generic []){ key });
+	}
+
+	if (!fy_generic_is_sequence(col)) {
+		*missingp = true;
+		return fy_invalid;
+	}
+
+	idx = fy_cast(key, (size_t)-1);
+	seqp = fy_generic_sequence_resolve(col);
+	if (idx >= seqp->count) {
+		*missingp = true;
+		return fy_invalid;
+	}
+
+	if (seqp->count - 1 <= ARRAY_SIZE(items_local)) {
+		items = items_local;
+	} else {
+		items_alloc = malloc(sizeof(*items) * (seqp->count - 1));
+		if (!items_alloc)
+			return fy_invalid;
+		items = items_alloc;
+	}
+	for (i = 0, j = 0; i < seqp->count; i++) {
+		if (i == idx)
+			continue;
+		items[j++] = seqp->items[i];
+	}
+	out = fy_generic_op(gb, FYGBOPF_CREATE_SEQ, j, items);
+	if (items_alloc)
+		free(items_alloc);
+	return out;
+}
+
+static fy_generic
+fy_generic_op_delete_at_path(const struct fy_generic_op_desc *desc FY_UNUSED,
+			     struct fy_generic_builder *gb,
+			     enum fy_gb_op_flags flags,
+			     fy_generic in,
+			     const struct fy_generic_op_args *args)
+{
+	size_t i, path_count;
+	fy_generic out = fy_invalid;
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	fy_generic *items;
+	const fy_generic *path;
+	fy_generic value, v;
+	bool missing;
+
+	if (args->common.count && !args->common.items)
+		goto err_out;
+
+	path = args->common.items;
+	path_count = args->common.count;
+
+	/* no path; nothing to delete */
+	if (!path_count) {
+		out = fy_generic_op_internalize(gb, flags, in);
+		goto out;
+	}
+
+	if (path_count <= ARRAY_SIZE(items_local)) {
+		items = items_local;
+	} else {
+		items_alloc = malloc(sizeof(*items) * path_count);
+		if (!items_alloc)
+			goto err_out;
+		items = items_alloc;
+	}
+
+	/* go down recording the spine; a missing segment makes this a no-op */
+	v = in;
+	for (i = 0; i < path_count - 1; i++) {
+		items[i] = v;
+		v = fy_generic_op(gb, FYGBOPF_GET, v, 1, (fy_generic []){path[i]});
+		if (fy_generic_is_invalid(v))
+			goto noop_out;
+	}
+	items[i] = v;
+
+	/* remove the final key/index from the leaf parent */
+	value = fy_generic_op_col_delete_one(gb, v, path[path_count - 1], &missing);
+	if (fy_generic_is_invalid(value)) {
+		if (missing)
+			goto noop_out;
+		goto err_out;
+	}
+
+	/* rebuild the spine; optionally pruning newly empty parents */
+	i = path_count - 1;
+	while (i-- > 0) {
+		if ((flags & FYGBOPF_PRUNE) && fy_generic_is_collection(value) && fy_len(value) == 0) {
+			value = fy_generic_op_col_delete_one(gb, items[i], path[i], &missing);
+			if (fy_generic_is_invalid(value))
+				goto err_out;
+		} else {
+			value = fy_generic_op(gb, FYGBOPF_SET, items[i], 2,
+					      (fy_generic []){ path[i], value });
+			if (fy_generic_is_invalid(value))
+				goto err_out;
+		}
+	}
+	out = value;
+out:
+	if (items_alloc)
+		free(items_alloc);
+	return out;
+
+noop_out:
+	out = fy_generic_op_internalize(gb, flags, in);
+	goto out;
+
+err_out:
+	out = fy_invalid;
+	goto out;
+}
+
 static fy_generic
 fy_generic_op_get(const struct fy_generic_op_desc *desc FY_UNUSED,
 		  struct fy_generic_builder *gb,
@@ -4115,6 +4254,13 @@ static const struct fy_generic_op_desc op_descs[FYGBOP_COUNT] = {
 		.out_mask = FYGTM_STRING,
 		.handler = fy_generic_op_join,
 	},
+	[FYGBOP_DELETE_AT_PATH] = {
+		.op = FYGBOP_DELETE_AT_PATH,
+		.op_name = "delete_at_path",
+		.in_mask = FYGTM_COLLECTION,
+		.out_mask = FYGTM_COLLECTION,
+		.handler = fy_generic_op_delete_at_path,
+	},
 };
 
 fy_generic
@@ -4180,6 +4326,7 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 	case FYGBOP_GET_AT_PATH:
 	case FYGBOP_SET:
 	case FYGBOP_SET_AT_PATH:
+	case FYGBOP_DELETE_AT_PATH:
 	case FYGBOP_JOIN:
 		break;
 
