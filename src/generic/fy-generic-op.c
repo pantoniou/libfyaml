@@ -1873,8 +1873,15 @@ fy_generic_op_set_at_path(const struct fy_generic_op_desc *desc FY_UNUSED,
 	for (i = 0; i < path_count - 1; i++) {
 		items[i] = v;
 		v = fy_generic_op(gb, FYGBOPF_GET, v, 1, (fy_generic []){path[i]});
-		if (fy_generic_is_invalid(v))
-			goto err_out;
+		if (fy_generic_is_invalid(v) || !fy_generic_is_collection(v)) {
+			/* missing (or scalar) intermediate; create like mkdir -p */
+			if (!(flags & FYGBOPF_CREATE_PATH))
+				goto err_out;
+			/* present but not a collection; only clobber if allowed */
+			if (!fy_generic_is_invalid(v) && (flags & FYGBOPF_NO_CLOBBER))
+				goto err_out;
+			v = fy_map_empty;
+		}
 	}
 	items[i] = v;
 	i++;

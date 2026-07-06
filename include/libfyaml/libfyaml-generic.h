@@ -8844,6 +8844,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_BLOCK_FN:         The function/callback is a Clang block (^)
  * @FYGBOPF_CREATE_PATH:      Create intermediate path nodes (like mkdir -p)
  * @FYGBOPF_UNSIGNED:         Integer scalar is unsigned (shares bit 23 with CREATE_PATH)
+ * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
  */
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -8890,6 +8891,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_BLOCK_FN	= FY_BIT(21),			// the function is a block
 	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
 	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
+	FYGBOPF_NO_CLOBBER	= FY_BIT(24),			// with CREATE_PATH, do not overwrite non-collection intermediates
 };
 
 /*
@@ -9742,10 +9744,10 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
-/* fy_gb_set_at_path() - Update the value at nested path @... in @_col */
+/* fy_gb_set_at_path() - Update the value at nested path @... in @_col, creating intermediate mappings */
 #define fy_gb_set_at_path(_gb, _col, ...) \
 	(fy_generic_op((_gb), \
-		FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, (_col), \
+		FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH, (_col), \
 			FY_CPP_VA_COUNT(__VA_ARGS__), \
 			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
 
@@ -10057,7 +10059,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		__typeof__(_col) __col = (_col); \
 		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
 		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
-		FY_LOCAL_OP(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
+		FY_LOCAL_OP(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH, \
+			__col, _count, _items); \
 	})
 
 /* fy_local_parse() - Parse @_v/input_data as YAML/JSON using a stack builder */
@@ -10711,7 +10714,8 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 /* fy_set_at_path() - Set a value at a dot-separated path, creating intermediate mappings; optional leading builder */
 #define fy_set_at_path(_first, ...) \
-	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH, \
+		_first __VA_OPT__(,) __VA_ARGS__)
 
 /* fy_get_at_path() - Get a value at a dot-separated path; optional leading builder */
 #define fy_get_at_path(_first, ...) \
