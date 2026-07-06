@@ -4649,6 +4649,78 @@ START_TEST(equal_ops)
 }
 END_TEST
 
+START_TEST(pathseq_pathstr_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic map, ps, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* path split: strings, integer segments, redundant slashes */
+	ps = fy_gb_path_split(gb, "/a//b/2/c/");
+	ck_assert(fy_generic_is_sequence(ps));
+	ck_assert(fy_len(ps) == 4);
+	ck_assert_str_eq(fy_get(ps, 0, ""), "a");
+	ck_assert_str_eq(fy_get(ps, 1, ""), "b");
+	ck_assert(fy_get(ps, 2, -1) == 2);
+	ck_assert_str_eq(fy_get(ps, 3, ""), "c");
+	printf("> path split: ");
+	fy_generic_emit_default(ps);
+
+	/* empty and root paths yield an empty sequence */
+	ps = fy_gb_path_split(gb, "/");
+	ck_assert(fy_generic_is_sequence(ps) && fy_len(ps) == 0);
+	ps = fy_gb_path_split(gb, "");
+	ck_assert(fy_generic_is_sequence(ps) && fy_len(ps) == 0);
+
+	map = fy_mapping("config",
+			fy_mapping("listen", fy_sequence(
+				fy_mapping("port", 80),
+				fy_mapping("port", 443))));
+
+	/* get via pathseq and pathstr */
+	ps = fy_gb_path_split(gb, "config/listen/1/port");
+	v = fy_get_at_pathseq(gb, map, ps);
+	ck_assert(fy_cast(v, -1) == 443);
+	v = fy_gb_get_at_pathstr(gb, map, "config/listen/1/port");
+	ck_assert(fy_cast(v, -1) == 443);
+	printf("> get at pathseq/pathstr = 443\n");
+
+	/* local pathseq get */
+	v = fy_get_at_pathseq(map, ps);
+	ck_assert(fy_cast(v, -1) == 443);
+
+	/* set via pathstr, creating intermediates */
+	v = fy_gb_set_at_pathstr(gb, map, "config/tls/enabled", fy_value(gb, true));
+	ck_assert(fy_cast(fy_get_at_path(v, "config", "tls", "enabled"), false) == true);
+	printf("> set at pathstr created /config/tls/enabled: ");
+	fy_generic_emit_default(v);
+
+	/* set via pathseq (polymorphic value encode) */
+	v = fy_set_at_pathseq(gb, map, fy_gb_path_split(gb, "config/name"), "srv1");
+	ck_assert_str_eq(fy_cast(fy_get_at_path(v, "config", "name"), ""), "srv1");
+
+	/* local pathseq set */
+	v = fy_set_at_pathseq(map, ps, 8443);
+	ck_assert(fy_cast(fy_get_at_path(v, "config", "listen", 1, "port"), -1) == 8443);
+
+	/* delete via pathstr; missing is a no-op */
+	v = fy_gb_delete_at_pathstr(gb, map, "config/listen/0/port");
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "config", "listen", 0, "port")));
+	v = fy_gb_delete_at_pathstr(gb, map, "config/nope/port");
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_cast(fy_get_at_path(v, "config", "listen", 1, "port"), -1) == 443);
+
+	/* local pathseq delete */
+	v = fy_delete_at_pathseq(map, ps);
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "config", "listen", 1, "port")));
+	printf("> delete at pathstr/pathseq OK\n");
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -7179,6 +7251,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, null_filtered_collections);
 	fy_check_testcase_add_test(ctc, sorted_collections);
 	fy_check_testcase_add_test(ctc, equal_ops);
+	fy_check_testcase_add_test(ctc, pathseq_pathstr_ops);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
