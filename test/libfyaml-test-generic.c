@@ -4287,6 +4287,68 @@ START_TEST(set_ops)
 }
 END_TEST
 
+START_TEST(set_at_path_deep)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic map, v, v2;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* deep set with missing intermediates; mkdir -p style creation */
+	map = fy_mapping("keep", 1);
+	v = fy_set_at_path(gb, map, "a", "b", "c", 42);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_get(v, "keep", -1) == 1);
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b", "c"), -1) == 42);
+	printf("> deep set-at-path created /a/b/c=42: ");
+	fy_generic_emit_default(v);
+
+	/* deep set into an entirely empty mapping */
+	v = fy_set_at_path(gb, fy_map_empty, "x", "y", 7);
+	ck_assert(fy_cast(fy_get_at_path(v, "x", "y"), -1) == 7);
+
+	/* existing intermediates are preserved, only spine rebuilt */
+	map = fy_mapping("a", fy_mapping("b", fy_mapping("c", 1), "d", 2), "e", 3);
+	v = fy_set_at_path(gb, map, "a", "b", "c", 100);
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b", "c"), -1) == 100);
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "d"), -1) == 2);
+	ck_assert(fy_get(v, "e", -1) == 3);
+
+	/* non-mapping intermediate is clobbered by default */
+	map = fy_mapping("a", "scalar");
+	v = fy_set_at_path(gb, map, "a", "b", 5);
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b"), -1) == 5);
+	v2 = fy_get(v, "a", fy_invalid);
+	ck_assert(fy_generic_is_mapping(v2));
+	printf("> deep set-at-path clobbered scalar intermediate: ");
+	fy_generic_emit_default(v);
+
+	/* ...but NO_CLOBBER errors instead */
+	v = fy_generic_op(gb,
+		FYGBOPF_SET_AT_PATH | FYGBOPF_CREATE_PATH | FYGBOPF_NO_CLOBBER,
+		map, 3, (fy_generic []){ fy_value("a"), fy_value("b"), fy_value(5) });
+	ck_assert(!fy_generic_is_valid(v));
+	printf("> deep set-at-path NO_CLOBBER returns fy_invalid\n");
+
+	/* without CREATE_PATH, missing intermediates still error */
+	v = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, fy_map_empty,
+		3, (fy_generic []){ fy_value("a"), fy_value("b"), fy_value(5) });
+	ck_assert(!fy_generic_is_valid(v));
+	printf("> deep set-at-path without CREATE_PATH returns fy_invalid\n");
+
+	/* local variant */
+	map = fy_mapping("keep", 1);
+	v = fy_set_at_path(map, "p", "q", 9);
+	ck_assert(fy_cast(fy_get_at_path(v, "p", "q"), -1) == 9);
+	ck_assert(fy_get(v, "keep", -1) == 1);
+	printf("> deep set-at-path (local) /p/q=9: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -6811,6 +6873,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* set ops */
 	fy_check_testcase_add_test(ctc, set_ops);
+	fy_check_testcase_add_test(ctc, set_at_path_deep);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
