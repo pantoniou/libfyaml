@@ -4349,6 +4349,98 @@ START_TEST(set_at_path_deep)
 }
 END_TEST
 
+START_TEST(delete_at_path_ops)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic map, seq, v, v2;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* delete a top-level key */
+	map = fy_mapping("a", 1, "b", 2);
+	v = fy_delete_at_path(gb, map, "a");
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "b", -1) == 2);
+	printf("> delete-at-path /a: ");
+	fy_generic_emit_default(v);
+
+	/* delete a nested key; spine rebuilt, siblings preserved */
+	map = fy_mapping("a", fy_mapping("b", fy_mapping("c", 1, "d", 2)), "e", 3);
+	v = fy_delete_at_path(gb, map, "a", "b", "c");
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "a", "b", "c")));
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b", "d"), -1) == 2);
+	ck_assert(fy_get(v, "e", -1) == 3);
+	printf("> delete-at-path /a/b/c: ");
+	fy_generic_emit_default(v);
+
+	/* missing key anywhere is a no-op returning root unchanged */
+	v = fy_delete_at_path(gb, map, "a", "nope", "c");
+	ck_assert(fy_generic_is_valid(v));
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b", "c"), -1) == 1);
+	v = fy_delete_at_path(gb, map, "a", "b", "nope");
+	ck_assert(fy_cast(fy_get_at_path(v, "a", "b", "c"), -1) == 1);
+	printf("> delete-at-path missing key is a no-op\n");
+
+	/* default: empty parent mapping is left in place */
+	map = fy_mapping("a", fy_mapping("b", fy_mapping("c", 1)), "e", 3);
+	v = fy_delete_at_path(gb, map, "a", "b", "c");
+	v2 = fy_get_at_path(v, "a", "b");
+	ck_assert(fy_generic_is_mapping(v2));
+	ck_assert(fy_len(v2) == 0);
+	printf("> delete-at-path leaves empty parent: ");
+	fy_generic_emit_default(v);
+
+	/* PRUNE: empty parents removed all the way up */
+	v = fy_generic_op(gb, FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PRUNE,
+		map, 3, (fy_generic []){ fy_value("a"), fy_value("b"), fy_value("c") });
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "a")));
+	ck_assert(fy_get(v, "e", -1) == 3);
+	printf("> delete-at-path PRUNE removes empty parents: ");
+	fy_generic_emit_default(v);
+
+	/* sequences: delete by index */
+	seq = fy_sequence(10, 20, 30);
+	v = fy_delete_at_path(gb, seq, 1);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 0, -1) == 10);
+	ck_assert(fy_get(v, 1, -1) == 30);
+	printf("> delete-at-path seq /1: ");
+	fy_generic_emit_default(v);
+
+	/* sequences: nested under a mapping, out-of-range index is a no-op */
+	map = fy_mapping("list", fy_sequence(1, 2, 3));
+	v = fy_delete_at_path(gb, map, "list", 0);
+	ck_assert(fy_len(fy_get(v, "list", fy_invalid)) == 2);
+	ck_assert(fy_cast(fy_get_at_path(v, "list", 0), -1) == 2);
+	v = fy_delete_at_path(gb, map, "list", 99);
+	ck_assert(fy_len(fy_get(v, "list", fy_invalid)) == 3);
+	printf("> delete-at-path nested sequence works, oob is a no-op\n");
+
+	/* sequences: PRUNE removes an emptied sequence from its parent */
+	map = fy_mapping("list", fy_sequence(42), "keep", 1);
+	v = fy_generic_op(gb, FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_PRUNE,
+		map, 2, (fy_generic []){ fy_value("list"), fy_value(0) });
+	ck_assert(!fy_generic_is_valid(fy_get(v, "list", fy_invalid)));
+	ck_assert(fy_get(v, "keep", -1) == 1);
+	printf("> delete-at-path PRUNE removes emptied sequence: ");
+	fy_generic_emit_default(v);
+
+	/* local variant */
+	map = fy_mapping("a", fy_mapping("b", 1), "c", 2);
+	v = fy_delete_at_path(map, "a", "b");
+	ck_assert(!fy_generic_is_valid(fy_get_at_path(v, "a", "b")));
+	ck_assert(fy_get(v, "c", -1) == 2);
+	printf("> delete-at-path (local) /a/b: ");
+	fy_generic_emit_default(v);
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -6874,6 +6966,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	/* set ops */
 	fy_check_testcase_add_test(ctc, set_ops);
 	fy_check_testcase_add_test(ctc, set_at_path_deep);
+	fy_check_testcase_add_test(ctc, delete_at_path_ops);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
