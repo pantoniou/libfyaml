@@ -4441,6 +4441,47 @@ START_TEST(delete_at_path_ops)
 }
 END_TEST
 
+START_TEST(gb_intern_string)
+{
+	char buf[16384];
+	char tmp[32];
+	struct fy_generic_builder *gb;
+	const char *s1, *s2, *s3;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER |
+			FYGBCF_DEDUP_ENABLED, NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* NULL and empty are safe and return "" */
+	ck_assert_str_eq(fy_gb_intern_string(gb, NULL), "");
+	ck_assert_str_eq(fy_gb_intern_string(gb, ""), "");
+
+	/* a small string (would fit inplace) still gets a stable out-of-place pointer */
+	strcpy(tmp, "abc");
+	s1 = fy_gb_intern_string(gb, tmp);
+	ck_assert_ptr_ne(s1, NULL);
+	ck_assert_ptr_ne(s1, tmp);
+	ck_assert_str_eq(s1, "abc");
+	memset(tmp, 0, sizeof(tmp));	/* source gone; interned copy survives */
+	ck_assert_str_eq(s1, "abc");
+
+	/* dedup: interning the same content returns the same pointer */
+	s2 = fy_gb_intern_string(gb, "abc");
+	ck_assert_ptr_eq(s1, s2);
+
+	/* longer than inplace strings work too */
+	s3 = fy_gb_intern_string(gb, "a-much-longer-string-than-inplace");
+	ck_assert_ptr_ne(s3, NULL);
+	ck_assert_str_eq(s3, "a-much-longer-string-than-inplace");
+
+	/* sized variant honors the length; dedups against the earlier "abc" */
+	s3 = fy_gb_intern_string_size(gb, "abcdef", 3);
+	ck_assert_ptr_eq(s3, s1);
+
+	printf("> gb_intern_string: stable, deduped, NUL-terminated\n");
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -6967,6 +7008,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, set_ops);
 	fy_check_testcase_add_test(ctc, set_at_path_deep);
 	fy_check_testcase_add_test(ctc, delete_at_path_ops);
+	fy_check_testcase_add_test(ctc, gb_intern_string);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
