@@ -4538,6 +4538,61 @@ START_TEST(null_filtered_collections)
 }
 END_TEST
 
+START_TEST(sorted_collections)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* sequence sorted at creation */
+	v = fy_sorted_sequence(30, 10, 20);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 10);
+	ck_assert(fy_get(v, 1, -1) == 20);
+	ck_assert(fy_get(v, 2, -1) == 30);
+	printf("> sorted sequence: ");
+	fy_generic_emit_default(v);
+
+	/* mapping pairs sorted by key */
+	v = fy_sorted_mapping("c", 3, "a", 1, "b", 2);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert_str_eq(fy_get_key_at(v, 0, ""), "a");
+	ck_assert_str_eq(fy_get_key_at(v, 1, ""), "b");
+	ck_assert_str_eq(fy_get_key_at(v, 2, ""), "c");
+	ck_assert(fy_get(v, "a", -1) == 1);
+	ck_assert(fy_get(v, "c", -1) == 3);
+	printf("> sorted mapping: ");
+	fy_generic_emit_default(v);
+
+	/* empty forms */
+	v = fy_sorted_sequence();
+	ck_assert(fy_generic_is_sequence(v) && fy_len(v) == 0);
+	v = fy_sorted_mapping();
+	ck_assert(fy_generic_is_mapping(v) && fy_len(v) == 0);
+
+	/* builder variants */
+	v = fy_sorted_sequence(gb, 2, 1);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	v = fy_sorted_mapping(gb, "b", 2, "a", 1);
+	ck_assert_str_eq(fy_get_key_at(v, 0, ""), "a");
+
+	/* filter + sort compose */
+	v = fy_generic_op(gb,
+		FYGBOPF_CREATE_SEQ | FYGBOPF_FILTER_NULL | FYGBOPF_SORT_CREATE,
+		(size_t)4, (fy_generic []){ fy_value(3), fy_null, fy_value(1), fy_value(2) });
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	printf("> filter-null + sort compose OK\n");
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -7066,6 +7121,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, delete_at_path_ops);
 	fy_check_testcase_add_test(ctc, gb_intern_string);
 	fy_check_testcase_add_test(ctc, null_filtered_collections);
+	fy_check_testcase_add_test(ctc, sorted_collections);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
