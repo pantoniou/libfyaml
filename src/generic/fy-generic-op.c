@@ -614,8 +614,8 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
 	count = args->common.count;
 	items = args->common.items;
 
-	/* drop null items */
-	if ((flags & FYGBOPF_FILTER_NULL) && count) {
+	/* drop null items and/or sort; both need a mutable copy */
+	if ((flags & (FYGBOPF_FILTER_NULL | FYGBOPF_SORT_CREATE)) && count) {
 		fy_generic *w;
 
 		if (count <= ARRAY_SIZE(items_local)) {
@@ -627,10 +627,12 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
 			w = items_alloc;
 		}
 		for (i = 0, j = 0; i < count; i++) {
-			if (fy_generic_is_null(items[i]))
+			if ((flags & FYGBOPF_FILTER_NULL) && fy_generic_is_null(items[i]))
 				continue;
 			w[j++] = items[i];
 		}
+		if (flags & FYGBOPF_SORT_CREATE)
+			qsort(w, j, sizeof(fy_generic), fy_generic_seqmap_qsort_cmp);
 		items = w;
 		count = j;
 	}
@@ -689,8 +691,8 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 		count >>= 1;
 	}
 
-	/* drop pairs whose value is null */
-	if ((flags & FYGBOPF_FILTER_NULL) && count) {
+	/* drop pairs whose value is null and/or sort by key; both need a mutable copy */
+	if ((flags & (FYGBOPF_FILTER_NULL | FYGBOPF_SORT_CREATE)) && count) {
 		fy_generic *w;
 
 		if (2 * count <= ARRAY_SIZE(items_local)) {
@@ -702,12 +704,14 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 			w = items_alloc;
 		}
 		for (i = 0, j = 0; i < count; i++) {
-			if (fy_generic_is_null(items[2 * i + 1]))
+			if ((flags & FYGBOPF_FILTER_NULL) && fy_generic_is_null(items[2 * i + 1]))
 				continue;
 			w[2 * j + 0] = items[2 * i + 0];
 			w[2 * j + 1] = items[2 * i + 1];
 			j++;
 		}
+		if (flags & FYGBOPF_SORT_CREATE)
+			qsort(w, j, 2 * sizeof(fy_generic), fy_generic_seqmap_qsort_cmp);
 		items = w;
 		count = j;
 	}

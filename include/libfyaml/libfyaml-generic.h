@@ -8876,6 +8876,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_UNSIGNED:         Integer scalar is unsigned (shares bit 23 with CREATE_PATH)
  * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
  * @FYGBOPF_PRUNE:            With DELETE_AT_PATH, drop parent mappings that become empty
+ * @FYGBOPF_SORT_CREATE:      On create, sort items (sequences) / pairs by key (mappings)
  */
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -8926,6 +8927,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
 	FYGBOPF_NO_CLOBBER	= FY_BIT(24),			// with CREATE_PATH, do not overwrite non-collection intermediates
 	FYGBOPF_PRUNE		= FY_BIT(25),			// with DELETE_AT_PATH, remove parent mappings that become empty
+	FYGBOPF_SORT_CREATE	= FY_BIT(26),			// on create, sort items (seq) / pairs by key (map)
 };
 
 /*
@@ -9624,6 +9626,81 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_null_filtered_mapping(...) \
 	((fy_generic) { .v = ((0 __VA_OPT__(+1)) ? \
 		__VA_OPT__((fy_null_filtered_mapping_helper(__VA_ARGS__)).v) : \
+		fy_map_empty_value) })
+
+/* fy_gb_sorted_sequence() - Build a sequence with its elements sorted */
+#define fy_gb_sorted_sequence(_gb, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_CREATE_SEQ | FYGBOPF_SORT_CREATE, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+/* fy_local_sorted_sequence() - Build a sorted sequence with a stack builder */
+#define fy_local_sorted_sequence(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_SEQ | FYGBOPF_SORT_CREATE, _count, _items); \
+	})
+
+/* internal dispatch: builder path or local alloca path */
+#define fy_sorted_sequence_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_sorted_sequence(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_sorted_sequence((_maybe_gb), ##__VA_ARGS__))))
+
+/**
+ * fy_sorted_sequence() - Build a sequence from variadic elements, sorted.
+ *
+ * Like fy_sequence() but the elements are sorted with the standard
+ * generic comparator at creation time.
+ *
+ * @...: Optional builder followed by zero or more element values
+ *
+ * Returns:
+ * A sorted sequence fy_generic, or fy_seq_empty if empty.
+ */
+#define fy_sorted_sequence(...) \
+	((fy_generic) { .v = ((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__((fy_sorted_sequence_helper(__VA_ARGS__)).v) : \
+		fy_seq_empty_value) })
+
+/* fy_gb_sorted_mapping() - Build a mapping with its pairs sorted by key */
+#define fy_gb_sorted_mapping(_gb, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_SORT_CREATE, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+/* fy_local_sorted_mapping() - Build a key-sorted mapping with a stack builder */
+#define fy_local_sorted_mapping(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_SORT_CREATE, \
+			_count, _items); \
+	})
+
+/* internal dispatch: builder path or local alloca path */
+#define fy_sorted_mapping_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_sorted_mapping(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_sorted_mapping((_maybe_gb), ##__VA_ARGS__))))
+
+/**
+ * fy_sorted_mapping() - Build a mapping from variadic pairs, sorted by key.
+ *
+ * Like fy_mapping() but the key/value pairs are sorted by key with the
+ * standard generic comparator at creation time.
+ *
+ * @...: Optional builder followed by zero or more key/value pairs
+ *
+ * Returns:
+ * A key-sorted mapping fy_generic, or fy_map_empty if empty.
+ */
+#define fy_sorted_mapping(...) \
+	((fy_generic) { .v = ((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__((fy_sorted_mapping_helper(__VA_ARGS__)).v) : \
 		fy_map_empty_value) })
 
 /**
