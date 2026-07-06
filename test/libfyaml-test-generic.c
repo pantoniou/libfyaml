@@ -4482,6 +4482,62 @@ START_TEST(gb_intern_string)
 }
 END_TEST
 
+START_TEST(null_filtered_collections)
+{
+	char buf[16384];
+	struct fy_generic_builder *gb;
+	fy_generic v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* sequence: nulls dropped */
+	v = fy_null_filtered_sequence(1, fy_null, 2, fy_null, 3);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 3);
+	ck_assert(fy_get(v, 0, -1) == 1);
+	ck_assert(fy_get(v, 1, -1) == 2);
+	ck_assert(fy_get(v, 2, -1) == 3);
+	printf("> null-filtered sequence: ");
+	fy_generic_emit_default(v);
+
+	/* sequence: all null becomes empty */
+	v = fy_null_filtered_sequence(fy_null, fy_null);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 0);
+
+	/* sequence: no args is empty */
+	v = fy_null_filtered_sequence();
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert(fy_len(v) == 0);
+
+	/* mapping: pairs with null values dropped, conditional idiom */
+	v = fy_null_filtered_mapping("foo", true,
+				     "bar", 0 ? fy_value("baz") : fy_null);
+	ck_assert(fy_generic_is_mapping(v));
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "foo", false) == true);
+	ck_assert(!fy_generic_is_valid(fy_get(v, "bar", fy_invalid)));
+	printf("> null-filtered mapping: ");
+	fy_generic_emit_default(v);
+
+	/* mapping: null keys are fine, only null values drop the pair */
+	v = fy_null_filtered_mapping(fy_null, 1, "b", fy_null);
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, fy_null, -1) == 1);
+
+	/* builder variants */
+	v = fy_null_filtered_sequence(gb, 1, fy_null, 3);
+	ck_assert(fy_len(v) == 2);
+	ck_assert(fy_get(v, 1, -1) == 3);
+	v = fy_null_filtered_mapping(gb, "a", fy_null, "b", 2);
+	ck_assert(fy_len(v) == 1);
+	ck_assert(fy_get(v, "b", -1) == 2);
+	printf("> null-filtered builder variants OK\n");
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -7009,6 +7065,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, set_at_path_deep);
 	fy_check_testcase_add_test(ctc, delete_at_path_ops);
 	fy_check_testcase_add_test(ctc, gb_intern_string);
+	fy_check_testcase_add_test(ctc, null_filtered_collections);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
