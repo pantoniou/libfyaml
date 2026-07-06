@@ -599,6 +599,10 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_sequence seqh;
 	struct iovec iov[2];
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	const fy_generic *items;
+	size_t count, i, j;
 	fy_generic out;
 	int rc;
 
@@ -607,18 +611,44 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
 	if (rc)
 		return fy_invalid;
 
-	if (!args->common.count) {
+	count = args->common.count;
+	items = args->common.items;
+
+	/* drop null items */
+	if ((flags & FYGBOPF_FILTER_NULL) && count) {
+		fy_generic *w;
+
+		if (count <= ARRAY_SIZE(items_local)) {
+			w = items_local;
+		} else {
+			items_alloc = malloc(sizeof(*w) * count);
+			if (!items_alloc)
+				goto err_out;
+			w = items_alloc;
+		}
+		for (i = 0, j = 0; i < count; i++) {
+			if (fy_generic_is_null(items[i]))
+				continue;
+			w[j++] = items[i];
+		}
+		items = w;
+		count = j;
+	}
+
+	if (!count) {
 		out = fy_seq_empty;
 		goto out;
 	}
 
-	seqh.count = args->common.count;
+	seqh.count = count;
 	iov[0].iov_base = &seqh;
 	iov[0].iov_len = sizeof(seqh);
-	iov[1].iov_base = (void *)args->common.items;
+	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = MULSZ(seqh.count, sizeof(fy_generic));
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
 out:
+	if (items_alloc)
+		free(items_alloc);
 	fy_generic_collection_op_data_cleanup(cod);
 	return out;
 err_out:
@@ -636,7 +666,10 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 	struct fy_generic_collection_op_data cod_local, *cod = &cod_local;
 	struct fy_generic_mapping maph;
 	struct iovec iov[2];
-	size_t count;
+	fy_generic items_local[64];
+	fy_generic *items_alloc = NULL;
+	const fy_generic *items;
+	size_t count, i, j;
 	fy_generic out;
 	int rc;
 
@@ -645,12 +678,8 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 	if (rc)
 		return fy_invalid;
 
-	if (!args->common.count) {
-		out = fy_map_empty;
-		goto out;
-	}
-
 	count = args->common.count;
+	items = args->common.items;
 
 	/* count was given in items, not pairs */
 	if (flags & FYGBOPF_MAP_ITEM_COUNT) {
@@ -660,13 +689,43 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 		count >>= 1;
 	}
 
+	/* drop pairs whose value is null */
+	if ((flags & FYGBOPF_FILTER_NULL) && count) {
+		fy_generic *w;
+
+		if (2 * count <= ARRAY_SIZE(items_local)) {
+			w = items_local;
+		} else {
+			items_alloc = malloc(sizeof(*w) * 2 * count);
+			if (!items_alloc)
+				goto err_out;
+			w = items_alloc;
+		}
+		for (i = 0, j = 0; i < count; i++) {
+			if (fy_generic_is_null(items[2 * i + 1]))
+				continue;
+			w[2 * j + 0] = items[2 * i + 0];
+			w[2 * j + 1] = items[2 * i + 1];
+			j++;
+		}
+		items = w;
+		count = j;
+	}
+
+	if (!count) {
+		out = fy_map_empty;
+		goto out;
+	}
+
 	maph.count = count;
 	iov[0].iov_base = &maph;
 	iov[0].iov_len = sizeof(maph);
-	iov[1].iov_base = (void *)args->common.items;
+	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = MULSZ(maph.count, (2 * sizeof(fy_generic)));
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
 out:
+	if (items_alloc)
+		free(items_alloc);
 	fy_generic_collection_op_data_cleanup(cod);
 	return out;
 err_out:

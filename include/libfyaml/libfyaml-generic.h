@@ -8871,6 +8871,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_PARALLEL:         Execute in parallel using a thread pool
  * @FYGBOPF_MAP_ITEM_COUNT:   Interpret @count as number of items, not pairs
  * @FYGBOPF_BLOCK_FN:         The function/callback is a Clang block (^)
+ * @FYGBOPF_FILTER_NULL:      On create, drop null items (sequences) / null-valued pairs (mappings)
  * @FYGBOPF_CREATE_PATH:      Create intermediate path nodes (like mkdir -p)
  * @FYGBOPF_UNSIGNED:         Integer scalar is unsigned (shares bit 23 with CREATE_PATH)
  * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
@@ -8920,6 +8921,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_PARALLEL	= FY_BIT(19),			// perform in parallel
 	FYGBOPF_MAP_ITEM_COUNT	= FY_BIT(20),			// the count is items, not pairs for mappings
 	FYGBOPF_BLOCK_FN	= FY_BIT(21),			// the function is a block
+	FYGBOPF_FILTER_NULL	= FY_BIT(22),			// on create, drop null items (seq) / null-valued pairs (map)
 	FYGBOPF_CREATE_PATH	= FY_BIT(23),			// create intermediate paths like mkdir -p
 	FYGBOPF_UNSIGNED	= FY_BIT(23),			// int scalar created is unsigned (note same as CREATE_PATH)
 	FYGBOPF_NO_CLOBBER	= FY_BIT(24),			// with CREATE_PATH, do not overwrite non-collection intermediates
@@ -9546,6 +9548,83 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
  */
 #define fy_mapping(...) \
 	((fy_generic) { .v = fy_mapping_value(__VA_ARGS__) })
+
+/* fy_gb_null_filtered_sequence() - Build a sequence, dropping null elements */
+#define fy_gb_null_filtered_sequence(_gb, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_CREATE_SEQ | FYGBOPF_FILTER_NULL, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+/* fy_local_null_filtered_sequence() - Build a sequence with a stack builder, dropping null elements */
+#define fy_local_null_filtered_sequence(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_SEQ | FYGBOPF_FILTER_NULL, _count, _items); \
+	})
+
+/* internal dispatch: builder path or local alloca path */
+#define fy_null_filtered_sequence_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_null_filtered_sequence(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_null_filtered_sequence((_maybe_gb), ##__VA_ARGS__))))
+
+/**
+ * fy_null_filtered_sequence() - Build a sequence from variadic elements, dropping nulls.
+ *
+ * Like fy_sequence() but any element that evaluates to a null generic is
+ * omitted from the result, e.g.
+ * fy_null_filtered_sequence(1, cond ? v : fy_null, 3).
+ *
+ * @...: Optional builder followed by zero or more element values
+ *
+ * Returns:
+ * A sequence fy_generic, or fy_seq_empty if empty after filtering.
+ */
+#define fy_null_filtered_sequence(...) \
+	((fy_generic) { .v = ((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__((fy_null_filtered_sequence_helper(__VA_ARGS__)).v) : \
+		fy_seq_empty_value) })
+
+/* fy_gb_null_filtered_mapping() - Build a mapping, dropping pairs with null values */
+#define fy_gb_null_filtered_mapping(_gb, ...) \
+	(fy_generic_op((_gb), \
+		FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_FILTER_NULL, \
+			FY_CPP_VA_COUNT(__VA_ARGS__), \
+			FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__)))
+
+/* fy_local_null_filtered_mapping() - Build a mapping with a stack builder, dropping pairs with null values */
+#define fy_local_null_filtered_mapping(...) \
+	({ \
+		const size_t _count = FY_CPP_VA_COUNT(__VA_ARGS__); \
+		const fy_generic *_items = FY_CPP_VA_GITEMS(FY_CPP_VA_COUNT(__VA_ARGS__), __VA_ARGS__); \
+		FY_LOCAL_OP(FYGBOPF_CREATE_MAP | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_FILTER_NULL, \
+			_count, _items); \
+	})
+
+/* internal dispatch: builder path or local alloca path */
+#define fy_null_filtered_mapping_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_null_filtered_mapping(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_null_filtered_mapping((_maybe_gb), ##__VA_ARGS__))))
+
+/**
+ * fy_null_filtered_mapping() - Build a mapping from variadic pairs, dropping null-valued ones.
+ *
+ * Like fy_mapping() but any key/value pair whose value evaluates to a null
+ * generic is omitted from the result, e.g.
+ * fy_null_filtered_mapping("foo", true, "bar", cond ? "baz" : fy_null).
+ *
+ * @...: Optional builder followed by zero or more key/value pairs
+ *
+ * Returns:
+ * A mapping fy_generic, or fy_map_empty if empty after filtering.
+ */
+#define fy_null_filtered_mapping(...) \
+	((fy_generic) { .v = ((0 __VA_OPT__(+1)) ? \
+		__VA_OPT__((fy_null_filtered_mapping_helper(__VA_ARGS__)).v) : \
+		fy_map_empty_value) })
 
 /**
  * fy_value() - Encode a value as a fy_generic using a builder or alloca.
