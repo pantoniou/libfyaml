@@ -1747,6 +1747,28 @@ fy_generic fy_gb_szstr_create_out_of_place(struct fy_generic_builder *gb, const 
 	return fy_gb_string_size_create_out_of_place(gb, szstr.data, szstr.size);
 }
 
+const char *fy_gb_intern_string_size(struct fy_generic_builder *gb, const char *str, size_t len)
+{
+	fy_generic v;
+
+	if (!str || !len)
+		return "";
+
+	/* always store out of place, even when it would fit inplace;
+	 * the builder's allocator is used purely as a storage depot */
+	v = fy_gb_string_size_create_out_of_place(gb, str, len);
+	if (fy_generic_is_invalid(v))
+		return NULL;
+
+	/* unwrap the pointer, skipping the varint length prefix */
+	return (const char *)fy_skip_size_nocheck(fy_generic_resolve_ptr(v));
+}
+
+const char *fy_gb_intern_string(struct fy_generic_builder *gb, const char *str)
+{
+	return fy_gb_intern_string_size(gb, str, str ? strlen(str) : 0);
+}
+
 static fy_generic
 fy_gb_internalize_core(struct fy_generic_builder *gb,
 		       struct fy_generic_idset *memo, fy_generic v)

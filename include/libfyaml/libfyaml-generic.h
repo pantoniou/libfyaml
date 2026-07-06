@@ -7720,6 +7720,32 @@ fy_gb_string_create(struct fy_generic_builder *gb, const char *str)
 	return fy_gb_string_size_create(gb, str, strlen(str));
 }
 
+/**
+ * fy_gb_intern_string_size() - Intern a string in the builder's arena, returning a stable C pointer.
+ *
+ * The string is always stored out of place (even when small enough to fit
+ * inplace in a fy_generic), deduplicated against previously stored content,
+ * and NUL-terminated. The returned pointer remains valid for the lifetime
+ * of the builder's allocator; the content is a storage depot entry, not a
+ * canonical generic value.
+ *
+ * @gb:  Builder
+ * @str: String data (need not be NUL-terminated)
+ * @len: String length in bytes
+ *
+ * Returns:
+ * Stable NUL-terminated string pointer ("" for NULL/empty input),
+ * or NULL on allocation failure.
+ */
+const char *
+fy_gb_intern_string_size(struct fy_generic_builder *gb, const char *str, size_t len)
+	FY_EXPORT;
+
+/* fy_gb_intern_string() - Intern a NUL-terminated string; see fy_gb_intern_string_size() */
+const char *
+fy_gb_intern_string(struct fy_generic_builder *gb, const char *str)
+	FY_EXPORT;
+
 /* Type conversion functions — convert a fy_generic value to a different scalar type */
 
 /* fy_gb_to_int() - Convert @v to an integer generic using the builder for out-of-place storage */
