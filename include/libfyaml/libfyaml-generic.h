@@ -9734,6 +9734,34 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_compare(_a, _b) \
 	(fy_generic_compare(fy_value(_a), fy_value(_b)))
 
+/* fy_equal() - Polymorphic equality test, e.g. fy_equal(v, "foo");
+ * an invalid operand is never equal to anything */
+#define fy_equal(_a, _b) \
+	(fy_compare((_a), (_b)) == 0)
+
+/* fy_not_equal() - Polymorphic inequality test; negation of fy_equal() */
+#define fy_not_equal(_a, _b) \
+	(!fy_equal((_a), (_b)))
+
+/* Polymorphic ordering tests; the underlying compare is a total order,
+ * with differing types ordered by type (like fy_sort). */
+
+/* fy_lesser() - True if @_a orders before @_b */
+#define fy_lesser(_a, _b) \
+	(fy_compare((_a), (_b)) < 0)
+
+/* fy_greater() - True if @_a orders after @_b */
+#define fy_greater(_a, _b) \
+	(fy_compare((_a), (_b)) > 0)
+
+/* fy_lesser_or_equal() - True if @_a does not order after @_b */
+#define fy_lesser_or_equal(_a, _b) \
+	(fy_compare((_a), (_b)) <= 0)
+
+/* fy_greater_or_equal() - True if @_a does not order before @_b */
+#define fy_greater_or_equal(_a, _b) \
+	(fy_compare((_a), (_b)) >= 0)
+
 /**
  * fy_foreach() - Iterate over every element (or key) of a collection.
  *
