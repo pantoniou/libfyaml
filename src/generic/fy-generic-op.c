@@ -4458,3 +4458,153 @@ fy_generic fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flag
 
 	return fy_generic_op_args(gb, flags, in, args);
 }
+
+fy_generic fy_gb_path_split(struct fy_generic_builder *gb, const char *path)
+{
+	fy_generic items_local[64];
+	fy_generic *items = items_local;
+	fy_generic *items_alloc = NULL;
+	size_t count = 0, cap = ARRAY_SIZE(items_local);
+	fy_generic_sized_string szstr;
+	unsigned long long idx;
+	const char *s, *e, *p;
+	fy_generic out = fy_invalid, v;
+	bool digits;
+
+	if (!path)
+		return fy_invalid;
+
+	s = path;
+	for (;;) {
+		while (*s == '/')
+			s++;
+		if (!*s)
+			break;
+		e = s;
+		while (*e && *e != '/')
+			e++;
+
+		if (count >= cap) {
+			fy_generic *grow;
+
+			cap *= 2;
+			grow = realloc(items_alloc, sizeof(*items) * cap);
+			if (!grow)
+				goto out;
+			if (!items_alloc)
+				memcpy(grow, items_local, sizeof(items_local));
+			items_alloc = grow;
+			items = items_alloc;
+		}
+
+		/* an all-digits segment becomes an integer (sequence index) */
+		digits = (e - s) <= 19;	/* fits an unsigned long long */
+		idx = 0;
+		for (p = s; digits && p < e; p++) {
+			if (!isdigit((unsigned char)*p)) {
+				digits = false;
+				break;
+			}
+			idx = idx * 10 + (unsigned long long)(*p - '0');
+		}
+
+		if (digits) {
+			v = fy_value(gb, idx);
+		} else {
+			szstr.data = s;
+			szstr.size = (size_t)(e - s);
+			v = fy_value(gb, szstr);
+		}
+		if (fy_generic_is_invalid(v))
+			goto out;
+		items[count++] = v;
+
+		s = e;
+	}
+
+	out = fy_generic_op(gb, FYGBOPF_CREATE_SEQ, count, items);
+out:
+	if (items_alloc)
+		free(items_alloc);
+	return out;
+}
+
+fy_generic fy_gb_get_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq)
+{
+	const fy_generic_sequence *seqp;
+
+	if (!fy_generic_is_sequence(pathseq))
+		return fy_invalid;
+	seqp = fy_generic_sequence_resolve(pathseq);
+	return fy_generic_op(gb, FYGBOPF_GET_AT_PATH, in, seqp->count, seqp->items);
+}
+
+fy_generic fy_gb_set_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq, fy_generic value)
+{
+	const fy_generic_sequence *seqp;
+	fy_generic items_local[64];
+	fy_generic *items = items_local;
+	fy_generic *items_alloc = NULL;
+	fy_generic out;
+
+	if (!fy_generic_is_sequence(pathseq))
+		return fy_invalid;
+	seqp = fy_generic_sequence_resolve(pathseq);
+
+	if (seqp->count + 1 > ARRAY_SIZE(items_local)) {
+		items_alloc = malloc(sizeof(*items) * (seqp->count + 1));
+		if (!items_alloc)
+			return fy_invalid;
+		items = items_alloc;
+	}
+	memcpy(items, seqp->items, sizeof(*items) * seqp->count);
+	items[seqp->count] = value;
+
+	out = fy_generic_op(gb,
+		FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | FYGBOPF_CREATE_PATH,
+		in, seqp->count + 1, items);
+	if (items_alloc)
+		free(items_alloc);
+	return out;
+}
+
+fy_generic fy_gb_delete_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq)
+{
+	const fy_generic_sequence *seqp;
+
+	if (!fy_generic_is_sequence(pathseq))
+		return fy_invalid;
+	seqp = fy_generic_sequence_resolve(pathseq);
+	return fy_generic_op(gb, FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT,
+			     in, seqp->count, seqp->items);
+}
+
+fy_generic fy_gb_get_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path)
+{
+	fy_generic pathseq;
+
+	pathseq = fy_gb_path_split(gb, path);
+	if (fy_generic_is_invalid(pathseq))
+		return fy_invalid;
+	return fy_gb_get_at_pathseq(gb, in, pathseq);
+}
+
+fy_generic fy_gb_set_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path, fy_generic value)
+{
+	fy_generic pathseq;
+
+	pathseq = fy_gb_path_split(gb, path);
+	if (fy_generic_is_invalid(pathseq))
+		return fy_invalid;
+	return fy_gb_set_at_pathseq(gb, in, pathseq, value);
+}
+
+fy_generic fy_gb_delete_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path)
+{
+	fy_generic pathseq;
+
+	pathseq = fy_gb_path_split(gb, path);
+	if (fy_generic_is_invalid(pathseq))
+		return fy_invalid;
+	return fy_gb_delete_at_pathseq(gb, in, pathseq);
+}

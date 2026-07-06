@@ -9013,6 +9013,54 @@ fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
 	FY_EXPORT;
 
 /**
+ * fy_gb_path_split() - Split a unix-style path string into a path sequence.
+ *
+ * Splits @path on '/' (empty segments are skipped, so leading, trailing
+ * and repeated slashes are harmless). All-digit segments become integer
+ * generics (usable as sequence indices); everything else becomes a
+ * string generic. "" and "/" yield an empty sequence.
+ *
+ * @gb:   Builder that owns the result
+ * @path: Unix-style path string, e.g. "a/b/2/c"
+ *
+ * Returns:
+ * A sequence of path segments, or fy_invalid on error.
+ */
+fy_generic
+fy_gb_path_split(struct fy_generic_builder *gb, const char *path)
+	FY_EXPORT;
+
+/* fy_gb_get_at_pathseq() - Like fy_gb_get_at_path() with the path given as a sequence generic */
+fy_generic
+fy_gb_get_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq)
+	FY_EXPORT;
+
+/* fy_gb_set_at_pathseq() - Like fy_gb_set_at_path() with the path given as a sequence generic */
+fy_generic
+fy_gb_set_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq, fy_generic value)
+	FY_EXPORT;
+
+/* fy_gb_delete_at_pathseq() - Like fy_gb_delete_at_path() with the path given as a sequence generic */
+fy_generic
+fy_gb_delete_at_pathseq(struct fy_generic_builder *gb, fy_generic in, fy_generic pathseq)
+	FY_EXPORT;
+
+/* fy_gb_get_at_pathstr() - Get at a unix-style "a/b/c" path (see fy_gb_path_split()) */
+fy_generic
+fy_gb_get_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path)
+	FY_EXPORT;
+
+/* fy_gb_set_at_pathstr() - Set at a unix-style "a/b/c" path, creating intermediate mappings */
+fy_generic
+fy_gb_set_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path, fy_generic value)
+	FY_EXPORT;
+
+/* fy_gb_delete_at_pathstr() - Delete at a unix-style "a/b/c" path; missing key is a no-op */
+fy_generic
+fy_gb_delete_at_pathstr(struct fy_generic_builder *gb, fy_generic in, const char *path)
+	FY_EXPORT;
+
+/**
  * fy_gb_sequence_create() - Create a sequence generic from an item array.
  *
  * @gb:    Builder that owns the result
@@ -10295,6 +10343,47 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		FY_LOCAL_OP(FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, __col, _count, _items); \
 	})
 
+/* fy_local_get_at_pathseq() - Get at a sequence-generic path using a stack builder */
+#define fy_local_get_at_pathseq(_in, _pathseq) \
+	({ \
+		fy_generic __ps = (_pathseq); \
+		fy_generic __output = fy_invalid; \
+		if (fy_generic_is_sequence(__ps)) { \
+			const fy_generic_sequence *__sp = fy_generic_sequence_resolve(__ps); \
+			__output = FY_LOCAL_OP(FYGBOPF_GET_AT_PATH, (_in), __sp->count, __sp->items); \
+		} \
+		__output; \
+	})
+
+/* fy_local_set_at_pathseq() - Set at a sequence-generic path using a stack builder */
+#define fy_local_set_at_pathseq(_in, _pathseq, _v) \
+	({ \
+		fy_generic __ps = (_pathseq); \
+		fy_generic __output = fy_invalid; \
+		if (fy_generic_is_sequence(__ps)) { \
+			const fy_generic_sequence *__sp = fy_generic_sequence_resolve(__ps); \
+			fy_generic *__it = alloca(sizeof(*__it) * (__sp->count + 1)); \
+			memcpy(__it, __sp->items, sizeof(*__it) * __sp->count); \
+			__it[__sp->count] = fy_value(_v); \
+			__output = FY_LOCAL_OP(FYGBOPF_SET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT | \
+					FYGBOPF_CREATE_PATH, (_in), __sp->count + 1, __it); \
+		} \
+		__output; \
+	})
+
+/* fy_local_delete_at_pathseq() - Delete at a sequence-generic path using a stack builder */
+#define fy_local_delete_at_pathseq(_in, _pathseq) \
+	({ \
+		fy_generic __ps = (_pathseq); \
+		fy_generic __output = fy_invalid; \
+		if (fy_generic_is_sequence(__ps)) { \
+			const fy_generic_sequence *__sp = fy_generic_sequence_resolve(__ps); \
+			__output = FY_LOCAL_OP(FYGBOPF_DELETE_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, \
+					(_in), __sp->count, __sp->items); \
+		} \
+		__output; \
+	})
+
 /* fy_local_parse() - Parse @_v/input_data as YAML/JSON using a stack builder */
 #define fy_local_parse(_v, _parse_flags, _input_data, ...) \
 	({ \
@@ -10957,6 +11046,22 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 /* fy_get_at_path() - Get a value at a dot-separated path; optional leading builder */
 #define fy_get_at_path(_first, ...) \
 	FY_GB_OR_LOCAL_COL_COUNT_ITEMS(FYGBOPF_GET_AT_PATH | FYGBOPF_MAP_ITEM_COUNT, _first __VA_OPT__(,) __VA_ARGS__)
+
+/* fy_get_at_pathseq() - Get at a path given as a sequence generic; optional leading builder */
+#define fy_get_at_pathseq(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_get_at_pathseq, fy_local_get_at_pathseq)(__VA_ARGS__))
+
+/* internal: encode the polymorphic value before calling the pathseq set function */
+#define fy_gb_set_at_pathseq_helper(_gb, _in, _pathseq, _v) \
+	fy_gb_set_at_pathseq((_gb), (_in), (_pathseq), fy_value((_gb), (_v)))
+
+/* fy_set_at_pathseq() - Set at a path given as a sequence generic, creating intermediate mappings; optional leading builder */
+#define fy_set_at_pathseq(...) \
+	(FY_CPP_FIFTH(__VA_ARGS__, fy_gb_set_at_pathseq_helper, fy_local_set_at_pathseq)(__VA_ARGS__))
+
+/* fy_delete_at_pathseq() - Delete at a path given as a sequence generic; optional leading builder */
+#define fy_delete_at_pathseq(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_delete_at_pathseq, fy_local_delete_at_pathseq)(__VA_ARGS__))
 
 /* fy_parse() - Parse YAML/JSON text into a generic; dispatches to fy_gb_parse or fy_local_parse */
 #define fy_parse(...) \
