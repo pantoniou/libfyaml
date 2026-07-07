@@ -4681,7 +4681,21 @@ START_TEST(get_two_arg)
 	v = fy_get(seq, 100);
 	ck_assert(fy_generic_is_invalid(v));
 
-	printf("> two-argument fy_get OK\n");
+	/* fy_get_at: three argument form unchanged */
+	ck_assert_int_eq(fy_get_at(seq, 0, 0), 10);
+	ck_assert_int_eq(fy_get_at(seq, 100, -1), -1);
+
+	/* fy_get_at: two argument form returns the raw generic */
+	v = fy_get_at(seq, 2);
+	ck_assert(fy_equal(v, 30));
+	v = fy_get_at(seq, 100);
+	ck_assert(fy_generic_is_invalid(v));
+
+	/* on a mapping, fy_get_at indexes values */
+	v = fy_get_at(map, 1);
+	ck_assert(fy_equal(v, 42));
+
+	printf("> two-argument fy_get/fy_get_at OK\n");
 }
 END_TEST
 
