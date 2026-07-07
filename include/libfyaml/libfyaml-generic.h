@@ -9500,9 +9500,22 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_get_at_typed(_colv, _idx, _type) \
 	(fy_generic_get_at_default((_colv), (_idx), fy_generic_get_type_default(_type)))
 
-/* fy_get_at() - Alias for fy_get_at_default() */
-#define fy_get_at(_colv, _idx, _dv) \
+/* fy_get_at3() - Three argument form of fy_get_at(); alias for fy_get_at_default() */
+#define fy_get_at3(_colv, _idx, _dv) \
 	(fy_get_at_default((_colv), (_idx), (_dv)))
+
+/* fy_get_at2() - Two argument form of fy_get_at(); returns the raw fy_generic,
+ * or fy_invalid if out of range. No builder needed; a generic is always
+ * safe to use without one. */
+#define fy_get_at2(_colv, _idx) \
+	(fy_get_at_default((_colv), (_idx), fy_invalid))
+
+/* fy_get_at() - Look up element at index @_idx in @_colv.
+ * With three arguments, alias for fy_get_at_default(); the default's type
+ * selects the return type.
+ * With two arguments, returns the fy_generic itself (fy_invalid if out of range). */
+#define fy_get_at(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_get_at3, fy_get_at2)(__VA_ARGS__))
 
 /* fy_get_key_at_default() - Return the KEY at index @_idx, returning @_dv if out of range */
 #define fy_get_key_at_default(_colv, _idx, _dv) \
