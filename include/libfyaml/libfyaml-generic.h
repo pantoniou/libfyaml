@@ -9475,9 +9475,22 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_get_typed(_colv, _key, _type) \
 	(fy_generic_get_default((_colv), (_key), fy_generic_get_type_default(_type)))
 
-/* fy_get() - Alias for fy_get_default() */
-#define fy_get(_colv, _key, _dv) \
+/* fy_get3() - Three argument form of fy_get(); alias for fy_get_default() */
+#define fy_get3(_colv, _key, _dv) \
 	(fy_get_default((_colv), (_key), (_dv)))
+
+/* fy_get2() - Two argument form of fy_get(); returns the raw fy_generic,
+ * or fy_invalid if not found. No builder needed; a generic is always
+ * safe to use without one. */
+#define fy_get2(_colv, _key) \
+	(fy_get_default((_colv), (_key), fy_invalid))
+
+/* fy_get() - Look up @_key in @_colv.
+ * With three arguments, alias for fy_get_default(); the default's type
+ * selects the return type.
+ * With two arguments, returns the fy_generic itself (fy_invalid if missing). */
+#define fy_get(...) \
+	(FY_CPP_FOURTH(__VA_ARGS__, fy_get3, fy_get2)(__VA_ARGS__))
 
 /* fy_get_at_default() - Look up element at index @_idx, returning @_dv if out of range */
 #define fy_get_at_default(_colv, _idx, _dv) \
