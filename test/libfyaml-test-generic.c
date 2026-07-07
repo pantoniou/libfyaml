@@ -4695,7 +4695,19 @@ START_TEST(get_two_arg)
 	v = fy_get_at(map, 1);
 	ck_assert(fy_equal(v, 42));
 
-	printf("> two-argument fy_get/fy_get_at OK\n");
+	/* fy_get_key_at: three argument form unchanged */
+	s = fy_get_key_at(map, 0, "");
+	ck_assert_str_eq(s, "key");
+	s = fy_get_key_at(map, 100, "dflt");
+	ck_assert_str_eq(s, "dflt");
+
+	/* fy_get_key_at: two argument form returns the raw generic */
+	v = fy_get_key_at(map, 1);
+	ck_assert(fy_equal(v, "num"));
+	v = fy_get_key_at(map, 100);
+	ck_assert(fy_generic_is_invalid(v));
+
+	printf("> two-argument fy_get/fy_get_at/fy_get_key_at OK\n");
 }
 END_TEST
 
