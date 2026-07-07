@@ -4649,6 +4649,42 @@ START_TEST(equal_ops)
 }
 END_TEST
 
+START_TEST(get_two_arg)
+{
+	fy_generic map, seq, v;
+	const char *s;
+
+	map = fy_mapping("key", "value", "num", 42);
+	seq = fy_sequence(10, 20, 30);
+
+	/* three argument form still works as before */
+	s = fy_get(map, "key", "");
+	ck_assert_str_eq(s, "value");
+	ck_assert_int_eq(fy_get(map, "num", 0), 42);
+	s = fy_get(map, "missing", "dflt");
+	ck_assert_str_eq(s, "dflt");
+
+	/* two argument form returns the raw generic */
+	v = fy_get(map, "key");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert(fy_equal(v, "value"));
+	v = fy_get(map, "num");
+	ck_assert(fy_equal(v, 42));
+
+	/* missing key yields fy_invalid */
+	v = fy_get(map, "missing");
+	ck_assert(fy_generic_is_invalid(v));
+
+	/* works on sequences by index too */
+	v = fy_get(seq, 1);
+	ck_assert(fy_equal(v, 20));
+	v = fy_get(seq, 100);
+	ck_assert(fy_generic_is_invalid(v));
+
+	printf("> two-argument fy_get OK\n");
+}
+END_TEST
+
 START_TEST(pathseq_pathstr_ops)
 {
 	char buf[16384];
@@ -7259,6 +7295,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, null_filtered_collections);
 	fy_check_testcase_add_test(ctc, sorted_collections);
 	fy_check_testcase_add_test(ctc, equal_ops);
+	fy_check_testcase_add_test(ctc, get_two_arg);
 	fy_check_testcase_add_test(ctc, pathseq_pathstr_ops);
 
 	/* parse and emit operations */
