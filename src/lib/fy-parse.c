@@ -1123,6 +1123,8 @@ fy_consolidate_pending_comments(struct fy_parser *fyp)
 	    fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment, &fyp->last_comment)) {
 		fyp->override_comment.end_mark = fyp->last_comment.end_mark;
 		fy_input_unref(fyp->last_comment.fyi);
+	} else if (fy_atom_is_set(&fyp->last_comment)) {
+		fy_input_unref(fyp->last_comment.fyi);
 	}
 	fy_atom_reset(&fyp->last_comment);
 	fyp->last_comment = fyp->override_comment;
@@ -1179,6 +1181,29 @@ fy_steal_block_end_comments(struct fy_parser *fyp, struct fy_token *fyt,
 			(int)fyp->last_comment.start_mark.column > column &&
 			(int)fyp->last_comment.start_mark.column >= current_indent)
 		fy_steal_comment_bottom(fyp, fyt, &fyp->last_comment, current_indent);
+}
+
+static int
+fy_document_state_set_bottom_comment_atom(struct fy_document_state *fyds,
+					  struct fy_atom *atom)
+{
+	ssize_t length;
+	char *buf;
+	const char *text;
+
+	if (!fyds || !atom || !fy_atom_is_set(atom))
+		return 0;
+
+	length = fy_atom_format_text_length(atom);
+	if (length < 0)
+		return -1;
+
+	buf = alloca((size_t)length + 1);
+	text = fy_atom_format_text(atom, buf, (size_t)length + 1);
+	if (!text)
+		return -1;
+
+	return fy_document_state_set_bottom_comment(fyds, text);
 }
 
 /* -1 error, 0, no comment attached, 1 comment attached */
@@ -3251,6 +3276,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 
 		/* update with this mark */
 		fyt->handle.start_mark = fyt->handle.end_mark = mark_insert;
+	} else if (fyp->cfg.flags & FYPCF_PARSE_COMMENTS) {
+		fyp->pending_seq_item_key = false;
+		fyp_scan_debug(fyp, "pending_seq_item_key -> false");
 	}
 
 	if (push_bmap_start || push_key_only) {
@@ -6211,6 +6239,7 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 	struct fy_atom handle, *ev_handle;
 	struct fy_token *fytn;
 	char tbuf[16] __FY_DEBUG_UNUSED__;
+	const char *old_comment, *comment;
 	int rc;
 
 	(void)tbuf;
@@ -6594,6 +6623,39 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		}
 
 		fye->document_end.implicit = fyds->end_implicit;
+
+		/* get old comment if it exist and keep the token alive */
+		old_comment = fy_document_state_bottom_comment(fyds);
+		fytn = fyds->fyt_de;
+
+		/* update the document end token */
+		fyds->fyt_de = fy_token_ref(fye->document_end.document_end);
+
+		/* if there was a comment preserve it */
+		if (old_comment) {
+			rc = fy_document_state_set_bottom_comment(fyds, old_comment);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_document_state_set_bottom_comment() failed");
+		}
+		/* and get rid of it */
+		fy_token_unref(fytn);
+		fytn = NULL;
+
+		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+		    fy_atom_is_set(&fyp->last_comment)) {
+			rc = fy_document_state_set_bottom_comment_atom(fyds, &fyp->last_comment);
+			fyp_error_check(fyp, !rc, err_out,
+					"fy_document_state_set_bottom_comment_atom() failed");
+		}
+		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
+		    fyt && fyt->type == FYTT_STREAM_END && fy_token_has_any_comment(fyt)) {
+			comment = fy_token_get_comment(fyt, fycp_top);
+			if (comment) {
+				rc = fy_document_state_set_bottom_comment(fyds, comment);
+				fyp_error_check(fyp, !rc, err_out,
+						"fy_document_state_set_bottom_comment() failed");
+			}
+		}
 
 		if (!fyp->next_single_document) {
 			/* multi document mode */
