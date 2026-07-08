@@ -3458,7 +3458,7 @@ int fy_generic_dir_get_document_count(fy_generic vdir)
 	if (fy_generic_is_sequence(vdir)) {
 		len = fy_len(vdir);
 		for (idx = 0; idx < len; idx++) {
-			vds = fy_get(vdir, idx, fy_invalid);
+			vds = fy_get(vdir, idx);
 			if (!fy_generic_is_valid(fy_generic_vds_get_root(vds)))
 				break;
 		}
@@ -3475,7 +3475,7 @@ fy_generic_dir_get_document_vds(fy_generic vdir, size_t idx)
 	if (fy_generic_is_mapping(vdir))
 		return vdir;
 	if (fy_generic_is_sequence(vdir))
-		return fy_get(vdir, idx, fy_invalid);
+		return fy_get(vdir, idx);
 	return fy_invalid;
 }
 
@@ -3513,7 +3513,7 @@ fy_generic_vds_get_document_state(fy_generic vds)
 		tags = alloca(sizeof(*tags) * (tag_count + 1));
 		for (i = 0; i < tag_count; i++) {
 			tag = alloca(sizeof(*tag));
-			v = fy_get(vseq, i, fy_invalid);
+			v = fy_get(vseq, i);
 			tag->handle = fy_get(v, "handle", "");
 			tag->prefix = fy_get(v, "prefix", "");
 			tags[i] = tag;
@@ -3530,10 +3530,10 @@ fy_generic_vds_get_document_state(fy_generic vds)
 	fyds->tags_explicit = fy_get(vds, "tags-explicit", (_Bool)false);
 	fyds->start_implicit = fy_get(vds, "start-implicit", (_Bool)true);
 	fyds->end_implicit = fy_get(vds, "end-implicit", (_Bool)true);
-	v = fy_get(vds, "top-comment", fy_invalid);
+	v = fy_get(vds, "top-comment");
 	if (fy_generic_is_string(v))
 		fy_document_state_set_top_comment(fyds, fy_cast(v, ""));
-	v = fy_get(vds, "bottom-comment", fy_invalid);
+	v = fy_get(vds, "bottom-comment");
 	if (fy_generic_is_string(v))
 		fy_document_state_set_bottom_comment(fyds, fy_cast(v, ""));
 

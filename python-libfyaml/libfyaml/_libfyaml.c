@@ -923,7 +923,7 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
         }
 
         /* Use fy_get() to get item by index */
-        item = fy_get(self->fyg, (int)index, fy_invalid);
+        item = fy_get(self->fyg, (int)index);
         if (!fy_generic_is_valid(item)) {
             PyErr_SetString(PyExc_IndexError, "Invalid item at index");
             return NULL;
@@ -944,7 +944,7 @@ FyGeneric_subscript(FyGenericObject *self, PyObject *key)
         }
 
         /* Use fy_get() with string key */
-        value = fy_get(self->fyg, key_cstr, fy_invalid);
+        value = fy_get(self->fyg, key_cstr);
         Py_XDECREF(key_str);
 
         if (!fy_generic_is_valid(value)) {
@@ -1561,13 +1561,13 @@ FyGeneric_get_document_comment(FyGenericObject *self, PyObject *args, PyObject *
         return NULL;
 
     if (!strcmp(placement, "all")) {
-        vcomment = fy_get(FYG_VDS(self), "top-comment", fy_invalid);
+        vcomment = fy_get(FYG_VDS(self), "top-comment");
         if (!fy_generic_is_string(vcomment))
-            vcomment = fy_get(FYG_VDS(self), "bottom-comment", fy_invalid);
+            vcomment = fy_get(FYG_VDS(self), "bottom-comment");
     } else if (!strcmp(placement, "top")) {
-        vcomment = fy_get(FYG_VDS(self), "top-comment", fy_invalid);
+        vcomment = fy_get(FYG_VDS(self), "top-comment");
     } else if (!strcmp(placement, "bottom")) {
-        vcomment = fy_get(FYG_VDS(self), "bottom-comment", fy_invalid);
+        vcomment = fy_get(FYG_VDS(self), "bottom-comment");
     } else {
         PyErr_SetString(PyExc_ValueError, "placement must be 'all', 'top', or 'bottom'");
         return NULL;
@@ -3001,7 +3001,7 @@ FyGeneric_contains(FyGenericObject *self, PyObject *key)
 
     /* For mapping, check if key exists (OP_CONTAINS doesn't work for mappings) */
     if (type == FYGT_MAPPING) {
-        result = fy_generic_mapping_get_generic_default(self->fyg, key_generic, fy_invalid);
+        result = fy_get(self->fyg, key_generic);
         return fy_generic_is_invalid(result) ? 0 : 1;
     }
 
