@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha7
+# libfyaml 1.0-alpha8
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,23 +17,44 @@ The alpha release adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha7 matters
+## Why 1.0-alpha8 matters
 
-`1.0.0-alpha7` is the cache, emission, and Python packaging follow-up to the earlier
-`1.0.0-alpha` releases.
+`1.0.0-alpha8` is the durable-storage, comment fidelity, and generic API
+follow-up to the earlier `1.0.0-alpha` releases.
 
-It keeps the same overall 1.0 direction, but makes repeated parsing cheaper,
-switches generic emission to the optimized path by default, and improves the
-Python packaging story for wider binary compatibility:
+It keeps the same overall 1.0 direction, but adds durable on-disk generic
+storage, expands the generic convenience API, and improves round-trip behavior:
 
-* transparent parser cache support in the core parser, `fy-tool`, and Python binding
-* optimized generic event emission enabled by default, with expanded emitter coverage
-* Python Stable ABI (`abi3`, `cp310`) wheels and additional ARM wheel builds
-* keep-anchor parsing options for C and Python users
-* invalid UTF-8 emission fixes and stronger C++/atomic portability coverage
+* durable allocator and durable dedup support for on-disk generic arenas
+* transparent parser cache updates that split content and dedup cache files
+* auto-anchor emission support for generic, `fy-tool`, and Python dump paths
+* improved comment parsing, attachment, and emission for round-trip fidelity
+* new generic path, comparison, join, delete, sorted/filtering, and intern helpers
 
-Modulo any show-stopper bugs found after release, this is expected to be the
-last alpha before the 1.0 line moves into beta.
+The durable work is the main new piece. Generic builders can now be backed by
+allocator state that survives beyond one process, with snapshot, restore,
+checkpoint, verification, and offline garbage collection APIs. The dedup layer
+can participate in that storage model too, so repeated values and cached parse
+results can share persistent backing instead of being rebuilt from scratch.
+
+The cache work from `1.0.0-alpha7` is still the user-facing story for repeated
+loads, but `alpha8` makes the implementation more practical for persistent
+use: cached input content and deduplicated generic storage now live in separate
+files. That gives applications a cleaner boundary between "what was parsed" and
+"what generic values were reused".
+
+This release also tightens YAML round-tripping. Document-level comments,
+document-end comments, mapping-key comments, sequence-item comments, and
+block-end comments all get more consistent parse/attach/emit behavior. The
+goal is not to turn libfyaml into a formatter; it is to preserve user-authored
+structure more reliably when applications inspect or modify documents.
+
+For C users, the generic API gained the convenience calls that were missing
+from the earlier alpha surface: deep path set/delete, path string and path
+sequence variants, sorted and null-filtered collection creation, string
+interning, polymorphic comparisons, value signatures, storage statistics,
+memoized graph copy, and raw two-argument getters. Python also picks up
+auto-anchor emission and comment setter APIs.
 
 ### Generic runtime
 
@@ -288,6 +309,8 @@ binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow,
 `v1.0.0-alpha5` broadened build and CI coverage, and `v1.0.0-alpha6` expands
 generic formatting/document handling. `v1.0.0-alpha7` adds transparent parse
 caching, optimized generic emission, and Stable ABI Python wheels.
+`v1.0.0-alpha8` adds durable storage, auto-anchor emission, stronger comment
+round-tripping, and more complete generic helper APIs.
 
 ## License
 

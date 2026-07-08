@@ -5,6 +5,63 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha8] - 2026-07-08
+
+The eighth alpha milestone for the 1.0 line. This release adds durable generic
+storage primitives, improves comment round-trip fidelity, expands auto-anchor
+emission, and fills in more generic convenience APIs while keeping the beta
+direction intact.
+
+The durable work is the largest change in this alpha. Builders can now use
+allocator state designed for persistent storage, and the dedup layer can store
+and restore canonical values across process boundaries. This extends the parse
+cache work from `alpha7` from a fast reload path into a more complete
+foundation for reusable on-disk generic data.
+
+The other visible theme is round-trip fidelity. Comment parsing, attachment,
+and emission now cover more of the document structure, including document-level
+and document-end comments. Applications that load, modify, and re-emit YAML
+should lose less of the author's original layout intent.
+
+### Added
+
+- `allocator`: durable allocator support, including snapshot/restore APIs, checkpoints, verification, offline garbage collection, durable-only public operations, and storage usage summaries
+- `dedup`: durable forwarding, external allocation config, read-only setup, explicit-tag configuration, snapshot support, relocation/restore support, and race-stable canonical identity
+- `cache`: transparent parse cache storage now uses separate content and dedup files, making cached input bytes and reusable generic storage distinct
+- `generic`: value signatures, storage statistics, string join, indirect setters, auto-anchor emission, memoized graph copy, and ID-set helpers
+- `generic`: path helpers for mkdir-p-style deep set, delete-at-path with pruning, pathseq/pathstr variants, sorted/null-filtered collection creation, string interning, polymorphic comparisons, and raw two-argument getters
+- `python`: auto-anchor emission support for dump paths, comment setter APIs, and memoized `to_python()` conversions
+- `tool`: durable storage options, storage stats, `--durable <dir>`, and `--auto-anchor` so the CLI can exercise the new storage and emission paths
+- `doc`: `COMMENT-HANDLING.md` design notes for the parser/emitter comment model
+
+### Changed
+
+- `comment`: process document-level and document-end comments through the generic/document state machinery instead of treating them as parser leftovers
+- `emit`: improve comment emission for mapping keys, sequence items, and block-end positions, tightening re-emission after document edits
+- `allocator`: move durable arena internals onto portable mmap/fallocate/VM helpers and expose higher-level usage accounting
+- `generic`: reduce variadic macro expansion cost for large literal constructors and pass through same-type conversions without needless rebuilding
+- `python`: memoize `to_python()` to avoid alias-expansion blowups when converting shared or cyclic-looking generic graphs
+- `cmake`: install the static library with shared builds and avoid Windows static import-library collisions when both library forms are present
+- `ci`: use the Visual Studio 2026 generator on `windows-latest`
+
+### Fixed
+
+- `parse`: fix comment parsing and attachment for document-level comments and improve round-trip placement for comments near mappings and sequences
+- `emit`: fix non-generic auto-anchor emission, empty-string JSON emission, and pending whitespace after indicators
+- `cache`: free aligned cache buffers with the matching aligned free path
+- `allocator`: make malloc tracking robust, fix durable arena edge cases, and tighten durable test coverage around padding, checkpoints, and verification
+- `token`: copy scalar path keys by length, including EOF cases found by fuzz coverage
+- `generic`: wire `fy_get_at_path()`, fix stale `SET_AT_PATH` rebuild checks, avoid inplace-builder destroy crashes, and preserve root state after path mutation
+- `python`: keep root state current after path mutation and avoid repeated expansion while converting aliases to Python objects
+- `doc`: include the referenced Sphinx/kernel-doc inputs in source tarballs and fix kernel-doc parameter documentation so release docs rebuild cleanly under `make distcheck`
+- `portability`: add Haiku endian detection plus portable mmap, fallocate, byte-order, VM, and atomic rename helpers
+- `tool`: remove `strdupa()` use for better portability
+
+### Statistics
+
+- 139 commits since `v1.0.0-alpha7`
+- Focus areas: durable storage, dedup/cache persistence, generic API completion, auto-anchor emission, comment round-tripping, and portability
+
 ## [1.0.0-alpha7] - 2026-05-28
 
 The seventh alpha milestone for the 1.0 line. This release adds transparent
@@ -757,6 +814,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-alpha8]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha7...v1.0.0-alpha8
 [1.0.0-alpha7]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha6...v1.0.0-alpha7
 [1.0.0-alpha6]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha5...v1.0.0-alpha6
 [1.0.0-alpha5]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha4...v1.0.0-alpha5
