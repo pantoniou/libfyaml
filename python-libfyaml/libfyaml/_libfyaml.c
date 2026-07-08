@@ -2403,7 +2403,8 @@ FyGeneric_set_at_path(FyGenericObject *self, PyObject *args)
         return NULL;
     }
 
-    /* Update the root's fyg */
+    /* Update the root value */
+    FYG_DOC_STATE(self)->root_fyg = new_root;
     self->fyg = new_root;
 
     Py_RETURN_NONE;
