@@ -1353,18 +1353,42 @@ FyGeneric_has_marker(FyGenericObject *self, PyObject *Py_UNUSED(args))
 }
 
 static PyObject *
-FyGeneric_get_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
+FyGeneric_get_comment(FyGenericObject *self, PyObject *args, PyObject *kwds)
 {
+    static char *kwlist[] = {"placement", NULL};
+    const char *placement = "all";
+    char *alloc = NULL;
+    const char *comment;
     PyObject *pyobj;
-    char *comments;
+    fy_generic vcomment;
+    int placement_idx = -1;  /* -1 invalid, fycp_max = all, 0 < fycp_max explicit */
 
-    comments = fy_generic_get_comments(self->fyg);
-    if (!comments)
-        Py_RETURN_NONE;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s", kwlist, &placement))
+        return NULL;
 
-    pyobj = PyUnicode_FromString(comments);
+    if (!strcmp(placement, "all"))
+        placement_idx = fycp_max;
+    else if (!strcmp(placement, "top"))
+        placement_idx = fycp_top;
+    else if (!strcmp(placement, "right"))
+        placement_idx = fycp_right;
+    else if (!strcmp(placement, "bottom"))
+        placement_idx = fycp_bottom;
+    else {
+        PyErr_SetString(PyExc_ValueError, "placement must be 'all', 'top', 'right', or 'bottom'");
+        return NULL;
+    }
 
-    free(comments);
+    if (placement_idx >= fycp_max) {
+        alloc = fy_generic_get_comments(self->fyg);
+        vcomment = alloc ? fy_value(alloc) : fy_invalid;
+    } else
+        vcomment = fy_generic_get_comment(self->fyg,
+                    (enum fy_comment_placement)placement_idx);
+
+    comment = fy_castp(&vcomment, (const char *)NULL);
+    pyobj = comment ? PyUnicode_FromString(comment) : Py_None;
+    free(alloc);
 
     return pyobj;
 }
@@ -1373,6 +1397,44 @@ static PyObject *
 FyGeneric_has_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     return PyBool_FromLong(fy_generic_has_comments(self->fyg));
+}
+
+static PyObject *
+FyGeneric_get_document_comment(FyGenericObject *self, PyObject *args, PyObject *kwds)
+{
+    static char *kwlist[] = {"placement", NULL};
+    const char *placement = "all";
+    fy_generic vcomment;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s", kwlist, &placement))
+        return NULL;
+
+    if (!strcmp(placement, "all")) {
+        vcomment = fy_get(FYG_VDS(self), "top-comment", fy_invalid);
+        if (!fy_generic_is_string(vcomment))
+            vcomment = fy_get(FYG_VDS(self), "bottom-comment", fy_invalid);
+    } else if (!strcmp(placement, "top")) {
+        vcomment = fy_get(FYG_VDS(self), "top-comment", fy_invalid);
+    } else if (!strcmp(placement, "bottom")) {
+        vcomment = fy_get(FYG_VDS(self), "bottom-comment", fy_invalid);
+    } else {
+        PyErr_SetString(PyExc_ValueError, "placement must be 'all', 'top', or 'bottom'");
+        return NULL;
+    }
+
+    if (!fy_generic_is_string(vcomment))
+        Py_RETURN_NONE;
+
+    return PyUnicode_FromString(fy_cast(vcomment, ""));
+}
+
+static PyObject *
+FyGeneric_has_document_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
+{
+    fy_generic vds = FYG_VDS(self);
+
+    return PyBool_FromLong(fy_generic_is_string(fy_get(vds, "top-comment", fy_invalid)) ||
+                           fy_generic_is_string(fy_get(vds, "bottom-comment", fy_invalid)));
 }
 
 /* Comparison helper functions */
@@ -2682,10 +2744,14 @@ static PyMethodDef FyGeneric_methods[] = {
      "Get position marker (start_byte, start_line, start_col, end_byte, end_line, end_col) or None"},
     {"has_marker", _PyCFunction_CAST(FyGeneric_has_marker), METH_NOARGS,
      "Check if value has a position marker"},
-    {"get_comment", _PyCFunction_CAST(FyGeneric_get_comment), METH_NOARGS,
-     "Get comment associated with this value (or None)"},
+    {"get_comment", _PyCFunction_CAST(FyGeneric_get_comment), METH_VARARGS | METH_KEYWORDS,
+     "Get comment by placement: 'all', 'top', 'right', or 'bottom'"},
     {"has_comment", _PyCFunction_CAST(FyGeneric_has_comment), METH_NOARGS,
      "Check if value has an associated comment"},
+    {"get_document_comment", _PyCFunction_CAST(FyGeneric_get_document_comment), METH_VARARGS | METH_KEYWORDS,
+     "Get document comment by placement: 'all', 'top', or 'bottom'"},
+    {"has_document_comment", _PyCFunction_CAST(FyGeneric_has_document_comment), METH_NOARGS,
+     "Check if the document has a top or bottom comment"},
     {"keys", _PyCFunction_CAST(FyGeneric_keys), METH_NOARGS,
      "Return list of keys (for mappings)"},
     {"values", _PyCFunction_CAST(FyGeneric_values), METH_NOARGS,
