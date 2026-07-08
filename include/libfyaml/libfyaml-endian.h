@@ -44,7 +44,7 @@
 extern "C" {
 #endif
 
-#if defined(__linux__) || defined(__CYGWIN__) || defined(__OpenBSD__) || defined(__GNU__) || defined(__EMSCRIPTEN__)
+#if defined(__linux__) || defined(__CYGWIN__) || defined(__OpenBSD__) || defined(__GNU__) || defined(__EMSCRIPTEN__) || defined(__HAIKU__)
 # include <endian.h>
 #elif defined(__APPLE__)
 # include <libkern/OSByteOrder.h>
