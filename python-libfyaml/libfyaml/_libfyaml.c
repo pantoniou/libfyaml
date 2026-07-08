@@ -274,6 +274,13 @@ struct FyDocumentStateObject {
     PyObject *parent;                   /* Reference to parent doc_state (for sharing) */
 };
 
+static inline void
+FyGeneric_sync_root(FyGenericObject *self)
+{
+    if (FYG_IS_ROOT(self))
+        self->fyg = FYG_ROOT_FYG(self);
+}
+
 static PyObject *FyDocumentStateType = NULL;
 
 /* FyDocumentState: typed instance alloc/free. */
@@ -882,13 +889,16 @@ FyGeneric_from_vds(fy_generic vds, struct fy_generic_builder *gb, int mutable)
 static PyObject *
 FyGeneric_subscript(FyGenericObject *self, PyObject *key)
 {
-    enum fy_generic_type type = fy_get_type(self->fyg);
+    enum fy_generic_type type;
     Py_ssize_t index;
     size_t count;
     fy_generic item;
     PyObject *key_str;
     const char *key_cstr;
     fy_generic value;
+
+    FyGeneric_sync_root(self);
+    type = fy_get_type(self->fyg);
 
     if (type == FYGT_SEQUENCE) {
         /* Sequence indexing */
@@ -1177,6 +1187,8 @@ FyGeneric_to_python(FyGenericObject *self, PyObject *Py_UNUSED(args))
 {
     PyObject *memo, *result;
 
+    FyGeneric_sync_root(self);
+
     if (!FYG_MUTABLE(self)) {
         memo = PyDict_New();
         if (memo == NULL)
@@ -1399,6 +1411,145 @@ FyGeneric_has_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
     return PyBool_FromLong(fy_generic_has_comments(self->fyg));
 }
 
+static int
+comment_placement_from_string(const char *placement, bool allow_right, enum fy_comment_placement *placementp)
+{
+    if (!strcmp(placement, "top")) {
+        *placementp = fycp_top;
+        return 0;
+    }
+    if (allow_right && !strcmp(placement, "right")) {
+        *placementp = fycp_right;
+        return 0;
+    }
+    if (!strcmp(placement, "bottom")) {
+        *placementp = fycp_bottom;
+        return 0;
+    }
+
+    PyErr_SetString(PyExc_ValueError,
+                    allow_right ? "placement must be 'top', 'right', or 'bottom'" :
+                                  "placement must be 'top' or 'bottom'");
+    return -1;
+}
+
+static int
+FyGeneric_replace_value(FyGenericObject *self, fy_generic new_value)
+{
+    struct fy_generic_builder *gb = FYG_GB(self);
+    Py_ssize_t path_len, i;
+    fy_generic *path_array;
+    fy_generic new_root;
+    fy_generic item;
+    PyObject *elem;
+    long idx;
+    double val;
+    const char *str;
+
+    if (FYG_IS_ROOT(self)) {
+        FYG_DOC_STATE(self)->root_fyg = new_value;
+        self->fyg = new_value;
+        return 0;
+    }
+
+    path_len = PyTuple_Size(self->path);
+    if (path_len < 0)
+        return -1;
+
+    path_array = alloca(sizeof(fy_generic) * (path_len + 1));
+    for (i = 0; i < path_len; i++) {
+        elem = PyTuple_GetItem(self->path, i);
+
+        item = fy_invalid;
+        if (PyBool_Check(elem)) {
+            item = elem == Py_True ? fy_true : fy_false;
+        } else if (PyLong_Check(elem)) {
+            idx = PyLong_AsLong(elem);
+            if (!PyErr_Occurred())
+                item = fy_value(idx);
+        } else if (PyFloat_Check(elem)) {
+            val = PyFloat_AsDouble(elem);
+            if (!PyErr_Occurred())
+                item = fy_value(val);
+        } else if (PyUnicode_Check(elem)) {
+            str = PyUnicode_AsUTF8AndSize(elem, NULL);
+            if (str)
+                item = fy_value(str);
+        }
+
+        if (fy_generic_is_invalid(item)) {
+            PyErr_SetString(PyExc_TypeError, "Invalid path element type");
+            return -1;
+        }
+
+        path_array[i] = item;
+    }
+    path_array[path_len] = new_value;
+
+    new_root = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, FYG_ROOT_FYG(self),
+                             path_len + 1, path_array);
+    if (fy_generic_is_invalid(new_root)) {
+        PyErr_SetString(PyExc_RuntimeError, "SET_AT_PATH operation failed");
+        return -1;
+    }
+
+    FYG_DOC_STATE(self)->root_fyg = new_root;
+    self->fyg = new_value;
+    return 0;
+}
+
+static PyObject *
+FyGeneric_set_comment(FyGenericObject *self, PyObject *args, PyObject *kwds)
+{
+    static char *kwlist[] = {"comment", "placement", NULL};
+    PyObject *comment_obj;
+    const char *placement = "top";
+    enum fy_comment_placement which;
+    fy_generic vcomment, new_value;
+    struct fy_generic_builder *gb;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|s", kwlist, &comment_obj, &placement))
+        return NULL;
+
+    if (!FYG_MUTABLE(self)) {
+        PyErr_SetString(PyExc_TypeError,
+                      "This FyGeneric object is read-only. Create with mutable=True to enable mutation.");
+        return NULL;
+    }
+
+    if (comment_placement_from_string(placement, true, &which) < 0)
+        return NULL;
+
+    gb = FYG_GB(self);
+    if (!gb) {
+        PyErr_SetString(PyExc_RuntimeError, "No builder available");
+        return NULL;
+    }
+
+    if (comment_obj == Py_None) {
+        vcomment = fy_invalid;
+    } else if (PyUnicode_Check(comment_obj)) {
+        const char *comment = PyUnicode_AsUTF8AndSize(comment_obj, NULL);
+        if (!comment)
+            return NULL;
+        vcomment = fy_gb_string_create(gb, comment);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "comment must be str or None");
+        return NULL;
+    }
+
+    new_value = fy_generic_indirect_set_comment(gb, self->fyg, which, vcomment);
+    if (fy_generic_is_invalid(new_value)) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to set comment");
+        return NULL;
+    }
+
+    if (FyGeneric_replace_value(self, new_value) < 0)
+        return NULL;
+
+    Py_RETURN_NONE;
+}
+
 static PyObject *
 FyGeneric_get_document_comment(FyGenericObject *self, PyObject *args, PyObject *kwds)
 {
@@ -1435,6 +1586,60 @@ FyGeneric_has_document_comment(FyGenericObject *self, PyObject *Py_UNUSED(args))
 
     return PyBool_FromLong(fy_generic_is_string(fy_get(vds, "top-comment", fy_invalid)) ||
                            fy_generic_is_string(fy_get(vds, "bottom-comment", fy_invalid)));
+}
+
+static PyObject *
+FyGeneric_set_document_comment(FyGenericObject *self, PyObject *args, PyObject *kwds)
+{
+    static char *kwlist[] = {"comment", "placement", NULL};
+    PyObject *comment_obj;
+    const char *placement = "top";
+    const char *field;
+    enum fy_comment_placement which;
+    fy_generic vcomment, path[2], new_vds;
+    struct fy_generic_builder *gb;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|s", kwlist, &comment_obj, &placement))
+        return NULL;
+
+    if (!FYG_MUTABLE(self)) {
+        PyErr_SetString(PyExc_TypeError,
+                      "This FyGeneric object is read-only. Create with mutable=True to enable mutation.");
+        return NULL;
+    }
+
+    if (comment_placement_from_string(placement, false, &which) < 0)
+        return NULL;
+
+    gb = FYG_GB(self);
+    if (!gb) {
+        PyErr_SetString(PyExc_RuntimeError, "No builder available");
+        return NULL;
+    }
+
+    if (comment_obj == Py_None) {
+        vcomment = fy_null;
+    } else if (PyUnicode_Check(comment_obj)) {
+        const char *comment = PyUnicode_AsUTF8AndSize(comment_obj, NULL);
+        if (!comment)
+            return NULL;
+        vcomment = fy_gb_string_create(gb, comment);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "comment must be str or None");
+        return NULL;
+    }
+
+    field = which == fycp_top ? "top-comment" : "bottom-comment";
+    path[0] = fy_value(field);
+    path[1] = vcomment;
+    new_vds = fy_generic_op(gb, FYGBOPF_SET_AT_PATH, FYG_VDS(self), 2, path);
+    if (fy_generic_is_invalid(new_vds)) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to set document comment");
+        return NULL;
+    }
+
+    FYG_DOC_STATE(self)->vds = new_vds;
+    Py_RETURN_NONE;
 }
 
 /* Comparison helper functions */
@@ -2596,6 +2801,8 @@ FyGeneric_dump(FyGenericObject *self, PyObject *args, PyObject *kwargs)
                                      &file_obj, &mode, &compact, &strip_newline, &auto_anchor))
         return NULL;
 
+    FyGeneric_sync_root(self);
+
     json_mode = (strcmp(mode, "json") == 0);
 
     /* Get builder access */
@@ -2746,10 +2953,14 @@ static PyMethodDef FyGeneric_methods[] = {
      "Check if value has a position marker"},
     {"get_comment", _PyCFunction_CAST(FyGeneric_get_comment), METH_VARARGS | METH_KEYWORDS,
      "Get comment by placement: 'all', 'top', 'right', or 'bottom'"},
+    {"set_comment", _PyCFunction_CAST(FyGeneric_set_comment), METH_VARARGS | METH_KEYWORDS,
+     "Set or clear comment by placement: 'top', 'right', or 'bottom'"},
     {"has_comment", _PyCFunction_CAST(FyGeneric_has_comment), METH_NOARGS,
      "Check if value has an associated comment"},
     {"get_document_comment", _PyCFunction_CAST(FyGeneric_get_document_comment), METH_VARARGS | METH_KEYWORDS,
      "Get document comment by placement: 'all', 'top', or 'bottom'"},
+    {"set_document_comment", _PyCFunction_CAST(FyGeneric_set_document_comment), METH_VARARGS | METH_KEYWORDS,
+     "Set or clear document comment by placement: 'top' or 'bottom'"},
     {"has_document_comment", _PyCFunction_CAST(FyGeneric_has_document_comment), METH_NOARGS,
      "Check if the document has a top or bottom comment"},
     {"keys", _PyCFunction_CAST(FyGeneric_keys), METH_NOARGS,

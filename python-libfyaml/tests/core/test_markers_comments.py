@@ -189,3 +189,35 @@ class TestComments:
             doc.get_comment(placement='sideways')
         with pytest.raises(ValueError):
             doc.get_document_comment(placement='sideways')
+
+    def test_set_node_comment(self):
+        doc = fy.loads('foo: bar\n', mutable=True, keep_comments=True)
+        doc['foo'].set_comment('lead')
+        doc['foo'].set_comment('inline', placement='right')
+        assert doc['foo'].get_comment(placement='top') == 'lead'
+        assert doc['foo'].get_comment(placement='right') == 'inline'
+        assert 'lead' in doc['foo'].get_comment()
+        assert 'inline' in doc['foo'].get_comment()
+
+        doc['foo'].set_comment(None, placement='top')
+        assert doc['foo'].get_comment(placement='top') is None
+        assert doc['foo'].get_comment(placement='right') == 'inline'
+
+    def test_set_document_comment(self):
+        doc = fy.loads('foo: bar\n', mutable=True, keep_comments=True)
+        doc.set_document_comment('header')
+        doc.set_document_comment('footer', placement='bottom')
+        assert doc.get_document_comment(placement='top') == 'header'
+        assert doc.get_document_comment(placement='bottom') == 'footer'
+        assert doc.get_document_comment() == 'header'
+
+        doc.set_document_comment(None, placement='top')
+        assert doc.get_document_comment(placement='top') is None
+        assert doc.get_document_comment() == 'footer'
+
+    def test_set_comment_requires_mutable(self):
+        doc = fy.loads('foo: bar\n', keep_comments=True)
+        with pytest.raises(TypeError):
+            doc['foo'].set_comment('nope')
+        with pytest.raises(TypeError):
+            doc.set_document_comment('nope')
