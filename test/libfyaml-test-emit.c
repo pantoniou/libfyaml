@@ -834,7 +834,7 @@ START_TEST(emit_subtree_comment_indent)
 }
 END_TEST
 
-static int scalar_seq_sort_cmp(struct fy_node *a, struct fy_node *b, void *arg)
+static int scalar_seq_sort_cmp(struct fy_node *a, struct fy_node *b, void *arg FY_UNUSED)
 {
 	const char *sa = fy_node_get_scalar0(a);
 	const char *sb = fy_node_get_scalar0(b);
@@ -927,7 +927,7 @@ START_TEST(emit_first_item_comment_follows_item_after_seq_sort)
 }
 END_TEST
 
-static int mapping_seq_sort_by_name(struct fy_node *a, struct fy_node *b, void *arg)
+static int mapping_seq_sort_by_name(struct fy_node *a, struct fy_node *b, void *arg FY_UNUSED)
 {
 	const char *na = fy_node_get_scalar0(fy_node_by_path(a, "/name", FY_NT, FYNWF_DONT_FOLLOW));
 	const char *nb = fy_node_get_scalar0(fy_node_by_path(b, "/name", FY_NT, FYNWF_DONT_FOLLOW));
