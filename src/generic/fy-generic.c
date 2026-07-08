@@ -3530,6 +3530,12 @@ fy_generic_vds_get_document_state(fy_generic vds)
 	fyds->tags_explicit = fy_get(vds, "tags-explicit", (_Bool)false);
 	fyds->start_implicit = fy_get(vds, "start-implicit", (_Bool)true);
 	fyds->end_implicit = fy_get(vds, "end-implicit", (_Bool)true);
+	v = fy_get(vds, "top-comment", fy_invalid);
+	if (fy_generic_is_string(v))
+		fy_document_state_set_top_comment(fyds, fy_cast(v, ""));
+	v = fy_get(vds, "bottom-comment", fy_invalid);
+	if (fy_generic_is_string(v))
+		fy_document_state_set_bottom_comment(fyds, fy_cast(v, ""));
 
 	return fyds;
 }
@@ -3547,6 +3553,8 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 	bool start_implicit;
 	bool end_implicit;
 	const char *schema_txt;
+	const char *top_comment, *bottom_comment;
+	fy_generic vtop_comment, vbottom_comment;
 	fy_generic vds, vtags;
 
 	vers = fy_document_state_version(fyds);
@@ -3576,8 +3584,12 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 	vtags = fy_gb_sequence_create(gb, count, vtags_items);
 
 	schema_txt = fy_generic_schema_get_text(fy_gb_get_schema(gb));
+	top_comment = fy_document_state_top_comment(fyds);
+	bottom_comment = fy_document_state_bottom_comment(fyds);
+	vtop_comment = top_comment ? fy_gb_string_create(gb, top_comment) : fy_null;
+	vbottom_comment = bottom_comment ? fy_gb_string_create(gb, bottom_comment) : fy_null;
 
-	vds = fy_gb_mapping(gb,
+	vds = fy_mapping(gb,
 		"root", vroot,
 		"version", fy_mapping(gb,
 				"major", vers->major,
@@ -3587,7 +3599,9 @@ fy_generic_vds_create_from_document_state(struct fy_generic_builder *gb, fy_gene
 		"end-implicit", (_Bool)end_implicit,
 		"tags", vtags,
 		"tags-explicit", (_Bool)tags_explicit,
-		"schema", schema_txt);
+		"schema", schema_txt,
+		"top-comment", vtop_comment,
+		"bottom-comment", vbottom_comment);
 
 	return vds;
 }

@@ -784,7 +784,8 @@ fygdb_stack_top(const struct fy_generic_document_builder *fygdb)
 }
 
 static fy_generic
-fygdb_materialize_result(struct fy_generic_document_builder *fygdb, fy_generic root, struct fy_document_state *fyds)
+fygdb_materialize_result(struct fy_generic_document_builder *fygdb, fy_generic root,
+			 struct fy_document_state *fyds)
 {
 	fy_generic v;
 
@@ -993,7 +994,8 @@ fy_generic_document_builder_peek_document(struct fy_generic_document_builder *fy
 	if (!fygdb->gdo_root || fygdb->stack_top != 1 || fygdb->gdo_root->count != 1)
 		return fy_invalid;
 
-	return fygdb_materialize_result(fygdb, fygdb->gdo_root->items[0], fygdb->gdo_root->fyds);
+	return fygdb_materialize_result(fygdb, fygdb->gdo_root->items[0],
+			fygdb->gdo_root->fyds);
 }
 
 fy_generic
@@ -1261,6 +1263,8 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		fygdb_error_check(fygdb, gdo, err_out, "fy_generic_decoder_object_alloc() failed");
 		gdo->type = FYGDOT_ROOT;
 		gdo->fyds = fy_document_state_ref(fye->document_start.document_state);
+		if ((gi.flags & FYGIF_TOP_COMMENT) && fy_generic_is_string(gi.top_comment))
+			fy_document_state_set_top_comment(gdo->fyds, fy_cast(gi.top_comment, ""));
 		vers = gdo->fyds ? fy_document_state_version(gdo->fyds) : NULL;
 		gdo->supports_merge_key = vers && vers->major == 1 && vers->minor == 1;
 
@@ -1288,6 +1292,10 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 		FYGDB_TOKEN_ERROR_CHECK(fygdb, fyt, FYEM_BUILD,
 					fygdb->gdo_root && fygdb->stack_top == 1, err_out,
 					"DOCUMENT_END with incomplete document");
+		if ((gi.flags & FYGIF_TOP_COMMENT) && fy_generic_is_string(gi.top_comment))
+			fy_document_state_set_bottom_comment(fygdb->gdo_root->fyds, fy_cast(gi.top_comment, ""));
+		if ((gi.flags & FYGIF_BOTTOM_COMMENT) && fy_generic_is_string(gi.bottom_comment))
+			fy_document_state_set_bottom_comment(fygdb->gdo_root->fyds, fy_cast(gi.bottom_comment, ""));
 		rc = fygdb_finish_document(fygdb);
 		if (rc)
 			goto err_out;
@@ -1398,6 +1406,15 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 			gdo->gi.flags |= FYGIF_BOTTOM_COMMENT;
 			gdo->gi.bottom_comment = (gi.flags & FYGIF_TOP_COMMENT) ?
 							gi.top_comment : gi.right_comment;
+		}
+		if (parent->type == FYGDOT_ROOT &&
+		    (gdo->gi.flags & FYGIF_BOTTOM_COMMENT) &&
+		    fy_generic_is_string(gdo->gi.bottom_comment))
+			fy_document_state_set_bottom_comment(parent->fyds, fy_cast(gdo->gi.bottom_comment, ""));
+		if (parent->type == FYGDOT_ROOT) {
+			comment = fy_token_get_comment(fyt, fycp_bottom);
+			if (comment)
+				fy_document_state_set_bottom_comment(parent->fyds, comment);
 		}
 
 		v = fygdb_object_finalize_and_destroy(fygdb, gdo);
