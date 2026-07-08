@@ -590,6 +590,9 @@ struct fy_mremap_allocator_cfg {
  * @minimum_bucket_occupancy: Minimum bloom-filter fill ratio before a
  * 			      chain-length-triggered grow is allowed (default 50%,
  * 			      or 0.0 to grow on the trigger alone)
+ * @use_explicit_tags: Route content and index allocations to explicit parent tags.
+ * @content_tag: Parent tag used for deduplicated content allocations.
+ * @entries_tag: Parent tag used for dedup index allocations.
  */
 struct fy_dedup_allocator_cfg {
 	struct fy_allocator *parent_allocator;
@@ -682,6 +685,7 @@ struct fy_auto_allocator_cfg {
  *               a default.
  * @index_region_size: Reserved virtual size of the index region. 0 -> default.
  * @index_chunk_size:  Size of each index chunk file. 0 -> default.
+ * @tp:          Optional thread pool for BLAKE3 hashing.
  */
 struct fy_durable_allocator_cfg {
 	const char *dir;

@@ -69,6 +69,7 @@ EXTRA_DIST = \
 	canned-man/libfyaml-reflection.3 \
 	canned-man/fy-tool.1 \
 	conf.py \
+	COMMENT-HANDLING.md \
 	generics-guide.rst \
 	index.rst \
 	intro.rst \
@@ -78,5 +79,23 @@ EXTRA_DIST = \
 	libfyaml-reflection.rst \
 	libfyaml.rst \
 	reflection-guide.rst \
+	transparent-cache.rst \
 	man/fy-tool.rst \
+	include/libfyaml.h \
+	include/libfyaml/libfyaml-align.h \
+	include/libfyaml/libfyaml-allocator.h \
+	include/libfyaml/libfyaml-atomics.h \
+	include/libfyaml/libfyaml-blake3.h \
+	include/libfyaml/libfyaml-composer.h \
+	include/libfyaml/libfyaml-core.h \
+	include/libfyaml/libfyaml-cpp.h \
+	include/libfyaml/libfyaml-docbuild.h \
+	include/libfyaml/libfyaml-dociter.h \
+	include/libfyaml/libfyaml-endian.h \
+	include/libfyaml/libfyaml-generic.h \
+	include/libfyaml/libfyaml-path-exec.h \
+	include/libfyaml/libfyaml-reflection.h \
+	include/libfyaml/libfyaml-thread.h \
+	include/libfyaml/libfyaml-util.h \
+	include/libfyaml/libfyaml-vlsize.h \
 	windows-support.txt

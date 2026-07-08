@@ -1223,6 +1223,7 @@ fy_generic_get_comment(fy_generic v, enum fy_comment_placement placement)
  *
  * Sets a tag of the generic, or removes it if setting @vtag fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @vtag: The generic tag to set, fy_invalid to remove it
  *
@@ -1238,6 +1239,7 @@ fy_generic_set_tag(struct fy_generic_builder *gb, fy_generic v, fy_generic vtag)
  *
  * Sets a diagnostic of the generic, or removes it if setting @vdiag fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @vdiag: The generic diagnostic to set, fy_invalid to remove it
  *
@@ -1253,6 +1255,7 @@ fy_generic_set_diag(struct fy_generic_builder *gb, fy_generic v, fy_generic vdia
  *
  * Sets a marker of the generic, or removes it if setting @vmarker fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @vmarker: The generic marker to set, fy_invalid to remove it
  *
@@ -1264,11 +1267,12 @@ fy_generic_set_marker(struct fy_generic_builder *gb, fy_generic v, fy_generic vm
 	FY_EXPORT;
 
 /**
- * fy_generic_set_comment() - Set a comment on the given generic
+ * fy_generic_indirect_set_comment() - Set a comment on the given generic
  *
  * Sets a comment with the given placement of the generic, or remove
  * it if setting @vcomm fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @placement: The comment placement
  * @vcomm: The generic comment to set, fy_invalid to remove it
@@ -1286,6 +1290,7 @@ fy_generic_indirect_set_comment(struct fy_generic_builder *gb, fy_generic v,
  *
  * Sets a style of the generic, or remove it if setting @vstyle fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @vstyle: The generic style to set, fy_invalid to remove it
  *
@@ -1299,6 +1304,7 @@ fy_generic_set_style(struct fy_generic_builder *gb, fy_generic v, fy_generic vst
 /**
  * fy_generic_set_node_style() - Set the node style of a generic
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @nstyle: The node style (FYNS_ANY removes it)
  *
@@ -1314,6 +1320,7 @@ fy_generic_set_node_style(struct fy_generic_builder *gb, fy_generic v, enum fy_n
  *
  * It fails if generic is not a scalar
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @sstyle: The scalar style (FYSS_ANY removes it)
  *
@@ -1329,8 +1336,9 @@ fy_generic_set_scalar_style(struct fy_generic_builder *gb, fy_generic v, enum fy
  *
  * It fails if generic is not a collection
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
- * @sstyle: The collection style (FYCS_ANY removes it)
+ * @cstyle: The collection style (FYCS_ANY removes it)
  *
  * Returns:
  * The updated generic
@@ -1340,10 +1348,11 @@ fy_generic_set_collection_style(struct fy_generic_builder *gb, fy_generic v, enu
 	FY_EXPORT;
 
 /**
- * fy_generic_set_failsafe() - Set a failsafe on the given generic
+ * fy_generic_set_failsafe_str() - Set a failsafe on the given generic
  *
  * Sets a failsafe of the generic, or remove it if setting @vfailsafe fy_invalid
  *
+ * @gb: The generic builder to use for allocation.
  * @v: Any generic value.
  * @vfailsafe: The generic failsafe to set, fy_invalid to remove it
  *
