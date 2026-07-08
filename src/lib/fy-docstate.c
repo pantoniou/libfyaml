@@ -49,6 +49,7 @@ void fy_document_state_free(struct fy_document_state *fyds)
 	assert(fyds->refs == 1);
 
 	fy_token_unref(fyds->fyt_ds);
+	fy_token_unref(fyds->fyt_de);
 	fy_token_unref(fyds->fyt_vd);
 	fy_token_list_unref_all(&fyds->fyt_td);
 
@@ -159,6 +160,7 @@ struct fy_document_state *fy_document_state_default(
 	memset(&fyds->end_mark, 0, sizeof(fyds->end_mark));
 
 	fyds->fyt_ds = NULL;
+	fyds->fyt_de = NULL;
 	fyds->fyt_vd = NULL;
 	fy_token_list_init(&fyds->fyt_td);
 
@@ -194,20 +196,8 @@ struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds)
 	fyds_new->start_mark = fyds->start_mark;
 	fyds_new->end_mark = fyds->end_mark;
 
-	if (fyds->fyt_ds) {
-		fyt = fy_token_alloc();
-		if (!fyt)
-			goto err_out;
-
-		fyt->type = FYTT_DOCUMENT_START;
-		fyt->handle = fyds->fyt_ds->handle;
-
-		/* take reference */
-		fy_input_ref(fyt->handle.fyi);
-		fyt->handle.token_atom = true;
-
-		fyds_new->fyt_ds = fyt;
-	}
+	fyds_new->fyt_ds = fy_token_ref(fyds->fyt_ds);
+	fyds_new->fyt_de = fy_token_ref(fyds->fyt_de);
 
 	if (fyds->fyt_vd) {
 		fyt = fy_token_alloc();
@@ -274,6 +264,74 @@ struct fy_token *fy_document_state_lookup_tag_directive(struct fy_document_state
 	}
 
 	return NULL;
+}
+
+static int
+fy_document_state_ensure_token(struct fy_token **fytp, enum fy_token_type type)
+{
+	struct fy_input *fyi = NULL;
+	struct fy_atom atom;
+	struct fy_token *fyt;
+	char *data;
+
+	if (*fytp)
+		return 0;
+
+	data = strdup("");
+	if (!data)
+		return -1;
+
+	fyi = fy_input_from_malloc_data(data, 0, &atom, true);
+	if (!fyi) {
+		free(data);
+		return -1;
+	}
+
+	fyt = fy_token_create(type, &atom);
+	fy_input_unref(fyi);
+	if (!fyt)
+		return -1;
+
+	*fytp = fyt;
+	return 0;
+}
+
+int
+fy_document_state_set_top_comment(struct fy_document_state *fyds, const char *comment)
+{
+	int rc;
+
+	if (!fyds)
+		return -1;
+	rc = fy_document_state_ensure_token(&fyds->fyt_ds, FYTT_DOCUMENT_START);
+	if (rc)
+		return rc;
+	return fy_token_set_comment(fyds->fyt_ds, fycp_top, comment, FY_NT);
+}
+
+int
+fy_document_state_set_bottom_comment(struct fy_document_state *fyds, const char *comment)
+{
+	int rc;
+
+	if (!fyds)
+		return -1;
+	rc = fy_document_state_ensure_token(&fyds->fyt_de, FYTT_DOCUMENT_END);
+	if (rc)
+		return rc;
+	return fy_token_set_comment(fyds->fyt_de, fycp_bottom, comment, FY_NT);
+}
+
+const char *
+fy_document_state_top_comment(struct fy_document_state *fyds)
+{
+	return fyds ? fy_token_get_comment(fyds->fyt_ds, fycp_top) : NULL;
+}
+
+const char *
+fy_document_state_bottom_comment(struct fy_document_state *fyds)
+{
+	return fyds ? fy_token_get_comment(fyds->fyt_de, fycp_bottom) : NULL;
 }
 
 int fy_document_state_merge(struct fy_document_state *fyds,

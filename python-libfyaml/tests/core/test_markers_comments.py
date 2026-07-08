@@ -122,6 +122,9 @@ class TestComments:
         doc = fy.loads('# my comment\nfoo: bar\n', keep_comments=True)
         comment = doc.get_comment()
         assert isinstance(comment, str)
+        assert 'my comment' in first_key.get_comment(placement='top')
+        assert first_key.get_comment(placement='right') is None
+        assert first_key.get_comment(placement='bottom') is None
 
     def test_comments_with_markers(self):
         """Comments and markers can be used together."""
@@ -132,5 +135,57 @@ class TestComments:
         comment = doc['foo'].get_comment()
         assert marker is not None
         assert 'note' in comment
+        assert doc['foo'].get_comment(placement='top') is None
+        assert 'note' in doc['foo'].get_comment(placement='right')
+        assert doc['foo'].get_comment(placement='bottom') is None
 
+    def test_doc_leading_comment_explicit(self):
+        """A comment before '---' is a doc-level comment."""
+        doc = fy.loads('# leading\n---\nfoo: bar\n', keep_comments=True)
+        assert doc.get_comment() is None
+        assert not doc.has_comment()
+        assert doc.has_document_comment()
+        assert doc.get_document_comment(placement='bottom') is None
+        comment = doc.get_document_comment()
+        assert comment is not None
+        assert 'leading' in comment
+        assert doc.get_document_comment(placement='top') == comment
 
+    def test_doc_leading_comment_blank_separated(self):
+        """A comment separated from implicit-doc content by a blank line is doc-level."""
+        doc = fy.loads('# header\n\nfoo: bar\n', keep_comments=True)
+        assert doc.get_comment() is None
+        assert not doc.has_comment()
+        comment = doc.get_document_comment()
+        assert comment is not None
+        assert 'header' in comment
+
+    def test_doc_trailing_comment(self):
+        """A trailing comment after all mapping content is doc-level."""
+        doc = fy.loads('foo: bar\n# trailing\n', keep_comments=True)
+        assert doc.get_comment() is None
+        assert not doc.has_comment()
+        assert doc.has_document_comment()
+        assert doc.get_document_comment(placement='top') is None
+        comment = doc.get_document_comment()
+        assert comment is not None
+        assert 'trailing' in comment
+        assert doc.get_document_comment(placement='bottom') == comment
+        assert doc['foo'].get_comment() is None
+        assert not doc['foo'].has_comment()
+
+    def test_inline_comment_not_doc_comment(self):
+        """A comment on the same line as content (no blank line) attaches to the key, not doc."""
+        doc = fy.loads('# header\nfoo: bar\n', keep_comments=True)
+        assert doc.get_comment() is None
+        assert doc.get_document_comment() is None
+        assert not doc.has_document_comment()
+        first_key = next(iter(doc.keys()))
+        assert first_key.get_comment() is not None
+
+    def test_invalid_comment_placement(self):
+        doc = fy.loads('foo: bar\n', keep_comments=True)
+        with pytest.raises(ValueError):
+            doc.get_comment(placement='sideways')
+        with pytest.raises(ValueError):
+            doc.get_document_comment(placement='sideways')

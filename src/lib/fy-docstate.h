@@ -37,6 +37,7 @@ struct fy_document_state {
 	struct fy_mark start_mark;
 	struct fy_mark end_mark;
 	struct fy_token *fyt_ds;		/* the document start token (if any) */
+	struct fy_token *fyt_de;		/* the document end token (if any) */
 	struct fy_token *fyt_vd;		/* version directive */
 	struct fy_token_list fyt_td;		/* tag directives */
 };
@@ -57,6 +58,12 @@ struct fy_document_state *fy_document_state_default(
 struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds);
 int fy_document_state_merge(struct fy_document_state *fyds,
 			    struct fy_document_state *fydsc);
+int fy_document_state_set_top_comment(struct fy_document_state *fyds,
+				      const char *comment);
+int fy_document_state_set_bottom_comment(struct fy_document_state *fyds,
+					 const char *comment);
+const char *fy_document_state_top_comment(struct fy_document_state *fyds);
+const char *fy_document_state_bottom_comment(struct fy_document_state *fyds);
 
 struct fy_token *fy_document_state_lookup_tag_directive(struct fy_document_state *fyds,
 		const char *handle, size_t handle_size);
