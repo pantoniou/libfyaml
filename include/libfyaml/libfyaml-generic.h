@@ -11232,8 +11232,21 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_convert(...) \
 	(FY_CPP_FOURTH(__VA_ARGS__, fy_gb_convert, fy_local_convert)(__VA_ARGS__))
 
-/* fy_join() - Join values as strings with a separator using a stack builder */
-#define fy_join(_sep, ...) fy_local_join((_sep) __VA_OPT__(,) __VA_ARGS__)
+/* fy_join_helper() - Internal dispatch: builder path or local alloca path */
+#define fy_join_helper(_maybe_gb, ...) \
+	(_Generic((_maybe_gb), \
+		  struct fy_generic_builder *: ({ fy_gb_join(fy_gb_or_NULL(_maybe_gb), ##__VA_ARGS__); }), \
+		  default: (fy_local_join((_maybe_gb), ##__VA_ARGS__))))
+
+/* fy_join_arity1() - Separator only, no items; always the local path */
+#define fy_join_arity1(_sep) fy_local_join(_sep)
+
+/* fy_join_arity1_n() - Two or more arguments; dispatch on optional leading builder */
+#define fy_join_arity1_n(...) fy_join_helper(__VA_ARGS__)
+
+/* fy_join() - Join values as strings with a separator; optional leading builder */
+#define fy_join(_first, ...) \
+	FY_CONCAT(fy_join_arity1, __VA_OPT__(_n))(_first __VA_OPT__(,) __VA_ARGS__)
 
 /**
  * fy_generic_emit_compact() - Emit a generic value to stdout in compact (flow-style) format.
