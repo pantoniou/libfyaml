@@ -6452,6 +6452,18 @@ START_TEST(join_op)
 	ck_assert_str_eq(str, "usr/local/bin");
 	printf("> fy_gb_join(gb, '/', 'usr', 'local', 'bin'): '%s'\n", str);
 
+	/* unified fy_join() with leading builder dispatches to fy_gb_join() */
+	result = fy_join(gb, ".", "com", "example", "www");
+	ck_assert(fy_generic_is_string(result));
+	str = fy_cast(result, "");
+	ck_assert_str_eq(str, "com.example.www");
+	printf("> fy_join(gb, '.', 'com', 'example', 'www'): '%s'\n", str);
+
+	/* builder form with a single item */
+	result = fy_join(gb, ", ", "solo");
+	ck_assert(fy_generic_is_string(result));
+	ck_assert_str_eq(fy_cast(result, ""), "solo");
+
 	/* separator is empty fy_generic string (not C "") */
 	result = fy_join(fy_to_generic(""), "foo", "bar");
 	ck_assert(fy_generic_is_string(result));
