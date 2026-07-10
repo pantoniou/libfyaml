@@ -403,6 +403,7 @@ fy_dedup_tag_prepare_new(struct fy_dedup_allocator *da, struct fy_dedup_tag_data
 
 static int
 fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
+		    struct fy_dedup_tag_data *trigger_dtd,
 		    int bloom_filter_adjust_bits, int bucket_adjust_bits)
 {
 	struct fy_dedup_tag_data *dtd, *new_dtd = NULL, *expected_dtd;
@@ -417,15 +418,24 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	assert(da);
 	assert(dt);
 
-	dtd = fy_atomic_load(&dt->tag_datas);
-	if (!dtd)
-		return -1;
-
 	if (fy_atomic_flag_test_and_set(&dt->growing)) {
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "grow: abort due another grow in progress\n");
 #endif
 		return -1;
+	}
+
+	dtd = fy_atomic_load(&dt->tag_datas);
+	if (!dtd)
+		goto out;
+
+	/* The grow request belongs to @trigger_dtd. If it is no longer the
+	 * head, another resizer already handled that request while this caller
+	 * was delayed; growing the replacement would be both stale and wasteful.
+	 */
+	if (dtd != trigger_dtd) {
+		rc = 0;
+		goto out;
 	}
 
 	/*
@@ -1184,6 +1194,7 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 			     const struct iovec *iov, const int iovcnt,
 			     const size_t total_size, const size_t align, const uint64_t hash,
 			     struct fy_allocator *parent_allocator,
+			     struct fy_dedup_tag_data **adjust_dtdp,
 			     unsigned int *action_flagsp)
 {
 	struct fy_dedup_tag_data *head0, *head_lucky;
@@ -1324,8 +1335,10 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 			aflags |= FYDASF_HASH_COLISSION;
 		chain_length++;
 	}
-	if (chain_length > head0->chain_length_grow_trigger)
+	if (chain_length > head0->chain_length_grow_trigger) {
 		aflags |= FYDSAF_NEEDS_ADJUST;
+		*adjust_dtdp = head0;
+	}
 
 out:
 	/* release */
@@ -1342,6 +1355,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag,
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag *dt;
+	struct fy_dedup_tag_data *adjust_dtd = NULL;
 	const struct fy_dedup_entry *de;
 	size_t total_size;
 	unsigned int action_flags;
@@ -1374,10 +1388,12 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag,
 
 	action_flags = 0;
 	de = fy_dedup_tag_storev_internal(dt, iov, iovcnt, total_size, align, hash,
-					  da->parent_allocator, &action_flags);
+					  da->parent_allocator, &adjust_dtd, &action_flags);
 
-	if (action_flags & FYDSAF_NEEDS_ADJUST)
-		fy_dedup_tag_adjust(da, dt, 1, 1);
+	if (action_flags & FYDSAF_NEEDS_ADJUST) {
+		assert(adjust_dtd);
+		fy_dedup_tag_adjust(da, dt, adjust_dtd, 1, 1);
+	}
 
 	/* update flags only if keeping statistics */
 	if (a->flags & FYAF_KEEP_STATS) {
