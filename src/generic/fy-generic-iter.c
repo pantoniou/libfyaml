@@ -350,6 +350,20 @@ fygi_fast_event_attach_collection_end_comment(struct fygi_fast_event_data *gd,
 	return 0;
 }
 
+static inline bool
+fygi_schema_empty_is_null(enum fy_generic_schema schema)
+{
+	switch (schema) {
+	case FYGS_AUTO:
+	case FYGS_YAML1_2_CORE:
+	case FYGS_YAML1_1:
+	case FYGS_YAML1_1_PYYAML:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static enum fy_generic_schema
 fygi_get_document_schema(struct fy_generic_iterator *fygi, fy_generic vds)
 {
@@ -520,6 +534,9 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 		if (!fygi_fast_scalar_text(v, fygi->schema, &text, &sz,
 					   buf, sizeof(buf), &text_alloc))
 			break;
+		if (type == FYGT_STRING && sz == 0 && ss == FYSS_ANY &&
+		    fygi_schema_empty_is_null(fygi->schema))
+			ss = FYSS_DOUBLE_QUOTED;
 		fye = fy_emit_event_create(emit, FYET_SCALAR, ss,
 				text, sz, gd->anchor, gd->tag);
 		free(text_alloc);

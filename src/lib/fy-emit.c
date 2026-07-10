@@ -2174,15 +2174,21 @@ fy_emit_scalar_style_from_analysis(struct fy_emitter *emit, int flags, int inden
 			goto out;
 		}
 
-		/* any style, can be just a plain, just make it so */
-		if ((ta_flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
+		/*
+		 * any style, can be just a plain, just make it so - except an
+		 * empty non-null scalar, whose bare plain form reads back as
+		 * null (keep it quoted so it round-trips as the empty string)
+		 */
+		if ((ta_flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN &&
+		    !((ta_flags & FYTTAF_SIZE0) && !(ta_flags & FYTTAF_X_NULL_SCALAR))) {
 			style = FYNS_PLAIN;
 			goto out;
 		}
 	}
 
 	if (!flow && emit->source_json && fy_emit_is_dejson_mode(emit)) {
-		if ((ta_flags & FYTTAF_X_JSON_PLAIN) || (ta_flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) {
+		if (((ta_flags & FYTTAF_X_JSON_PLAIN) || (ta_flags & (FYTTAF_CAN_BE_PLAIN | FYTTAF_HAS_LB)) == FYTTAF_CAN_BE_PLAIN) &&
+		    !((ta_flags & FYTTAF_SIZE0) && !(ta_flags & FYTTAF_X_NULL_SCALAR))) {
 			style = FYNS_PLAIN;
 			goto out;
 		}
@@ -5145,11 +5151,9 @@ fy_emit_generic_scalar_style(struct fy_emitter *emit, fy_generic v, fy_generic_s
 	else /* already analyzed, use that */
 		ta_mod = *ta;
 
-	/* In JSON mode, empty string is a string, not null; only mark as null when not JSON mode
-	 * or when the value is an actual null type */
-	if (fy_emit_generic_is_null_scalar(emit, v) &&
-	    (!fy_emit_is_json_mode(emit) || !fy_generic_is_string(v)))
-		ta_mod.flags |= FYTTAF_X_NULL_SCALAR;
+	if (style == FYNS_ANY && fy_emit_generic_is_null_scalar(emit, v) &&
+	    !fy_emit_is_json_mode(emit))
+		style = FYNS_DOUBLE_QUOTED;
 	if (fy_emit_generic_is_json_plain(emit, v))
 		ta_mod.flags |= FYTTAF_X_JSON_PLAIN;
 	if ((ta_mod.flags & FYTTAF_X_JSON_PLAIN) &&
