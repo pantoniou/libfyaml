@@ -5053,6 +5053,56 @@ START_TEST(generic_failsafe_schema_preserves_empty_scalars)
 }
 END_TEST
 
+static void do_generic_core_schema_empty_string_is_quoted(enum fy_op_emit_flags style_flags)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic map, emitted, reparsed, value;
+	const char *emitted_str;
+
+	/*
+	 * Under the core schema a bare (plain) empty scalar reads back as
+	 * null, so a genuine empty string must be emitted double-quoted or it
+	 * would not round-trip. This is the fyai config path (styles stripped,
+	 * so the emitter chooses the style); exercised for both the block and
+	 * the pretty output styles - the prettify pass used to re-plainify it.
+	 */
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+			NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	map = fy_gb_mapping(gb, "empty", "", "text", "hi");
+	ck_assert(fy_generic_is_mapping(map));
+
+	emitted = fy_gb_emit(gb, map,
+			     FYOPEF_DISABLE_DIRECTORY |
+			     FYOPEF_MODE_YAML_1_2 |
+			     style_flags,
+			     NULL);
+	ck_assert(fy_generic_is_string(emitted));
+	emitted_str = fy_cast(emitted, "");
+
+	/* the empty value is quoted, not a bare "empty:" line */
+	ck_assert_ptr_ne(strstr(emitted_str, "empty: \"\""), NULL);
+	ck_assert_ptr_eq(strstr(emitted_str, "empty:\n"), NULL);
+
+	/* and it survives a re-parse as an empty string, not null */
+	reparsed = fy_parse(gb, emitted_str,
+			    FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING,
+			    NULL);
+	ck_assert(fy_generic_is_valid(reparsed));
+	value = fy_get(reparsed, "empty", fy_invalid);
+	ck_assert(fy_generic_is_string(value));
+	ck_assert_str_eq(fy_cast(value, ""), "");
+}
+
+START_TEST(generic_core_schema_empty_string_is_quoted)
+{
+	do_generic_core_schema_empty_string_is_quoted(FYOPEF_STYLE_BLOCK);
+	do_generic_core_schema_empty_string_is_quoted(FYOPEF_STYLE_PRETTY);
+}
+END_TEST
+
 static void do_generic_resolved_parse_drops_anchors(enum fy_op_emit_flags extra_emit_flags)
 {
 	char buf[65536];
@@ -7339,6 +7389,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
 	fy_check_testcase_add_test(ctc, generic_failsafe_schema_preserves_empty_scalars);
+	fy_check_testcase_add_test(ctc, generic_core_schema_empty_string_is_quoted);
 	fy_check_testcase_add_test(ctc, generic_resolved_parse_drops_anchors_encoder);
 	fy_check_testcase_add_test(ctc, generic_emit_preserves_document_markers_encoder);
 	fy_check_testcase_add_test(ctc, generic_emit_preserves_tag_directive_spelling_encoder);
