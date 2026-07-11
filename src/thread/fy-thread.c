@@ -940,22 +940,29 @@ static inline void fy_work_pool_wait(struct fy_work_pool *wp)
 	if (!wp)
 		return;
 
-	/* if there's any work left, wait for it */
-	while (fy_atomic_load(&wp->work_left) > 0) {
+	/*
+	 * The thread that drops work_left to zero posts exactly once
+	 * (and fy_work_pool_init pre-posts for an empty pool), so always
+	 * consume that post - even when work_left already reads as zero.
+	 * Returning on the counter alone races with the signaler, which
+	 * may still be posting into the pool (typically on our stack).
+	 */
 #if defined(__linux__) && !defined(FY_THREAD_PORTABLE)
-		rc = fwait(&wp->done);
-		assert(!rc || (rc == -1 && errno == EAGAIN));
+	rc = fwait(&wp->done);
+	assert(!rc);
 #elif defined(__APPLE__)
-		dispatch_semaphore_wait(wp->sem, DISPATCH_TIME_FOREVER);
-		rc = 0;
+	dispatch_semaphore_wait(wp->sem, DISPATCH_TIME_FOREVER);
+	rc = 0;
 #elif defined(_WIN32)
-		rc = WaitForSingleObject(wp->sem, INFINITE);
-		assert(rc == WAIT_OBJECT_0);
+	rc = WaitForSingleObject(wp->sem, INFINITE);
+	assert(rc == WAIT_OBJECT_0);
 #else
+	do {
 		rc = sem_wait(&wp->sem);
-		assert(!rc || (rc == -1 && errno == EAGAIN));
+	} while (rc == -1 && errno == EINTR);
+	assert(!rc);
 #endif
-	}
+	assert(fy_atomic_load(&wp->work_left) == 0);
 }
 
 static inline void
