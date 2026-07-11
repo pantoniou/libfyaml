@@ -353,6 +353,39 @@ START_TEST(thread_arg_array_join)
 }
 END_TEST
 
+/*
+ * Test: joiner must not return from the work pool wait while the
+ * signalling worker may still be posting into the pool, which lives
+ * on the joiner's stack. Tight two-task joins in steal mode keep the
+ * window open: the joiner runs one (empty) work item directly and the
+ * worker races it to the final work_left decrement and post. Detected
+ * as a stack-use-after-return under ASan; without it the stray post
+ * corrupts the next iteration's stack frame.
+ */
+START_TEST(thread_join_wait_signal_race)
+{
+	struct fy_thread_pool_cfg cfg;
+	struct fy_thread_pool *tp;
+	_Atomic(int) counter = 0;
+	unsigned int i, rounds = 20000, num_tasks = 2;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = FYTPCF_STEAL_MODE;
+	cfg.num_threads = 2;
+	cfg.userdata = NULL;
+
+	tp = fy_thread_pool_create(&cfg);
+	ck_assert_ptr_ne(tp, NULL);
+
+	for (i = 0; i < rounds; i++)
+		fy_thread_arg_join(tp, atomic_add_worker, NULL, (void *)&counter, num_tasks);
+
+	ck_assert_int_eq(fy_atomic_load(&counter), (int)(rounds * num_tasks));
+
+	fy_thread_pool_destroy(tp);
+}
+END_TEST
+
 /* Worker function for steal mode test */
 static void steal_mode_worker(void *arg)
 {
@@ -417,6 +450,7 @@ void libfyaml_case_thread(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, thread_arg_join_repeated_atomic_counter);
 	fy_check_testcase_add_test(ctc, thread_destroy_with_running_work);
 	fy_check_testcase_add_test(ctc, thread_arg_array_join);
+	fy_check_testcase_add_test(ctc, thread_join_wait_signal_race);
 
 	/* Work stealing tests */
 	fy_check_testcase_add_test(ctc, thread_steal_mode);
