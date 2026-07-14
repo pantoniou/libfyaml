@@ -1471,7 +1471,7 @@ static int packed_reflection_setup_blob(struct fy_reflection *rfl)
 						declp->enum_value.u |= ((uint64_t)-1) << 16;
 					break;
 				case BID_U32:
-					if (declp->enum_value.u & (1 << (32 - 1)))
+					if (declp->enum_value.u & (1U << (32 - 1)))
 						declp->enum_value.u |= ((uint64_t)-1) << 32;
 					break;
 				default:
