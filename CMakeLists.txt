@@ -964,6 +964,7 @@ set(UTILHDRS
     src/util/fy-bit64.h
     src/util/fy-vlsize.h
     src/util/fy-win32.h
+    src/util/fy-picolibc.h
 )
 
 set(LIBSRCS

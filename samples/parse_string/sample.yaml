@@ -1,0 +1,13 @@
+sample:
+  name: libfyaml-parse-string
+  description: Parse a YAML document from an in-memory buffer on Zephyr
+tests:
+  sample.lib.libfyaml.parse_string:
+    platforms:
+      - native_sim
+    tags: libfyaml yaml
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "libfyaml: parsed OK"

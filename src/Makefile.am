@@ -235,4 +235,5 @@ EXTRA_DIST =  \
 	getopt/getopt.c \
 	getopt/getopt.h \
 	util/fy-win32.h \
+	util/fy-picolibc.h \
 	check/fy-check.h
