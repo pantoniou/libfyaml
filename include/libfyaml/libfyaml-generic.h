@@ -2347,6 +2347,7 @@ static inline bool fy_generic_cast_fetch_null_type(fy_generic v, void **xvp)
 {
 	if (!fy_generic_is_null_type(v))
 		return false;
+	v = fy_generic_indirect_get_value(v);
 	*xvp = fy_generic_get_null_type_no_check(v);
 	return true;
 }
@@ -2355,6 +2356,7 @@ static inline bool fy_generic_cast_fetch_bool_type(fy_generic v, bool *xvp)
 {
 	if (!fy_generic_is_bool_type(v))
 		return false;
+	v = fy_generic_indirect_get_value(v);
 	*xvp = fy_generic_get_bool_type_no_check(v);
 	return true;
 }
@@ -2363,6 +2365,7 @@ static inline bool fy_generic_cast_fetch_int_type(fy_generic v, long long *xvp)
 {
 	if (!fy_generic_is_int_type(v))
 		return false;
+	v = fy_generic_indirect_get_value(v);
 	*xvp = fy_generic_get_int_type_no_check(v);
 	return true;
 }
@@ -2398,6 +2401,7 @@ static inline bool fy_generic_cast_fetch_float_type(fy_generic v, double *xvp)
 {
 	if (!fy_generic_is_float_type(v))
 		return false;
+	v = fy_generic_indirect_get_value(v);
 	*xvp = fy_generic_get_float_type_no_check(v);
 	return true;
 }
@@ -3232,7 +3236,7 @@ static inline _ctype fy_genericp_cast_ ## _gtype (const fy_generic *vp) \
 static inline const fy_generic *fy_generic_sequencep_get_ ## _gtype ## _itemp(const fy_generic_sequence *seqp, const size_t idx) \
 { \
 	const fy_generic *vp = fy_generic_sequencep_get_itemp(seqp, idx); \
-	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+	return vp && fy_generic_is_ ## _gtype (*vp) ? vp : NULL; \
 } \
 \
 static inline const fy_generic *fy_generic_sequence_get_ ## _gtype ## _itemp(fy_generic seq, const size_t idx) \
@@ -3256,7 +3260,7 @@ static inline _ctype fy_generic_sequence_get_ ## _gtype ## _default(fy_generic s
 static inline const fy_generic *fy_generic_mappingp_get_ ## _gtype ## _valuep(const fy_generic_mapping *mapp, fy_generic key) \
 { \
 	const fy_generic *vp = fy_generic_mappingp_get_valuep(mapp, key); \
-	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+	return vp && fy_generic_is_ ## _gtype (*vp) ? vp : NULL; \
 } \
 static inline const fy_generic *fy_generic_mapping_get_ ## _gtype ## _valuep(fy_generic map, fy_generic key) \
 { \
@@ -3279,7 +3283,7 @@ static inline _ctype fy_generic_mapping_get_ ## _gtype ## _default(fy_generic ma
 static inline const fy_generic *fy_generic_mappingp_get_at_ ## _gtype ## _valuep(const fy_generic_mapping *mapp, const size_t idx) \
 { \
 	const fy_generic *vp = fy_generic_mappingp_get_at_valuep(mapp, idx); \
-	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+	return vp && fy_generic_is_ ## _gtype (*vp) ? vp : NULL; \
 } \
 \
 static inline const fy_generic *fy_generic_mapping_get_at_ ## _gtype ## _valuep(fy_generic map, const size_t idx) \
@@ -3303,7 +3307,7 @@ static inline _ctype fy_generic_mapping_get_at_ ## _gtype ## _default(fy_generic
 static inline const fy_generic *fy_generic_mappingp_get_at_ ## _gtype ## _keyp(const fy_generic_mapping *mapp, const size_t idx) \
 { \
 	const fy_generic *vp = fy_generic_mappingp_get_at_keyp(mapp, idx); \
-	return vp && fy_generic_is_direct_ ## _gtype (*vp) ? vp : NULL; \
+	return vp && fy_generic_is_ ## _gtype (*vp) ? vp : NULL; \
 } \
 \
 static inline const fy_generic *fy_generic_mapping_get_at_ ## _gtype ## _keyp(fy_generic map, const size_t idx) \

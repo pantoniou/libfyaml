@@ -5341,6 +5341,40 @@ START_TEST(generic_document_builder_push_mode_metadata)
 }
 END_TEST
 
+START_TEST(generic_keep_style_typed_accessors)
+{
+	char buf[65536];
+	struct fy_generic_builder *gb;
+	fy_generic root, seq;
+
+	gb = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	root = fy_gb_parse(gb,
+			   "integer: 32000\n"
+			   "floating: 0.5\n"
+			   "boolean: true\n"
+			   "sequence: [123, 1.5, false]\n",
+			   FYOPPF_DISABLE_DIRECTORY |
+			   FYOPPF_INPUT_TYPE_STRING |
+			   FYOPPF_KEEP_STYLE,
+			   NULL);
+	ck_assert(fy_generic_is_mapping(root));
+
+	ck_assert_int_eq(fy_get(root, "integer", -1LL), 32000);
+	ck_assert_double_eq(fy_get(root, "floating", -1.0), 0.5);
+	ck_assert(fy_get(root, "boolean", false));
+
+	seq = fy_get(root, "sequence", fy_invalid);
+	ck_assert(fy_generic_is_sequence(seq));
+	ck_assert_int_eq(fy_get_at(seq, 0, -1LL), 123);
+	ck_assert_double_eq(fy_get_at(seq, 1, -1.0), 1.5);
+	ck_assert(!fy_get_at(seq, 2, true));
+}
+END_TEST
+
 START_TEST(generic_document_builder_directory_mode)
 {
 	char buf_actual[65536];
@@ -7395,6 +7429,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_emit_preserves_tag_directive_spelling_encoder);
 	fy_check_testcase_add_test(ctc, generic_document_builder_pull_mode);
 	fy_check_testcase_add_test(ctc, generic_document_builder_push_mode_metadata);
+	fy_check_testcase_add_test(ctc, generic_keep_style_typed_accessors);
 	fy_check_testcase_add_test(ctc, generic_document_builder_directory_mode);
 
 	/* slice operations */
