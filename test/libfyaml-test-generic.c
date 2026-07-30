@@ -5375,6 +5375,59 @@ START_TEST(generic_keep_style_typed_accessors)
 }
 END_TEST
 
+/*
+ * An empty collection has no items/pairs pointer, so a compare that tests the
+ * pointer before the count falls back to ordering the two values by address.
+ * Two style-carrying (indirect) empty collections are never the same word,
+ * which made structurally identical documents compare unequal.
+ */
+START_TEST(generic_compare_empty_collections)
+{
+	char buf_a[65536];
+	char buf_b[65536];
+	struct fy_generic_builder *gb_a, *gb_b;
+	fy_generic a, b;
+	const char *yaml = "seq: []\nmap: {}\n";
+	unsigned int flags;
+
+	gb_a = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf_a, sizeof(buf_a));
+	gb_b = fy_generic_builder_create_in_place(
+			FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf_b, sizeof(buf_b));
+	ck_assert_ptr_ne(gb_a, NULL);
+	ck_assert_ptr_ne(gb_b, NULL);
+
+	/* KEEP_STYLE makes each empty collection an indirect, so the two
+	 * documents cannot share a word for them */
+	flags = FYOPPF_DISABLE_DIRECTORY | FYOPPF_INPUT_TYPE_STRING |
+		FYOPPF_KEEP_STYLE;
+	a = fy_gb_parse(gb_a, yaml, flags, NULL);
+	b = fy_gb_parse(gb_b, yaml, flags, NULL);
+	ck_assert(fy_generic_is_mapping(a));
+	ck_assert(fy_generic_is_mapping(b));
+	ck_assert(a.v != b.v);
+
+	ck_assert_int_eq(fy_generic_compare(fy_get(a, "seq", fy_invalid),
+					    fy_get(b, "seq", fy_invalid)), 0);
+	ck_assert_int_eq(fy_generic_compare(fy_get(a, "map", fy_invalid),
+					    fy_get(b, "map", fy_invalid)), 0);
+	ck_assert_int_eq(fy_generic_compare(a, b), 0);
+
+	/* and against the in-place empties, which carry no style at all */
+	ck_assert_int_eq(fy_generic_compare(fy_get(a, "seq", fy_invalid),
+					    fy_seq_empty), 0);
+	ck_assert_int_eq(fy_generic_compare(fy_get(a, "map", fy_invalid),
+					    fy_map_empty), 0);
+
+	/* a count mismatch still orders, rather than comparing equal */
+	a = fy_gb_parse(gb_a, "seq: [1]\n", flags, NULL);
+	ck_assert_int_ne(fy_generic_compare(fy_get(a, "seq", fy_invalid),
+					    fy_seq_empty), 0);
+}
+END_TEST
+
 START_TEST(generic_document_builder_directory_mode)
 {
 	char buf_actual[65536];
@@ -7430,6 +7483,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_document_builder_pull_mode);
 	fy_check_testcase_add_test(ctc, generic_document_builder_push_mode_metadata);
 	fy_check_testcase_add_test(ctc, generic_keep_style_typed_accessors);
+	fy_check_testcase_add_test(ctc, generic_compare_empty_collections);
 	fy_check_testcase_add_test(ctc, generic_document_builder_directory_mode);
 
 	/* slice operations */
