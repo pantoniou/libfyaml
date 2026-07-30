@@ -2769,12 +2769,17 @@ static int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
 	itemsa = fy_generic_sequence_get_items(seqa, &counta);
 	itemsb = fy_generic_sequence_get_items(seqb, &countb);
 
-	if (!itemsa || !itemsb || counta != countb)
+	if (counta != countb)
 		goto out;
 
-	/* empty? just fine */
-	if (counta == 0)
+	/* empty? just fine - an empty sequence has no items pointer, so the
+	 * count must be tested before the pointers, or two empty sequences
+	 * that are not the same word compare on their addresses */
+	if (!counta)
 		return 0;
+
+	if (!itemsa || !itemsb)
+		goto out;
 
 	/* try to cheat by comparing contents */
 	ret = memcmp(itemsa, itemsb, counta * sizeof(*itemsa));
@@ -2807,12 +2812,16 @@ static int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
 	pairsa = fy_generic_mapping_get_pairs(mapa, &counta);
 	pairsb = fy_generic_mapping_get_pairs(mapb, &countb);
 
-	if (!pairsa || !pairsb || counta != countb)
+	if (counta != countb)
 		goto out;
 
-	/* empty? just fine */
-	if (counta == 0)
+	/* empty? just fine - see fy_generic_sequence_compare() on why the
+	 * count comes before the pointers */
+	if (!counta)
 		return 0;
+
+	if (!pairsa || !pairsb)
+		goto out;
 
 	/* try to cheat by comparing contents */
 	ret = memcmp(pairsa, pairsb, counta * sizeof(*pairsa));
