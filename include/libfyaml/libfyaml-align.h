@@ -141,8 +141,16 @@ static inline void *fy_align_alloc(size_t align, size_t size)
 
 	size = FY_ALIGN(align, size);
 #ifndef _WIN32
+#if defined(__PICOLIBC__)
+	/* picolibc has no posix_memalign; use C11 aligned_alloc (size is
+	 * already a multiple of align). Freed with plain free(). */
+	p = aligned_alloc(align, size);
+	if (!p)
+		return NULL;
+#else
 	if (posix_memalign(&p, align, size))
 		return NULL;
+#endif
 #else
 	p = _aligned_malloc(size, align);
 	if (!p)

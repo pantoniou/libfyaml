@@ -22,8 +22,10 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+#if !defined(__PICOLIBC__)
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#endif
 #endif
 
 #include <libfyaml.h>
@@ -335,7 +337,9 @@ void fy_input_close(struct fy_input *fyi)
 	case fyit_fd:
 
 		if (fyi->addr) {
+#if !defined(__PICOLIBC__)
 			munmap(fyi->addr, fyi->length);
+#endif
 			fyi->addr = NULL;
 		}
 
@@ -600,7 +604,9 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 
 		fyi->length = sb.st_size;
 
-		/* only map if not zero (and is not disabled) */
+		/* only map if not zero (and is not disabled);
+		 * picolibc has no mmap, fall through to the stdio/read path */
+#if !defined(__PICOLIBC__)
 		if (sb.st_size > 0 && !fyr->current_input_cfg.disable_mmap_opt) {
 			fyi->addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fyi->fd, 0);
 
@@ -611,6 +617,7 @@ int fy_reader_input_open(struct fy_reader *fyr, struct fy_input *fyi, const stru
 				fyi->addr = NULL;
 			}
 		}
+#endif
 		/* if we've managed to mmap, we' good */
 		if (fyi->addr)
 			break;

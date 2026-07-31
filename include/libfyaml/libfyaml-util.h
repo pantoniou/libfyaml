@@ -68,6 +68,20 @@ struct iovec {
 	size_t iov_len;
 };
 #endif
+#elif defined(__PICOLIBC__)
+/* picolibc (the common Zephyr C library) has no <sys/uio.h>; provide iovec. */
+#include <unistd.h>
+#ifndef _FY_IOVEC_DEFINED
+#define _FY_IOVEC_DEFINED
+struct iovec {
+	void *iov_base;
+	size_t iov_len;
+};
+#endif
+/* picolibc does not define SSIZE_MAX; ssize_t has the width of size_t. */
+#ifndef SSIZE_MAX
+#define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
+#endif
 #else
 #include <sys/uio.h>
 #endif

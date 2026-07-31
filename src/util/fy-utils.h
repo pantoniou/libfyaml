@@ -23,8 +23,10 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+#if !defined(__PICOLIBC__)
 #include <termios.h>
-#include <sys/uio.h>
+#include <sys/uio.h>	/* iovec comes from libfyaml-util.h on picolibc */
+#endif
 #endif
 
 #include "fy-win32.h"
