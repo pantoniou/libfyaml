@@ -6560,14 +6560,14 @@ START_TEST(join_op)
 	ck_assert_str_eq(fy_cast(result, ""), "");
 	printf("> join(', '): '%s'\n", fy_cast(result, ""));
 
-	/* bool value */
-	result = fy_join("|", true, false, true);
+	/* Cast because true and false are integers before C23. */
+	result = fy_join("|", (_Bool)true, (_Bool)false, (_Bool)true);
 	ck_assert(fy_generic_is_string(result));
 	ck_assert_str_eq(fy_cast(result, ""), "true|false|true");
 	printf("> join('|', true, false, true): '%s'\n", fy_cast(result, ""));
 
 	/* mixed types */
-	result = fy_join(":", "name", 42, true);
+	result = fy_join(":", "name", 42, (_Bool)true);
 	ck_assert(fy_generic_is_string(result));
 	ck_assert_str_eq(fy_cast(result, ""), "name:42:true");
 	printf("> join(':', 'name', 42, true): '%s'\n", fy_cast(result, ""));
@@ -6728,6 +6728,34 @@ START_TEST(join_op)
 	}
 
 	printf("> All join op tests passed!\n");
+}
+END_TEST
+
+/* Check bool and integer encodings with each supported C standard. */
+START_TEST(bool_literal_encoding)
+{
+	fy_generic v, vs;
+
+	/* an explicit bool is a bool, and stringifies as true/false */
+	v = fy_to_generic((_Bool)true);
+	ck_assert(fy_generic_is_bool(v));
+	vs = fy_convert(v, FYGT_STRING);
+	ck_assert_str_eq(fy_cast(vs, ""), "true");
+
+	v = fy_to_generic((_Bool)false);
+	ck_assert(fy_generic_is_bool(v));
+	vs = fy_convert(v, FYGT_STRING);
+	ck_assert_str_eq(fy_cast(vs, ""), "false");
+
+	/* an int stays an int, and stringifies as a number */
+	v = fy_to_generic(1);
+	ck_assert(fy_generic_is_int(v));
+	vs = fy_convert(v, FYGT_STRING);
+	ck_assert_str_eq(fy_cast(vs, ""), "1");
+
+	/* and the same holds when joining */
+	ck_assert_str_eq(fy_cast(fy_join("|", (_Bool)true, (_Bool)false), ""), "true|false");
+	ck_assert_str_eq(fy_cast(fy_join("|", 1, 0), ""), "1|0");
 }
 END_TEST
 
@@ -7502,6 +7530,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, conversion_to_bool);
 	fy_check_testcase_add_test(ctc, convert_op);
 	fy_check_testcase_add_test(ctc, join_op);
+	fy_check_testcase_add_test(ctc, bool_literal_encoding);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
