@@ -11403,6 +11403,79 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_join(_first, ...) \
 	FY_CONCAT(fy_join_arity1, __VA_OPT__(_n))(_first __VA_OPT__(,) __VA_ARGS__)
 
+/* Convert once before the fy_cast() type selection. */
+#define fy_local_str(_v) \
+	({ \
+		const fy_generic __fy_str_s = fy_convert((_v), FYGT_STRING); \
+		fy_cast(__fy_str_s, (const char *)NULL); \
+	})
+
+/* Convert once with a builder before the fy_cast() type selection. */
+#define fy_gb_str(_gb, _v) \
+	({ \
+		const fy_generic __fy_str_s = fy_convert((_gb), (_v), FYGT_STRING); \
+		fy_cast(__fy_str_s, (const char *)NULL); \
+	})
+
+/**
+ * fy_str() - Render a value as a C string.
+ *
+ * Convert the value to a string and return its data::
+ *
+ *   printf("%s\n", fy_str(v));
+ *
+ * Scalars use their scalar form. Null becomes "null". Collections use flow
+ * style. fy_invalid returns NULL.
+ *
+ * The first argument may optionally be a fy_generic_builder*. Without one
+ * the string is built in stack storage and lives as long as the enclosing
+ * function - not just the enclosing statement - as with fy_stringf(). With
+ * one it is interned in the builder's arena and lives as long as that.
+ *
+ * @...: Optional builder, followed by the value to render
+ *
+ * Returns:
+ * A NUL-terminated string, or NULL if @_v is fy_invalid.
+ */
+#define fy_str(...) \
+	(FY_CPP_THIRD(__VA_ARGS__, fy_gb_str, fy_local_str)(__VA_ARGS__))
+
+/* fy_number1() - fy_number() with the default default */
+#define fy_number1(_v) \
+	({ \
+		const fy_generic __fy_num_v = fy_convert((_v), FYGT_FLOAT); \
+		fy_cast(__fy_num_v, (double)0); \
+	})
+
+/* fy_number2() - fy_number() with an explicit default */
+#define fy_number2(_v, _dv) \
+	({ \
+		const fy_generic __fy_num_v = fy_convert((_v), FYGT_FLOAT); \
+		fy_cast(__fy_num_v, (double)(_dv)); \
+	})
+
+/**
+ * fy_number() - Read a value as a double.
+ *
+ * Convert an integer, float, Boolean, or numeric string::
+ *
+ *   fy_number(fy_to_generic("2.5"))	// 2.5
+ *
+ * Other values return the default. The default is 0 when it is not given.
+ * Use a distinct default when 0 is a valid result::
+ *
+ *   double d = fy_number(v, NAN);
+ *   if (isnan(d))
+ *           ...
+ *
+ * @...: The value to read, optionally followed by a default
+ *
+ * Returns:
+ * The value as a double, or the default when it has no numeric value.
+ */
+#define fy_number(...) \
+	(FY_CPP_THIRD(__VA_ARGS__, fy_number2, fy_number1)(__VA_ARGS__))
+
 /**
  * fy_generic_emit_compact() - Emit a generic value to stdout in compact (flow-style) format.
  *
