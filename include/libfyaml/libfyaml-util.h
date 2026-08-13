@@ -626,6 +626,14 @@ static __inline const char *fy_alloca_copy_free_impl(char *str, size_t len)
  * function. The ``va_list`` argument is consumed and must not be reused
  * afterwards.
  */
+/* Call snprintf() with an optional argument list. Use "%s" when the list is
+ * empty to prevent a nonliteral-format warning.
+ */
+#define _fy_snprintf_fmt_(_buf, _sz, _fmt)		snprintf((_buf), (_sz), "%s", (_fmt))
+#define _fy_snprintf_fmt_1(_buf, _sz, _fmt, ...)	snprintf((_buf), (_sz), (_fmt), __VA_ARGS__)
+#define fy_snprintf_fmt(_buf, _sz, _fmt, ...) \
+	FY_CONCAT(_fy_snprintf_fmt_, __VA_OPT__(1))((_buf), (_sz), (_fmt) __VA_OPT__(,) __VA_ARGS__)
+
 /* alloca formatted print methods */
 #ifdef _MSC_VER
 /*
@@ -665,7 +673,7 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 			fy_alloca_vsprintf_impl((_fmt), (_ap)))
 #define fy_sprintfa(_fmt, ...) \
 	strcpy(alloca(FY_ALLOCA_SPRINTF_BUFSZ + 1), \
-			(snprintf(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt), __VA_ARGS__) < 0 ? \
+			(fy_snprintf_fmt(fy_alloca_sprintf_buf, FY_ALLOCA_SPRINTF_BUFSZ, (_fmt) __VA_OPT__(,) __VA_ARGS__) < 0 ? \
 				"" : fy_alloca_sprintf_buf))
 #else
 /* GCC/Clang version with statement expressions */
@@ -705,9 +713,9 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 		int _size; \
 		char *_buf; \
 		\
-		_size = snprintf(NULL, 0, __fmt, ## __VA_ARGS__); \
+		_size = fy_snprintf_fmt(NULL, 0, __fmt __VA_OPT__(,) __VA_ARGS__); \
 		_buf = alloca(_size + 1); \
-		(void)snprintf(_buf, _size + 1, __fmt, __VA_ARGS__); \
+		(void)fy_snprintf_fmt(_buf, _size + 1, __fmt __VA_OPT__(,) __VA_ARGS__); \
 		_buf; \
 	})
 #endif
