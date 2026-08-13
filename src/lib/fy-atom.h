@@ -291,6 +291,11 @@ struct fy_atom_iter {
 	bool current : 1;
 	bool done : 1;	/* last iteration (for block styles) */
 	struct fy_atom_iter_line_info li[2];
+	/* Saved trailing whitespace and line-break scan. */
+	const char *tb_scan_pos;	/* Start position for tb_scan_breaks. */
+	const char *tb_scan_end;	/* End position, or NULL if not saved. */
+	const char *tb_scan_last_ws;	/* Last trailing_breaks_ws position. */
+	size_t tb_scan_breaks;		/* Break count in the saved range. */
 	unsigned int alloc;
 	unsigned int top;
 	unsigned int read;

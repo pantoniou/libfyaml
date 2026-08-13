@@ -618,34 +618,69 @@ do_nws:
 		goto out;
 	}
 
-	/* find out if any trailing breaks exist afterwards */
-	for (; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0 && (fy_is_ws(c) || fy_is_lb_m(c, atom->lb_mode)); ss += w) {
+	/* Scan each trailing whitespace and line-break run one time. Lines are
+	 * analyzed in order, so later lines can use the saved scan state.
+	 */
+	if (iter->tb_scan_end && ss >= iter->tb_scan_pos && ss < iter->tb_scan_end) {
 
-		if (!li->trailing_breaks_ws && is_block && (unsigned int)col > iter->chomp)
-			li->trailing_breaks_ws = true;
-
-		if (fy_is_lb_m(c, atom->lb_mode)) {
-			/* special CRLF handling */
-			if (c == '\r') {
-				cn = ss < e ? fy_utf8_get(ss + w, (e - ss - w), &wn) : FYUG_EOF;
-				if (cn == '\n') {
-#if defined(DEBUG_CHUNK)
-					fprintf(stderr, "%s:%d trailing CRLF\n", __FILE__, __LINE__);
-#endif
-					ss += w;
-					w = wn;
-				}
+		/* Move the cursor to this line and remove earlier breaks. */
+		while (iter->tb_scan_pos < ss) {
+			c = fy_utf8_get(iter->tb_scan_pos, ss - iter->tb_scan_pos, &w);
+			if (c < 0)
+				break;
+			if (fy_is_lb_m(c, atom->lb_mode)) {
+				/* special CRLF handling */
+				if (c == '\r' && (iter->tb_scan_pos + w) < ss &&
+				    fy_utf8_get(iter->tb_scan_pos + w, ss - (iter->tb_scan_pos + w), &wn) == '\n')
+					w += wn;
+				iter->tb_scan_breaks--;
 			}
-			li->trailing_breaks++;
-			col = 0;
-		} else {
-			/* indented whitespace counts as break */
-			if (fy_is_tab(c))
-				col += (ts - (col % ts));
-			else
-				col++;
+			iter->tb_scan_pos += w;
 		}
 
+		li->trailing_breaks = iter->tb_scan_breaks;
+		li->trailing_breaks_ws = iter->tb_scan_last_ws && iter->tb_scan_last_ws >= ss;
+		ss = iter->tb_scan_end;
+
+	} else {
+		const char *tb_start = ss, *tb_last_ws = NULL;
+
+		for (; (c = fy_utf8_get(ss, (e - ss), &w)) >= 0 && (fy_is_ws(c) || fy_is_lb_m(c, atom->lb_mode)); ss += w) {
+
+			if (is_block && (unsigned int)col > iter->chomp)
+				tb_last_ws = ss;
+
+			if (fy_is_lb_m(c, atom->lb_mode)) {
+				/* special CRLF handling */
+				if (c == '\r') {
+					cn = ss < e ? fy_utf8_get(ss + w, (e - ss - w), &wn) : FYUG_EOF;
+					if (cn == '\n') {
+#if defined(DEBUG_CHUNK)
+						fprintf(stderr, "%s:%d trailing CRLF\n", __FILE__, __LINE__);
+#endif
+						ss += w;
+						w = wn;
+					}
+				}
+				li->trailing_breaks++;
+				col = 0;
+			} else {
+				/* indented whitespace counts as break */
+				if (fy_is_tab(c))
+					col += (ts - (col % ts));
+				else
+					col++;
+			}
+
+		}
+
+		li->trailing_breaks_ws = tb_last_ws != NULL;
+
+		/* Save the run for later lines. */
+		iter->tb_scan_pos = tb_start;
+		iter->tb_scan_end = ss;
+		iter->tb_scan_last_ws = tb_last_ws;
+		iter->tb_scan_breaks = li->trailing_breaks;
 	}
 
 	/* and mark as last if only whitespace and breaks after this point */
