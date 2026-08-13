@@ -6894,6 +6894,61 @@ START_TEST(foreach_key_value_op)
 }
 END_TEST
 
+/* Test: fy_foreach_idx_item() - iterate a sequence's elements with their index */
+START_TEST(foreach_idx_item_op)
+{
+	fy_generic seq, map, item;
+	const char *si;
+	size_t i;
+	int count, ni;
+
+	printf("\n> Testing foreach_idx_item op\n");
+
+	seq = fy_sequence("a", "b", "c");
+	ck_assert(fy_generic_is_sequence(seq));
+
+	/* untyped item: index counts up, element comes back as a generic */
+	count = 0;
+	fy_foreach_idx_item(i, item, seq) {
+		ck_assert_uint_eq((unsigned int)i, (unsigned int)count);
+		switch (count) {
+		case 0: ck_assert_str_eq(fy_cast(item, ""), "a"); break;
+		case 1: ck_assert_str_eq(fy_cast(item, ""), "b"); break;
+		case 2: ck_assert_str_eq(fy_cast(item, ""), "c"); break;
+		}
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	/* typed item, and an int index */
+	count = 0;
+	fy_foreach_idx_item(ni, si, seq) {
+		ck_assert_int_eq(ni, count);
+		ck_assert_ptr_ne(si, NULL);
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	/* an empty sequence runs the body zero times */
+	count = 0;
+	fy_foreach_idx_item(i, item, fy_sequence())
+		count++;
+	ck_assert_int_eq(count, 0);
+
+	/* on a mapping the item walks the values */
+	map = fy_mapping("one", 1, "two", 2, "three", 3);
+	count = 0;
+	fy_foreach_idx_item(i, ni, map) {
+		ck_assert_uint_eq((unsigned int)i, (unsigned int)count);
+		ck_assert_int_eq(ni, count + 1);
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	printf("> All foreach_idx_item op tests passed!\n");
+}
+END_TEST
+
 /* Check bool and integer encodings with each supported C standard. */
 START_TEST(bool_literal_encoding)
 {
@@ -7696,6 +7751,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, bool_literal_encoding);
 	fy_check_testcase_add_test(ctc, stringf_op);
 	fy_check_testcase_add_test(ctc, foreach_key_value_op);
+	fy_check_testcase_add_test(ctc, foreach_idx_item_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
