@@ -6826,6 +6826,74 @@ START_TEST(stringf_op)
 }
 END_TEST
 
+/* Test: fy_foreach_key_value() - iterate a mapping's keys and values */
+START_TEST(foreach_key_value_op)
+{
+	fy_generic map, seq, k, v, ks_g;
+	const char *ks;
+	int vi, count;
+
+	printf("\n> Testing foreach_key_value op\n");
+
+	map = fy_mapping("one", 1, "two", 2, "three", 3);
+	ck_assert(fy_generic_is_mapping(map));
+
+	/* both untyped: keys and values come back as generics, in order */
+	count = 0;
+	fy_foreach_key_value(k, v, map) {
+		ks_g = fy_convert(k, FYGT_STRING);
+		switch (count) {
+		case 0:
+			ck_assert_str_eq(fy_cast(ks_g, ""), "one");
+			ck_assert_int_eq(fy_cast(v, 0), 1);
+			break;
+		case 1:
+			ck_assert_str_eq(fy_cast(ks_g, ""), "two");
+			ck_assert_int_eq(fy_cast(v, 0), 2);
+			break;
+		case 2:
+			ck_assert_str_eq(fy_cast(ks_g, ""), "three");
+			ck_assert_int_eq(fy_cast(v, 0), 3);
+			break;
+		}
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	/* typed loop variables cast key and value, as with fy_foreach() */
+	count = 0;
+	fy_foreach_key_value(ks, vi, map) {
+		ck_assert_ptr_ne(ks, NULL);
+		ck_assert_int_eq(vi, count + 1);
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	/* an empty mapping runs the body zero times */
+	count = 0;
+	fy_foreach_key_value(k, v, fy_mapping())
+		count++;
+	ck_assert_int_eq(count, 0);
+
+	/* fy_foreach() over the same mapping still walks the keys */
+	count = 0;
+	fy_foreach(k, map)
+		count++;
+	ck_assert_int_eq(count, 3);
+
+	/* and sequences are unaffected */
+	seq = fy_sequence(10, 20, 30);
+	count = 0;
+	fy_foreach(vi, seq) {
+		ck_assert_int_eq(vi, (count + 1) * 10);
+		count++;
+	}
+	ck_assert_int_eq(count, 3);
+
+	printf("> All foreach_key_value op tests passed!\n");
+}
+END_TEST
+
 /* Check bool and integer encodings with each supported C standard. */
 START_TEST(bool_literal_encoding)
 {
@@ -7627,6 +7695,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, join_op);
 	fy_check_testcase_add_test(ctc, bool_literal_encoding);
 	fy_check_testcase_add_test(ctc, stringf_op);
+	fy_check_testcase_add_test(ctc, foreach_key_value_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
