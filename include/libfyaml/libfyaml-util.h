@@ -713,6 +713,10 @@ static inline char *fy_alloca_vsprintf_impl(const char *fmt, va_list ap)
 		int _size; \
 		char *_buf; \
 		\
+		/* Let the compiler check the original format and arguments. \
+		 */ \
+		if (0) \
+			(void)fy_snprintf_fmt((char *)NULL, 0, (_fmt) __VA_OPT__(,) __VA_ARGS__); \
 		_size = fy_snprintf_fmt(NULL, 0, __fmt __VA_OPT__(,) __VA_ARGS__); \
 		_buf = alloca(_size + 1); \
 		(void)fy_snprintf_fmt(_buf, _size + 1, __fmt __VA_OPT__(,) __VA_ARGS__); \
