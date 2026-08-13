@@ -6955,6 +6955,84 @@ START_TEST(foreach_idx_item_op)
 }
 END_TEST
 
+/* Test: short type predicates, fy_empty(), fy_str_empty(), fy_any_equal() */
+
+static int sugar_eval_count;
+
+static fy_generic sugar_counted(fy_generic v)
+{
+	sugar_eval_count++;
+	return v;
+}
+
+START_TEST(sugar_op)
+{
+	fy_generic seq, map, v;
+
+	printf("\n> Testing sugar op\n");
+
+	seq = fy_sequence(1, 2, 3);
+	map = fy_mapping("host", "localhost", "port", 8080);
+
+	/* type predicates answer with a C bool, so they work in a condition */
+	ck_assert(fy_is_string(fy_to_generic("s")));
+	ck_assert(!fy_is_string(fy_to_generic(1)));
+	ck_assert(fy_is_int(fy_to_generic(1)));
+	ck_assert(!fy_is_int(fy_to_generic("s")));
+	ck_assert(fy_is_float(fy_to_generic(1.5)));
+	ck_assert(!fy_is_float(fy_to_generic(1)));
+	ck_assert(fy_is_bool(fy_to_generic((_Bool)true)));
+	ck_assert(!fy_is_bool(fy_to_generic(1)));
+	ck_assert(fy_is_null(fy_null));
+	ck_assert(!fy_is_null(fy_to_generic(0)));
+	ck_assert(fy_is_sequence(seq));
+	ck_assert(!fy_is_sequence(map));
+	ck_assert(fy_is_mapping(map));
+	ck_assert(!fy_is_mapping(seq));
+	ck_assert(fy_is_scalar(fy_to_generic(1)));
+	ck_assert(!fy_is_scalar(seq));
+	ck_assert(fy_is_collection(seq));
+	ck_assert(fy_is_collection(map));
+	ck_assert(!fy_is_collection(fy_to_generic(1)));
+	ck_assert(fy_is_valid(seq));
+	ck_assert(!fy_is_valid(fy_invalid));
+	ck_assert(fy_is_invalid(fy_invalid));
+	ck_assert(!fy_is_invalid(seq));
+
+	/* fy_empty() over collections and strings */
+	ck_assert(!fy_empty(seq));
+	ck_assert(fy_empty(fy_sequence()));
+	ck_assert(!fy_empty(map));
+	ck_assert(fy_empty(fy_mapping()));
+	ck_assert(!fy_empty(fy_to_generic("x")));
+	ck_assert(fy_empty(fy_to_generic("")));
+
+	/* fy_str_empty(), with NULL counting as empty */
+	ck_assert(fy_str_empty(NULL));
+	ck_assert(fy_str_empty(""));
+	ck_assert(!fy_str_empty("x"));
+
+	/* fy_any_equal() */
+	v = fy_to_generic("bar");
+	ck_assert(fy_any_equal(v, "bar", "baz"));	/* first alternative */
+	ck_assert(fy_any_equal(v, "foo", "bar"));	/* a later one */
+	ck_assert(!fy_any_equal(v, "foo", "baz"));	/* none of them */
+	ck_assert(fy_any_equal(v, "bar"));		/* just the one */
+	ck_assert(!fy_any_equal(v));			/* none to compare against */
+	ck_assert(fy_any_equal("bar", "foo", "bar"));	/* a plain C string */
+	ck_assert(fy_any_equal(2, 1, 2, 3));
+	ck_assert(!fy_any_equal(9, 1, 2, 3));
+	ck_assert(fy_any_equal(fy_to_generic(8080), "x", 8080));
+
+	/* the value is evaluated once, however many alternatives there are */
+	sugar_eval_count = 0;
+	(void)fy_any_equal(sugar_counted(fy_to_generic("zzz")), "a", "b", "c", "d");
+	ck_assert_int_eq(sugar_eval_count, 1);
+
+	printf("> All sugar op tests passed!\n");
+}
+END_TEST
+
 /* Check bool and integer encodings with each supported C standard. */
 START_TEST(bool_literal_encoding)
 {
@@ -7758,6 +7836,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, stringf_op);
 	fy_check_testcase_add_test(ctc, foreach_key_value_op);
 	fy_check_testcase_add_test(ctc, foreach_idx_item_op);
+	fy_check_testcase_add_test(ctc, sugar_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
