@@ -6817,6 +6817,12 @@ START_TEST(stringf_op)
 	ck_assert(fy_generic_is_string(v));
 	ck_assert_str_eq(fy_cast(v, ""), "path/9");
 
+	/* The compiler checks both forms. */
+	v = fy_stringf("%s:%d:%c", "s", five, 'c');
+	ck_assert_str_eq(fy_cast(v, ""), "s:5:c");
+	v = fy_stringf(gb, "%s:%d:%c", "s", five, 'c');
+	ck_assert_str_eq(fy_cast(v, ""), "s:5:c");
+
 	/* Force out-of-place storage. */
 	v = fy_stringf(gb, "%s", "0123456789abcdefghijklmnopqrstuvwxyz");
 	ck_assert(fy_generic_is_string(v));
