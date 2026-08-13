@@ -5000,17 +5000,72 @@ fy_generic_out_of_place_put_generic_builderp(void *buf FY_UNUSED,
 		fy_string_alloca(_buf); \
 	})
 
+/* fy_arg_is_gb() - Return 1 if @_x is a builder */
+#define fy_arg_is_gb(_x) \
+	_Generic((_x), struct fy_generic_builder *: 1, default: 0)
+
+/* fy_stringf_rest() - ", " and the format arguments, or nothing if there are none */
+#define fy_stringf_rest(_fmt, ...) __VA_OPT__(,) __VA_ARGS__
+
+/* Hide the format from checks in the branch that is not selected. */
+static inline const char *fy_fmt_opaque(const char *fmt)
+{
+	return fmt;
+}
+
+/* Select the format for the builder branch. */
+#define fy_stringf_fmt_gb(_maybe_gb, ...) \
+	_Generic((_maybe_gb), \
+		 struct fy_generic_builder *: FY_CPP_FIRST(__VA_ARGS__), \
+		 default: fy_fmt_opaque((const char *)(_maybe_gb)))
+
+/* Call fy_gb_string_createf() with an optional argument list. */
+#define _fy_stringf_gb_call_(_gb, _fmt)			fy_gb_string_createf((_gb), "%s", (_fmt))
+#define _fy_stringf_gb_call_1(_gb, _fmt, ...)		fy_gb_string_createf((_gb), (_fmt), __VA_ARGS__)
+#define _fy_stringf_gb_pick(_gb, _fmt, ...) \
+	FY_CONCAT(_fy_stringf_gb_call_, __VA_OPT__(1))((_gb), (_fmt) __VA_OPT__(,) __VA_ARGS__)
+#define fy_stringf_gb_call(...) _fy_stringf_gb_pick(__VA_ARGS__)
+
 /**
  * fy_stringf() - Format a string and return it as a fy_generic.
  *
- * @_fmt: printf-compatible format string.
- * @...:  Format arguments.
+ * The first argument can be a builder. The builder owns the result when it
+ * is present. Otherwise, the result has the lifetime of the current function.
+ *
+ * @...: Optional builder, followed by a printf-compatible format string
+ *       and its arguments
  *
  * Returns:
  * fy_generic wrapping the formatted string.
  */
-#define fy_stringf(_fmt, ...) \
-	((fy_generic){ .v = fy_stringf_value((_fmt) __VA_OPT__(,) __VA_ARGS__) })
+#define fy_stringf(_maybe_gb, ...) \
+	__builtin_choose_expr(fy_arg_is_gb(_maybe_gb), \
+		fy_stringf_gb_call(fy_gb_or_NULL(_maybe_gb), \
+				   fy_stringf_fmt_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__), \
+				   FY_CPP_REST(__VA_ARGS__)), \
+		((fy_generic){ .v = fy_stringf_value( \
+				fy_first_non_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__) \
+				__VA_OPT__(,) __VA_ARGS__) }))
+
+/**
+ * fy_vstringf() - Format a string from a va_list and return it as a fy_generic.
+ *
+ * This is the va_list form of fy_stringf().
+ *
+ * @...: Optional builder, followed by a printf-compatible format string
+ *       and a va_list
+ *
+ * Returns:
+ * fy_generic wrapping the formatted string.
+ */
+#define fy_vstringf(_maybe_gb, ...) \
+	__builtin_choose_expr(fy_arg_is_gb(_maybe_gb), \
+		fy_gb_string_vcreate(fy_gb_or_NULL(_maybe_gb), \
+				     fy_first_non_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__), \
+				     fy_second_non_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__)), \
+		((fy_generic){ .v = fy_string_alloca(fy_vsprintfa( \
+				fy_first_non_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__), \
+				fy_second_non_gb(_maybe_gb __VA_OPT__(,) __VA_ARGS__))) }))
 
 /**
  * fy_sequence_alloca() - Allocate a sequence on the stack and copy items into it.
