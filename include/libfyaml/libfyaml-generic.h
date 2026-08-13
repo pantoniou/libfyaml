@@ -9951,6 +9951,23 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 		 ((_v) = fy_get_at_typed((_col), FY_LUNIQUE(_iter).i, __typeof__(_v))), 1); \
 	FY_LUNIQUE(_iter).i++)
 
+/**
+ * fy_foreach_idx_item() - Iterate over sequence indexes and items.
+ *
+ * @_idx receives each index. @_item receives the item after conversion to
+ * its declared type. Use fy_foreach_key_value() for mapping keys.
+ *
+ * @_idx:  Loop variable (lvalue) that receives the index of each element
+ * @_item: Loop variable (lvalue) that receives each element
+ * @_col:  Sequence to iterate
+ */
+#define fy_foreach_idx_item(_idx, _item, _col) \
+	for (struct { size_t i; size_t len; } FY_LUNIQUE(_iter) = { 0, fy_len(_col) }; \
+	     FY_LUNIQUE(_iter).i < FY_LUNIQUE(_iter).len && \
+		(((_idx) = FY_LUNIQUE(_iter).i), \
+		 ((_item) = fy_get_at_typed((_col), FY_LUNIQUE(_iter).i, __typeof__(_item))), 1); \
+	FY_LUNIQUE(_iter).i++)
+
 /* Builder-backed collection operation macros.
  * All fy_gb_*() macros forward to fy_generic_op() with the matching opcode and
  * the provided builder @_gb.  Items are encoded via FY_CPP_VA_GITEMS() which
