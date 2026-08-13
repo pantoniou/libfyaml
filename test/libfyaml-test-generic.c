@@ -7093,6 +7093,22 @@ START_TEST(str_number_op)
 	d = fy_number(fy_to_generic(0), -1.0);
 	ck_assert_double_eq(d, 0.0);
 
+	/* Check an inline conversion in fy_cast(). */
+	ck_assert_str_eq(fy_cast(fy_convert(gb, fy_to_generic(42), FYGT_STRING),
+				       (const char *)"?"), "42");
+	ck_assert_str_eq(fy_cast(fy_convert(fy_to_generic(42), FYGT_STRING),
+				       (const char *)"?"), "42");
+	ck_assert_double_eq(fy_cast(fy_convert(gb, fy_to_generic("2.5"),
+					       FYGT_FLOAT), (double)-1), 2.5);
+
+	/* Check that a builder conversion stores its result. */
+	{
+		fy_generic seq = fy_gb_sequence(gb, 1, 2, 3);
+
+		ck_assert_str_eq(fy_cast(fy_convert(gb, seq, FYGT_STRING),
+					       (const char *)"?"), "[1, 2, 3]");
+	}
+
 	printf("> All str/number op tests passed!\n");
 }
 END_TEST
