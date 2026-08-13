@@ -2152,6 +2152,46 @@ START_TEST(alloca_check)
 }
 END_TEST
 
+/* Use enough empty lines to exceed the local line-break buffer. */
+#define BLOCK_SCALAR_EMPTY_LINES 4096
+
+START_TEST(block_scalar_many_empty_lines)
+{
+	struct fy_document *fyd;
+	const char *text;
+	char *in, *expected;
+	size_t i, pos;
+
+	/* "key: |\n  a\n" + N * "\n" + "  b\n" */
+	in = malloc(16 + BLOCK_SCALAR_EMPTY_LINES + 8);
+	ck_assert_ptr_ne(in, NULL);
+	pos = sprintf(in, "key: |\n  a\n");
+	for (i = 0; i < BLOCK_SCALAR_EMPTY_LINES; i++)
+		in[pos++] = '\n';
+	pos += sprintf(in + pos, "  b\n");
+
+	/* clipped literal: "a\n" + N * "\n" + "b\n" */
+	expected = malloc(BLOCK_SCALAR_EMPTY_LINES + 8);
+	ck_assert_ptr_ne(expected, NULL);
+	pos = sprintf(expected, "a\n");
+	for (i = 0; i < BLOCK_SCALAR_EMPTY_LINES; i++)
+		expected[pos++] = '\n';
+	pos += sprintf(expected + pos, "b\n");
+
+	fyd = fy_document_build_from_string(NULL, in, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	text = fy_node_get_scalar0(fy_node_by_path(fy_document_root(fyd), "/key",
+						   FY_NT, FYNWF_DONT_FOLLOW));
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_str_eq(text, expected);
+
+	fy_document_destroy(fyd);
+	free(expected);
+	free(in);
+}
+END_TEST
+
 START_TEST(scanf_check)
 {
 	struct fy_document *fyd;
@@ -2619,6 +2659,7 @@ void libfyaml_case_core(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, manual_block_flow_mix);
 
 	fy_check_testcase_add_test(ctc, alloca_check);
+	fy_check_testcase_add_test(ctc, block_scalar_many_empty_lines);
 
 	fy_check_testcase_add_test(ctc, scanf_check);
 
