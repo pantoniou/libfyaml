@@ -6731,6 +6731,101 @@ START_TEST(join_op)
 }
 END_TEST
 
+/* Test: fy_stringf() / fy_vstringf() with and without a builder */
+
+static fy_generic vstringf_local(const char *fmt, ...)
+{
+	va_list ap;
+	fy_generic v;
+
+	va_start(ap, fmt);
+	v = fy_vstringf(fmt, ap);
+	va_end(ap);
+
+	/* Return a copy that remains valid after this function returns. */
+	return fy_to_generic(fy_cast(v, ""));
+}
+
+static fy_generic vstringf_gb(struct fy_generic_builder *gb, const char *fmt, ...)
+{
+	va_list ap;
+	fy_generic v;
+
+	va_start(ap, fmt);
+	v = fy_vstringf(gb, fmt, ap);
+	va_end(ap);
+
+	return v;
+}
+
+START_TEST(stringf_op)
+{
+	char buf[4096];
+	struct fy_generic_builder *gb;
+	fy_generic v, persist;
+	static const char *const ex_tab[] = { "x" };
+	/* Prevent compile-time evaluation of the test values. */
+	volatile int zero_v = 0, five_v = 5, seven_v = 7;
+	const char *ex = ex_tab[zero_v];
+	int five = five_v, seven = seven_v;
+
+	printf("\n> Testing stringf op\n");
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+						NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Local result with no format arguments. */
+	v = fy_stringf("no args at all");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "no args at all");
+
+	/* Variables prevent a false array-bounds warning in an unused branch. */
+	v = fy_stringf("%d", five);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "5");
+
+	v = fy_stringf("%s-%03d", ex, seven);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "x-007");
+
+	/* Builder result. */
+	v = fy_stringf(gb, "no args at all");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "no args at all");
+
+	v = fy_stringf(gb, "%d", five);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "5");
+
+	v = fy_stringf(gb, "%s-%03d", "y", 42);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "y-042");
+
+	/* A builder result remains valid outside the inner block. */
+	{
+		{ persist = fy_stringf(gb, "%s-%d", "kept", 1); }
+		ck_assert_str_eq(fy_cast(persist, ""), "kept-1");
+	}
+
+	/* Check both va_list forms. */
+	v = vstringf_local("%s/%d", "path", 9);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "path/9");
+
+	v = vstringf_gb(gb, "%s/%d", "path", 9);
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "path/9");
+
+	/* Force out-of-place storage. */
+	v = fy_stringf(gb, "%s", "0123456789abcdefghijklmnopqrstuvwxyz");
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), "0123456789abcdefghijklmnopqrstuvwxyz");
+
+	printf("> All stringf op tests passed!\n");
+}
+END_TEST
+
 /* Check bool and integer encodings with each supported C standard. */
 START_TEST(bool_literal_encoding)
 {
@@ -7531,6 +7626,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, convert_op);
 	fy_check_testcase_add_test(ctc, join_op);
 	fy_check_testcase_add_test(ctc, bool_literal_encoding);
+	fy_check_testcase_add_test(ctc, stringf_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
