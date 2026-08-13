@@ -232,6 +232,7 @@ START_TEST(parser_file_parse_cache_multi_document_lifecycle)
 	char *cache_template;
 	char *yaml_template;
 	char *cache_dir;
+	ssize_t old_min_size;
 	struct fy_parser *fyp1 = NULL, *fyp2 = NULL;
 	struct fy_document *fyd;
 	struct fy_node *fyn;
@@ -254,7 +255,9 @@ START_TEST(parser_file_parse_cache_multi_document_lifecycle)
 
 	cache_dir = fy_mkdtemp(cache_template);
 	ck_assert_ptr_ne(cache_dir, NULL);
+	old_min_size = fy_parse_cache_get_min_file_size();
 	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(0), 0);
 
 	fd = fy_mkstemp(yaml_template);
 	ck_assert_int_ge(fd, 0);
@@ -263,8 +266,6 @@ START_TEST(parser_file_parse_cache_multi_document_lifecycle)
 	ck_assert_ptr_ne(fp, NULL);
 	fd = -1;
 
-	for (i = 0; i < 20000; i++)
-		ck_assert_int_ge(fputs("# filler to exceed cache threshold without affecting semantics\n", fp), 0);
 	ck_assert_int_ge(fputs(docs, fp), 0);
 	ck_assert_int_eq(fclose(fp), 0);
 	fp = NULL;
@@ -302,6 +303,7 @@ START_TEST(parser_file_parse_cache_multi_document_lifecycle)
 	fy_parser_destroy(fyp2);
 	unlink(yaml_template);
 	fy_parse_cache_override(NULL);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(old_min_size), 0);
 
 	remove_tmpdir(cache_dir, cache_dir);
 }
