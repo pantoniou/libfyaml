@@ -1392,6 +1392,7 @@ clang_field_visitor(CXCursor cursor, CXCursor parent, struct fy_decl *parent_dec
 	CXType type;
 	int ret;
 	const char *cursor_spelling;
+	char *anon_spelling;
 
 	assert(parent_decl);
 
@@ -1399,6 +1400,17 @@ clang_field_visitor(CXCursor cursor, CXCursor parent, struct fy_decl *parent_dec
 	quals = clang_type_get_qualifiers(type);
 
 	cursor_spelling = clang_str_get_alloca(clang_getCursorSpelling(cursor));
+
+	/* libclang 15 and earlier do not name anonymous record fields. Use the
+	 * field offset as a stable name. Do not name an unnamed bitfield.
+	 */
+	if (*cursor_spelling == '\0' &&
+	    clang_Cursor_isAnonymousRecordDecl(clang_getTypeDeclaration(type))) {
+		anon_spelling = alloca(sizeof("@anon-") + 20);
+		snprintf(anon_spelling, sizeof("@anon-") + 20, "@anon-%llu",
+			 (unsigned long long)clang_Cursor_getOffsetOfField(cursor));
+		cursor_spelling = anon_spelling;
+	}
 
 	memset(declu, 0, sizeof(*declu));
 	declu->cursor = cursor;
