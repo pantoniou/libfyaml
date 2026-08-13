@@ -2192,6 +2192,48 @@ START_TEST(block_scalar_many_empty_lines)
 }
 END_TEST
 
+/* Check saved scans for scalar styles, chomping modes, whitespace, and CRLF. */
+static const struct {
+	const char *input;
+	const char *expected;
+} blank_line_run_tests[] = {
+	/* Folded scalar. */
+	{ "k: >\n  a\n\n\n\n  b\n",		"a\n\n\nb\n" },
+	/* Literal scalar. */
+	{ "k: |\n  a\n\n\n\n  b\n",		"a\n\n\n\nb\n" },
+	/* Indented whitespace is content. */
+	{ "k: >\n  a\n\n   \n\n  b\n",		"a\n\n \n\nb\n" },
+	/* Double-quoted scalar. */
+	{ "k: \"a\n\n\n\n  b\"\n",		"a\n\n\nb" },
+	/* CRLF line breaks. */
+	{ "k: >\n  a\r\n\r\n\r\n  b\r\n",	"a\n\nb\n" },
+	/* Strip chomping. */
+	{ "k: |-\n  a\n\n\n\n  b\n\n\n",	"a\n\n\n\nb" },
+	/* Clip chomping. */
+	{ "k: >\n  a\n\n\n\n  b\n\n\n",		"a\n\n\nb\n" },
+};
+
+START_TEST(blank_line_runs)
+{
+	struct fy_document *fyd;
+	const char *text;
+	size_t i;
+
+	for (i = 0; i < sizeof(blank_line_run_tests)/sizeof(blank_line_run_tests[0]); i++) {
+
+		fyd = fy_document_build_from_string(NULL, blank_line_run_tests[i].input, FY_NT);
+		ck_assert_ptr_ne(fyd, NULL);
+
+		text = fy_node_get_scalar0(fy_node_by_path(fy_document_root(fyd), "/k",
+							   FY_NT, FYNWF_DONT_FOLLOW));
+		ck_assert_ptr_ne(text, NULL);
+		ck_assert_str_eq(text, blank_line_run_tests[i].expected);
+
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 START_TEST(scanf_check)
 {
 	struct fy_document *fyd;
@@ -2660,6 +2702,7 @@ void libfyaml_case_core(struct fy_check_suite *cs)
 
 	fy_check_testcase_add_test(ctc, alloca_check);
 	fy_check_testcase_add_test(ctc, block_scalar_many_empty_lines);
+	fy_check_testcase_add_test(ctc, blank_line_runs);
 
 	fy_check_testcase_add_test(ctc, scanf_check);
 
