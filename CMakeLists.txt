@@ -789,8 +789,22 @@ if(NOT MSVC)
 
     set(USE_STD 0)
 
+    # C standard to build with; "auto" picks the newest supported one.
+    # Set explicitly (e.g. -DLIBFYAML_C_STD=gnu11) to build against an
+    # older standard.
+    set(LIBFYAML_C_STD "auto" CACHE STRING "C standard to build with (auto, gnu2x, c2x, gnu11, ...)")
+
+    if(NOT LIBFYAML_C_STD STREQUAL "auto")
+        check_c_compiler_flag(-std=${LIBFYAML_C_STD} COMPILER_SUPPORTS_REQUESTED_STD)
+        if(NOT COMPILER_SUPPORTS_REQUESTED_STD)
+            message(FATAL_ERROR "The compiler does not support -std=${LIBFYAML_C_STD}")
+        endif()
+        list(APPEND COMMON_C_FLAGS -std=${LIBFYAML_C_STD})
+        set(USE_STD 1)
+    endif()
+
     if(NOT USE_STD)
-        check_c_compiler_flag(-std=c2x COMPILER_SUPPORTS_GNU2X)
+        check_c_compiler_flag(-std=gnu2x COMPILER_SUPPORTS_GNU2X)
         if(COMPILER_SUPPORTS_GNU2X)
             list(APPEND COMMON_C_FLAGS -std=gnu2x)
             set(USE_STD 1)
