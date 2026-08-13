@@ -1,4 +1,4 @@
-# libfyaml 1.0-alpha8
+# libfyaml 1.0-beta1
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -6,55 +6,53 @@
 [![Language: C](https://img.shields.io/badge/language-C-brightgreen.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
 
 libfyaml is a high-performance YAML 1.2 and JSON parser/emitter with zero-copy
-operation, full document and event APIs, and the two major 1.0 alpha features:
+operation, full document and event APIs, and the two major 1.0 features:
 
 * generics: a schema-light, sum-type value model for YAML/JSON data in C
 * reflection/meta-type: typed YAML <-> C serdes driven by C type metadata
 
-The alpha release adds a clear progression:
+The 1.0 series adds a clear progression:
 
 * use the core API when you need parser, emitter, event, or document-tree control
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-alpha8 matters
+## Why 1.0-beta1 matters
 
-`1.0.0-alpha8` is the durable-storage, comment fidelity, and generic API
-follow-up to the earlier `1.0.0-alpha` releases.
+`1.0.0-beta1` is the first beta for the 1.0 line. The main API areas are now in
+place: the core parser/emitter API, the generic value API, reflection-based
+typed serdes, Python bindings over generics, transparent parse caching, and
+durable generic storage.
 
-It keeps the same overall 1.0 direction, but adds durable on-disk generic
-storage, expands the generic convenience API, and improves round-trip behavior:
+This release keeps the durable-storage and comment-handling work from `alpha8`
+and adds smaller generic helpers that were missing from normal use:
 
-* durable allocator and durable dedup support for on-disk generic arenas
-* transparent parser cache updates that split content and dedup cache files
-* auto-anchor emission support for generic, `fy-tool`, and Python dump paths
-* improved comment parsing, attachment, and emission for round-trip fidelity
-* new generic path, comparison, join, delete, sorted/filtering, and intern helpers
+* direct string and number conversion helpers for generic values
+* short scalar predicates for compact type checks
+* indexed sequence iteration and mapping item iteration helpers
+* builder-backed string formatting helpers
+* better handling for empty generic item lists and empty collection comparison
+* parser/emitter fixes for large block scalars, empty-string round-trips, and cached line-break scans
 
-The durable work is the main new piece. Generic builders can now be backed by
-allocator state that survives beyond one process, with snapshot, restore,
-checkpoint, verification, and offline garbage collection APIs. The dedup layer
-can participate in that storage model too, so repeated values and cached parse
-results can share persistent backing instead of being rebuilt from scratch.
+The intent is to make common generic operations available through public entry
+points. Code can now ask whether a value is a short scalar, convert values to
+strings or numbers, iterate sequences with indexes, iterate mapping items, and
+format strings through a generic builder without using lower-level internals.
 
-The cache work from `1.0.0-alpha7` is still the user-facing story for repeated
-loads, but `alpha8` makes the implementation more practical for persistent
-use: cached input content and deduplicated generic storage now live in separate
-files. That gives applications a cleaner boundary between "what was parsed" and
-"what generic values were reused".
+Transparent parse caching remains the main performance feature for repeated
+loads. It avoids reparsing unchanged content and can reuse deduplicated generic
+storage. Durable allocator support allows that state to persist across process
+runs.
 
-This release also tightens YAML round-tripping. Document-level comments,
-document-end comments, mapping-key comments, sequence-item comments, and
-block-end comments all get more consistent parse/attach/emit behavior. The
-goal is not to turn libfyaml into a formatter; it is to preserve user-authored
-structure more reliably when applications inspect or modify documents.
+This release also fixes several edge cases. Empty generic lists now use valid
+storage. Empty collections compare by value rather than backing address.
+Decorated scalar accessors unwrap correctly. Cached line-break scans are reused.
+Block scalars with many empty lines no longer keep pending line-break state on
+the stack.
 
-For C users, the generic API gained the convenience calls that were missing
-from the earlier alpha surface: deep path set/delete, path string and path
-sequence variants, sorted and null-filtered collection creation, string
-interning, polymorphic comparisons, value signatures, storage statistics,
-memoized graph copy, and raw two-argument getters. Python also picks up
-auto-anchor emission and comment setter APIs.
+The linker interface version advances for beta1 because the release adds public
+generic APIs. CMake and Autotools both read the same `.libtool-version`, so
+shared-library ABI naming stays aligned across build systems.
 
 ### Generic runtime
 
@@ -303,14 +301,16 @@ cd python-libfyaml
 python3 -m pytest tests/
 ```
 
-The binding is part of the alpha release story and shows the generic runtime's
+The binding is part of the 1.0 release story and shows the generic runtime's
 data model in regular use. `v1.0.0-alpha3` improved the Windows story for the
 binding, `v1.0.0-alpha4` repaired the wheel and `sdist` packaging flow,
 `v1.0.0-alpha5` broadened build and CI coverage, and `v1.0.0-alpha6` expands
 generic formatting/document handling. `v1.0.0-alpha7` adds transparent parse
 caching, optimized generic emission, and Stable ABI Python wheels.
 `v1.0.0-alpha8` adds durable storage, auto-anchor emission, stronger comment
-round-tripping, and more complete generic helper APIs.
+round-tripping, and more complete generic helper APIs. `v1.0.0-beta1` starts
+the beta cycle with additional conversion, predicate, iteration, formatting,
+and correctness fixes on top of that alpha surface.
 
 ## License
 

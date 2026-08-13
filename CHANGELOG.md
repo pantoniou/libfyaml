@@ -5,6 +5,51 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta1] - 2026-08-13
+
+The first beta release for the 1.0 line. The main 1.0 API areas are now in
+place: core YAML parsing/emission, generic values, reflection-based typed
+serdes, Python bindings, transparent parse caching, and durable generic
+storage.
+
+This release adds smaller public generic helpers, fixes edge cases covered by
+the expanded tests, and updates release documentation. It does not introduce a
+new subsystem; it makes the existing 1.0 API surface more complete.
+
+### Added
+
+- `generic`: string and number conversion helpers for generic values
+- `generic`: short scalar predicates for compact type checks
+- `generic`: indexed sequence iteration helpers
+- `generic`: mapping item iteration helpers
+- `generic`: builder-backed string formatting helpers
+- `reflection`: name anonymous record fields in reflected metadata
+- `test`: coverage for empty item lists, short predicates, conversion helpers, indexed sequence iteration, mapping item iteration, builder formatting, cached line-break scans, block scalars with many empty lines, and work-pool shutdown races
+
+### Changed
+
+- `build`: select and honor the requested C standard during configuration
+- `atom`: cache trailing line-break scans
+- `atom`: move pending block-scalar line breaks to heap storage
+- `generic`: allow `fy_join()` to accept an optional leading builder
+
+### Fixed
+
+- `generic`: use valid storage for empty item lists
+- `generic`: compare empty collections by item count rather than backing address
+- `generic`: unwrap decorated scalar accessors
+- `emit`: quote empty-string generics under the core schema so they do not emit as null
+- `allocator`: reject stale dedup resize requests
+- `thread`: always consume the work-pool completion post during shutdown
+- `reflection`: fix signed left-shift undefined behavior in 32-bit enum sign extension
+- `doc`: update canned man pages and fix string-format kernel-doc comments
+- `test`: avoid oversized parse-cache lifecycle input
+
+### Statistics
+
+- 35 commits since `v1.0.0-alpha8`
+- Focus areas: generic conversion and iteration helpers, scalar and collection edge cases, parser/emitter correctness, and documentation updates
+
 ## [1.0.0-alpha8] - 2026-07-08
 
 The eighth alpha milestone for the 1.0 line. This release adds durable generic
@@ -814,6 +859,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-beta1]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha8...v1.0.0-beta1
 [1.0.0-alpha8]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha7...v1.0.0-alpha8
 [1.0.0-alpha7]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha6...v1.0.0-alpha7
 [1.0.0-alpha6]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha5...v1.0.0-alpha6
