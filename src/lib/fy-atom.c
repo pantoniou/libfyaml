@@ -891,7 +891,9 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 	int value, code_length, ret;
 	uint8_t code[4], *tt;
 	int j, pending_nl;
+	int pending_lb_inplace[16];
 	int *pending_lb = NULL, *pending_lb_new = NULL;
+	int *pending_lb_alloc = NULL;
 	int pending_lb_size = 0;
 	enum fy_utf8_escape esc_mode;
 	size_t rlen, i;
@@ -1041,8 +1043,9 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 			case FYAC_STRIP:
 			case FYAC_CLIP:
 
-				pending_lb_size = 16;
-				pending_lb = alloca(sizeof(*pending_lb) * pending_lb_size);
+				/* Use heap storage when the local buffer is full. */
+				pending_lb_size = (int)ARRAY_SIZE(pending_lb_inplace);
+				pending_lb = pending_lb_inplace;
 
 				pending_nl = 0;
 				if (!li->empty) {
@@ -1064,10 +1067,18 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 					}
 					if (li->lb_end && !iter->empty) {
 						if (pending_nl >= pending_lb_size) {
-							pending_lb_new = alloca(sizeof(*pending_lb) * pending_lb_size * 2);
-							memcpy(pending_lb_new, pending_lb, sizeof(*pending_lb) * pending_lb_size);
+							pending_lb_new = realloc(pending_lb_alloc,
+									sizeof(*pending_lb) * pending_lb_size * 2);
+							if (!pending_lb_new) {
+								ret = -1;
+								goto out;
+							}
+							/* Copy the local buffer during the first growth. */
+							if (!pending_lb_alloc)
+								memcpy(pending_lb_new, pending_lb,
+										sizeof(*pending_lb) * pending_lb_size);
 							pending_lb_size *= 2;
-							pending_lb = pending_lb_new;
+							pending_lb = pending_lb_alloc = pending_lb_new;
 						}
 						pending_lb[pending_nl] = li->actual_lb > 0 ? li->actual_lb : '\n';
 						pending_nl++;
@@ -1164,6 +1175,8 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 	ret = 1;
 
 out:
+	if (pending_lb_alloc)
+		free(pending_lb_alloc);
 	return ret;
 }
 
