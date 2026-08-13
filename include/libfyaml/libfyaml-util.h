@@ -172,6 +172,21 @@ struct iovec {
 /* NULL terminated string length specifier */
 #define FY_NT	((size_t)-1)
 
+/**
+ * fy_str_empty() - Test whether a string is missing or empty.
+ *
+ * A NULL string is empty. The function evaluates @str once.
+ *
+ * @str: String to test; may be NULL.
+ *
+ * Returns:
+ * true if @str is NULL or holds no characters.
+ */
+static inline bool fy_str_empty(const char *str)
+{
+	return str == NULL || *str == '\0';
+}
+
 #if defined(__GNUC__) && __GNUC__ >= 4
 /**
  * FY_EXPORT - Mark a symbol as part of the shared-library public ABI.

@@ -9536,6 +9536,39 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 #define fy_len(_colv) \
 	(fy_generic_len((_colv)))
 
+/* fy_empty() - True if a collection or string holds nothing */
+#define fy_empty(_colv) \
+	(fy_generic_len((_colv)) == 0)
+
+/* Short aliases for type checks. Each macro returns a C bool. */
+
+/* fy_is_string() - True if @_v is a string */
+#define fy_is_string(_v)	(fy_generic_is_string((_v)))
+/* fy_is_int() - True if @_v is an integer (signed or unsigned) */
+#define fy_is_int(_v)		(fy_generic_is_int_type((_v)))
+/* fy_is_uint() - True if @_v is an unsigned integer */
+#define fy_is_uint(_v)		(fy_generic_is_uint_type((_v)))
+/* fy_is_float() - True if @_v is a float */
+#define fy_is_float(_v)		(fy_generic_is_float_type((_v)))
+/* fy_is_bool() - True if @_v is a bool */
+#define fy_is_bool(_v)		(fy_generic_is_bool_type((_v)))
+/* fy_is_null() - True if @_v is null */
+#define fy_is_null(_v)		(fy_generic_is_null_type((_v)))
+/* fy_is_sequence() - True if @_v is a sequence */
+#define fy_is_sequence(_v)	(fy_generic_is_sequence((_v)))
+/* fy_is_mapping() - True if @_v is a mapping */
+#define fy_is_mapping(_v)	(fy_generic_is_mapping((_v)))
+/* fy_is_alias() - True if @_v is an alias */
+#define fy_is_alias(_v)		(fy_generic_is_alias((_v)))
+/* fy_is_scalar() - True if @_v is a scalar (not a collection) */
+#define fy_is_scalar(_v)	(fy_generic_is_scalar((_v)))
+/* fy_is_collection() - True if @_v is a sequence or a mapping */
+#define fy_is_collection(_v)	(fy_generic_is_collection((_v)))
+/* fy_is_valid() - True if @_v is anything other than fy_invalid */
+#define fy_is_valid(_v)		(fy_generic_is_valid((_v)))
+/* fy_is_invalid() - True if @_v is fy_invalid */
+#define fy_is_invalid(_v)	(fy_generic_is_invalid((_v)))
+
 /* fy_get_default() - Look up @_key in @_colv, returning @_dv if not found */
 #define fy_get_default(_colv, _key, _dv) \
 	(fy_generic_get_default((_colv), (_key), (_dv)))
@@ -9894,6 +9927,34 @@ fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
  * an invalid operand is never equal to anything */
 #define fy_equal(_a, _b) \
 	(fy_compare((_a), (_b)) == 0)
+
+/* Compare with one fy_any_equal() alternative. */
+#define _fy_any_equal_one(_x) || fy_equal(__fy_ae_v, (_x))
+
+/**
+ * fy_any_equal() - Test a value against several alternatives.
+ *
+ * This is a short form of a chain of fy_equal() calls::
+ *
+ *   if (fy_any_equal(v, "foo", "bar"))
+ *
+ * The test stops at the first match. It evaluates @_v once. It returns false
+ * when there are no alternatives.
+ *
+ * @_v: Value to test; encoded as by fy_value()
+ * @...: Alternatives to compare against
+ *
+ * Returns:
+ * A C bool - true if @_v equals any of the alternatives. Note this is a
+ * plain bool and not a generic, as with fy_equal(), so it can be used
+ * directly in a condition.
+ */
+#define fy_any_equal(_v, ...) \
+	({ \
+		const fy_generic __fy_ae_v = fy_value(_v); \
+		(void)__fy_ae_v;	/* no alternatives: nothing to compare against */ \
+		(bool)(false __VA_OPT__(FY_CPP_MAP(_fy_any_equal_one, __VA_ARGS__))); \
+	})
 
 /* fy_not_equal() - Polymorphic inequality test; negation of fy_equal() */
 #define fy_not_equal(_a, _b) \
