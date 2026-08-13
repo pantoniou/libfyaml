@@ -7033,6 +7033,70 @@ START_TEST(sugar_op)
 }
 END_TEST
 
+/* Test: fy_str() and fy_number() */
+START_TEST(str_number_op)
+{
+	char buf[8192];
+	struct fy_generic_builder *gb;
+	const char *a, *b, *c;
+	double d;
+
+	printf("\n> Testing str/number op\n");
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER,
+						NULL, buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* Render scalars and collections. */
+	ck_assert_str_eq(fy_str(fy_to_generic(42)), "42");
+	ck_assert_str_eq(fy_str(fy_to_generic(2.5)), "2.5");
+	ck_assert_str_eq(fy_str(fy_to_generic("hi")), "hi");
+	ck_assert_str_eq(fy_str(fy_to_generic((_Bool)true)), "true");
+	ck_assert_str_eq(fy_str(fy_null), "null");
+	ck_assert_str_eq(fy_str(fy_sequence(1, 2)), "[1, 2]");
+	ck_assert_str_eq(fy_str(fy_mapping("a", 1)), "{a: 1}");
+
+	/* fy_invalid has no rendering. */
+	ck_assert_ptr_eq((void *)fy_str(fy_invalid), NULL);
+
+	/* Render with a builder. */
+	ck_assert_str_eq(fy_str(gb, fy_to_generic(42)), "42");
+	ck_assert_str_eq(fy_str(gb, fy_to_generic("hi")), "hi");
+	ck_assert_str_eq(fy_str(gb, fy_sequence(1, 2)), "[1, 2]");
+	ck_assert_str_eq(fy_str(gb, fy_to_generic("0123456789abcdefghijklmnopqrst")),
+			 "0123456789abcdefghijklmnopqrst");
+
+	/* Keep multiple results at the same time. */
+	a = fy_str(fy_to_generic("first"));
+	b = fy_str(fy_to_generic("second"));
+	c = fy_str(fy_to_generic("third"));
+	ck_assert_str_eq(a, "first");
+	ck_assert_str_eq(b, "second");
+	ck_assert_str_eq(c, "third");
+
+	/* Convert numeric values. */
+	ck_assert_double_eq(fy_number(fy_to_generic(42)), 42.0);
+	ck_assert_double_eq(fy_number(fy_to_generic(2.5)), 2.5);
+	ck_assert_double_eq(fy_number(fy_to_generic("2.5")), 2.5);
+	ck_assert_double_eq(fy_number(fy_to_generic("8080")), 8080.0);
+	ck_assert_double_eq(fy_number(fy_to_generic((_Bool)true)), 1.0);
+
+	/* Use the default for values without a number. */
+	ck_assert_double_eq(fy_number(fy_to_generic("abc")), 0.0);
+	ck_assert_double_eq(fy_number(fy_null), 0.0);
+	ck_assert_double_eq(fy_number(fy_sequence(1, 2)), 0.0);
+	ck_assert_double_eq(fy_number(fy_invalid), 0.0);
+
+	/* Distinguish zero from a conversion error. */
+	d = fy_number(fy_to_generic("abc"), -1.0);
+	ck_assert_double_eq(d, -1.0);
+	d = fy_number(fy_to_generic(0), -1.0);
+	ck_assert_double_eq(d, 0.0);
+
+	printf("> All str/number op tests passed!\n");
+}
+END_TEST
+
 /* Check bool and integer encodings with each supported C standard. */
 START_TEST(bool_literal_encoding)
 {
@@ -7837,6 +7901,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, foreach_key_value_op);
 	fy_check_testcase_add_test(ctc, foreach_idx_item_op);
 	fy_check_testcase_add_test(ctc, sugar_op);
+	fy_check_testcase_add_test(ctc, str_number_op);
 
 	/* generic iterator */
 	fy_check_testcase_add_test(ctc, generic_iterator);
