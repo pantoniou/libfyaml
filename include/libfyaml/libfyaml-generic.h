@@ -5137,14 +5137,19 @@ static inline const char *fy_fmt_opaque(const char *fmt)
 #define _FLI1(a) fy_to_generic(a),
 #define _FLILS(...) _FM(_FLI1, __VA_ARGS__)
 
+/* Use one unread item as valid storage for an empty list. */
+#define _FVLISF_(_c, ...)	((fy_generic [1]){ fy_invalid })
+#define _FVLISF_1(_c, ...)	((fy_generic [(_c)]) { _FLILS(__VA_ARGS__) })
 #define _FVLISF(_c, ...) \
-	((fy_generic [(_c)]) { __VA_OPT__(_FLILS(__VA_ARGS__)) })
+	FY_CONCAT(_FVLISF_, __VA_OPT__(1))((_c) __VA_OPT__(,) __VA_ARGS__)
 
 #define _FGBI1(_g, a) fy_gb_to_generic(_g, a),
 #define _FGBILS(_g, ...) _FM2(_g, _FGBI1, __VA_ARGS__)
 
+#define _FVGBISF_(_c, _g, ...)	((fy_generic [1]){ fy_invalid })
+#define _FVGBISF_1(_c, _g, ...)	((fy_generic [(_c)]) { _FGBILS((_g), __VA_ARGS__) })
 #define _FVGBISF(_c, _g, ...) \
-	((fy_generic [(_c)]) { __VA_OPT__(_FGBILS((_g), __VA_ARGS__)) })
+	FY_CONCAT(_FVGBISF_, __VA_OPT__(1))((_c), (_g) __VA_OPT__(,) __VA_ARGS__)
 
 /* Public API */
 #define FY_CPP_GITEM_LIST(...)		_FLILS(__VA_ARGS__)
