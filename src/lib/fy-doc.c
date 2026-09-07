@@ -5386,7 +5386,7 @@ fy_node_build_internal(struct fy_document *fyd,
 		int (*parser_setup)(struct fy_parser *fyp, void *user),
 		void *user)
 {
-	struct fy_document_state *fyds = NULL;
+	struct fy_document_state *fyds = NULL, *fyds_new;
 	struct fy_node *fyn = NULL;
 	struct fy_parser fyp_data, *fyp = &fyp_data;
 	struct fy_parse_cfg cfg;
@@ -5428,6 +5428,15 @@ fy_node_build_internal(struct fy_document *fyd,
 				"trailing events after the last");
 
 		fy_parse_eventp_recycle(fyp, fyep);
+	}
+
+	/* a clone shares the state, do not merge into another document */
+	if (fy_document_state_is_shared(fyd->fyds)) {
+		fyds_new = fy_document_state_copy(fyd->fyds);
+		fyd_error_check(fyd, fyds_new, err_out,
+				"fy_document_state_copy() failed");
+		fy_document_state_unref(fyd->fyds);
+		fyd->fyds = fyds_new;
 	}
 
 	rc = fy_document_state_merge(fyd->fyds, fyds);

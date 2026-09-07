@@ -56,6 +56,13 @@ struct fy_document_state *fy_document_state_default(
 		const struct fy_tag * const *default_tags);
 
 struct fy_document_state *fy_document_state_copy(struct fy_document_state *fyds);
+
+/* true when more than one owner holds the state, for example a clone */
+static inline bool fy_document_state_is_shared(struct fy_document_state *fyds)
+{
+	return fyds && fyds->refs > 1;
+}
+
 int fy_document_state_merge(struct fy_document_state *fyds,
 			    struct fy_document_state *fydsc);
 int fy_document_state_set_top_comment(struct fy_document_state *fyds,
