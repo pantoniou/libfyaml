@@ -82,8 +82,8 @@ fy_type_p_from_id(const struct fy_packed_type_info *ti, const fy_type_p_id id)
 		assert(!id.fytp || (id.fytp >= ti->types && id.fytp < &ti->types[ti->types_count]));
 		return id.fytp;
 	}
-	idx = id.id - FY_TYPE_ID_OFFSET;
-	if ((unsigned int)idx >= (unsigned int)ti->types_count)
+	idx = (unsigned int)id.id - (unsigned int)FY_TYPE_ID_OFFSET;
+	if (idx >= (unsigned int)ti->types_count)
 		return NULL;
 	return ti->types + idx;
 }
@@ -97,8 +97,8 @@ fy_decl_p_from_id(const struct fy_packed_type_info *ti, const fy_decl_p_id id)
 		assert(!id.declp || (id.declp >= ti->decls && id.declp < &ti->decls[ti->decls_count]));
 		return id.declp;
 	}
-	idx = id.id - FY_DECL_ID_OFFSET;
-	if ((unsigned int)idx >= (unsigned int)ti->decls_count)
+	idx = (unsigned int)id.id - (unsigned int)FY_DECL_ID_OFFSET;
+	if (idx >= (unsigned int)ti->decls_count)
 		return NULL;
 	return ti->decls + idx;
 }
