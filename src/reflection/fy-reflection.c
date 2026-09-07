@@ -1183,7 +1183,9 @@ char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsi
 			type_prefix = NULL;
 			type_name = NULL;
 			PUT_P1("(");
-			if (is_c_identifier(func_return[strlen(func_return) - 1], false))
+			/* a corrupt import can leave the return type empty */
+			if (*func_return &&
+			    is_c_identifier(func_return[strlen(func_return) - 1], false))
 				PUT_P1(" ");
 			PUT_P1WORD(func_return);
 			if (field || stack_count > 1) {
