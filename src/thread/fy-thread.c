@@ -522,10 +522,14 @@ void fy_thread_pool_cleanup(struct fy_thread_pool *tp)
 		fy_cacheline_free(tp->threads);
 	}
 
+	if (tp->key_valid) {
 #ifdef _WIN32
-	if (tp->key != TLS_OUT_OF_INDEXES)
 		TlsFree(tp->key);
+#else
+		pthread_key_delete(tp->key);
 #endif
+		tp->key_valid = false;
+	}
 
 	memset(tp, 0, sizeof(*tp));
 }
@@ -590,6 +594,7 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 	rc = pthread_key_create(&tp->key, NULL);
 	assert(!rc);
 #endif
+	tp->key_valid = true;
 
 	tp->freep = (_Atomic(uint64_t) *)((char *)tp->threads + free_offset);
 	tp->lootp = (_Atomic(uint64_t) *)((char *)tp->threads + loot_offset);

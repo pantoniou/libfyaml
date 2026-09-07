@@ -85,6 +85,7 @@ struct fy_thread_pool {
 #else	// _WIN32
 	DWORD key;
 #endif
+	bool key_valid;
 };
 
 /* those are internal only */
