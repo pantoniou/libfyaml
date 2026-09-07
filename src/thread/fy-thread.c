@@ -514,8 +514,8 @@ void fy_thread_pool_cleanup(struct fy_thread_pool *tp)
 		return;
 
 	if (tp->threads) {
-		/* get out of steal mode */
-		for (i = 0, t = tp->threads; i < tp->num_threads; i++, t++) {
+		/* get out of steal mode; only the started threads run */
+		for (i = 0, t = tp->threads; i < tp->num_started; i++, t++) {
 			fy_worker_thread_shutdown(t);
 		}
 
@@ -589,10 +589,12 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 
 #ifdef _WIN32
 	tp->key = TlsAlloc();
-	assert(tp->key != TLS_OUT_OF_INDEXES);
+	if (tp->key == TLS_OUT_OF_INDEXES)
+		goto err_out;
 #else
 	rc = pthread_key_create(&tp->key, NULL);
-	assert(!rc);
+	if (rc)
+		goto err_out;
 #endif
 	tp->key_valid = true;
 
@@ -628,6 +630,7 @@ int fy_thread_pool_setup(struct fy_thread_pool *tp, const struct fy_thread_pool_
 		if (rc)
 			goto err_out;
 #endif
+		tp->num_started++;
 	}
 
 	return 0;

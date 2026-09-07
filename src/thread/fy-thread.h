@@ -77,6 +77,7 @@ struct fy_thread {
 struct fy_thread_pool {
 	struct fy_thread_pool_cfg cfg;
 	unsigned int num_threads;
+	unsigned int num_started;
 	struct fy_thread *threads;
 	FY_ATOMIC(uint64_t) *freep;
 	FY_ATOMIC(uint64_t) *lootp;
