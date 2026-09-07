@@ -1466,6 +1466,11 @@ fy_token_iter_destroy(struct fy_token_iter *iter)
  * The iterator must be created via a previous call to fy_token_iter_create()
  * for user level API access.
  *
+ * Each start must have a matching call to fy_token_iter_finish() before the
+ * iterator is started again. The start does not release the resources of an
+ * earlier iteration; it cannot, because it gets no guarantee about the state
+ * of the iterator. An iterator that is started twice leaks.
+ *
  * @fyt: The token to iterate over
  * @iter: The iterator to prepare.
  */
@@ -1476,7 +1481,9 @@ fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter)
 /**
  * fy_token_iter_finish() - Stop iterating over the contents of a token
  *
- * Stop the iteration operation.
+ * Stop the iteration operation and release the resources that it holds.
+ * Call it for each call to fy_token_iter_start(), before the iterator is
+ * started again or destroyed.
  *
  * @iter: The iterator.
  */
