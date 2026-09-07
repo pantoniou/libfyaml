@@ -434,8 +434,9 @@ static int packed_do_import(struct fy_import *imp)
 			RFL_ASSERT(!ret);
 		}
 
-		/* fixup type */
-		fy_type_fixup(ft);
+		/* fixup type; a corrupt blob makes it fail */
+		ret = fy_type_fixup(ft);
+		RFL_ASSERT(!ret);
 	}
 
 	return 0;
