@@ -4032,7 +4032,10 @@ fy_type_info_prefixless_name(const struct fy_type_info *ti)
 		adv = 0;	/* return the full name */
 		break;
 	}
-	assert(strlen(fullname) > adv);
+	/* a corrupt import can leave the name empty, or make it the prefix */
+	if (!fullname || strlen(fullname) <= adv)
+		return "";
+
 	assert(!adv || isspace(fullname[adv-1]));
 	return fullname + adv;
 }
