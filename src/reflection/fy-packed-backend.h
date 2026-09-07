@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "fy-reflection-private.h"
 
@@ -112,7 +113,11 @@ fy_str_from_p(const struct fy_packed_type_info *ti, fy_p_str strp)
 	if (!strp.offset)
 		return NULL;
 
-	assert(strp.offset < ti->strtab_size);
+	/* a blob supplied offset must stay in the string table, and the
+	 * string that it points to must terminate in it */
+	if (strp.offset >= ti->strtab_size ||
+	    !memchr(ti->strtab + strp.offset, '\0', ti->strtab_size - strp.offset))
+		return NULL;
 
 	return ti->strtab + strp.offset;
 }
