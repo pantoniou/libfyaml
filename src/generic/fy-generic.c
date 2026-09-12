@@ -717,6 +717,100 @@ fy_generic_signature_visit(struct fy_blake3_hasher *h, fy_generic v,
 	return 0;
 }
 
+static int
+fy_generic_signature_visit_iterative(struct fy_blake3_hasher *h, fy_generic v,
+				     enum fy_generic_signature_flags sflags)
+{
+	const fy_generic *items;
+	fy_generic *stack, *new_stack;
+	fy_generic_indirect gi;
+	uint64_t flags;
+	size_t i, count, stack_count, stack_alloc;
+	int rc = -1;
+
+	stack_alloc = 64;
+	stack = malloc(stack_alloc * sizeof(*stack));
+	if (!stack)
+		return -1;
+	stack_count = 0;
+	stack[stack_count++] = v;
+
+	while (stack_count > 0) {
+		v = stack[--stack_count];
+		if (fy_generic_is_invalid(v))
+			goto out;
+
+		if (fy_generic_is_indirect(v)) {
+			if (!(sflags & FYGSF_WITH_INDIRECTS)) {
+				if (fy_generic_is_alias(v)) {
+					if (fy_generic_signature_visit(h, v, sflags) != 0)
+						goto out;
+					continue;
+				}
+				v = fy_generic_indirect_get_value(v);
+				if (fy_generic_is_invalid(v))
+					goto out;
+			} else {
+				fy_generic_indirect_get(v, &gi);
+				fy_sig_update_u8(h, FY_SIG_TAG_INDIRECT);
+				fy_sig_update_u64(h, (uint64_t)gi.flags);
+				flags = (uint64_t)gi.flags & FYGIF_CONTENT_MASK;
+				count = fy_bit64_popcnt(flags);
+				items = gi.vindirect;
+				goto push_flagged_items;
+			}
+		}
+
+		if (fy_generic_is_sequence(v)) {
+			items = fy_generic_sequence_get_items(v, &count);
+			fy_sig_update_u8(h, FY_SIG_TAG_SEQUENCE);
+			fy_sig_update_u64(h, (uint64_t)count);
+			goto push_items;
+		}
+		if (fy_generic_is_mapping(v)) {
+			items = fy_generic_mapping_get_items(v, &count);
+			fy_sig_update_u8(h, FY_SIG_TAG_MAPPING);
+			fy_sig_update_u64(h, (uint64_t)(count / 2));
+			goto push_items;
+		}
+		if (fy_generic_signature_visit(h, v, sflags) != 0)
+			goto out;
+		continue;
+
+push_flagged_items:
+		if (count > SIZE_MAX - stack_count)
+			goto out;
+		if (stack_count + count > stack_alloc) {
+			stack_alloc = stack_count + count;
+			new_stack = realloc(stack, stack_alloc * sizeof(*stack));
+			if (!new_stack)
+				goto out;
+			stack = new_stack;
+		}
+		for (i = FYGIIDX_MAX; i > 0; i--)
+			if (flags & FY_BIT64(i - 1))
+				stack[stack_count++] = items[i - 1];
+		continue;
+
+push_items:
+		if (count > SIZE_MAX - stack_count)
+			goto out;
+		if (stack_count + count > stack_alloc) {
+			stack_alloc = stack_count + count;
+			new_stack = realloc(stack, stack_alloc * sizeof(*stack));
+			if (!new_stack)
+				goto out;
+			stack = new_stack;
+		}
+		for (i = count; i > 0; i--)
+			stack[stack_count++] = items[i - 1];
+	}
+	rc = 0;
+out:
+	free(stack);
+	return rc;
+}
+
 int fy_generic_signature(fy_generic v, enum fy_generic_signature_flags flags,
 			 uint8_t out[FY_BLAKE3_OUT_LEN])
 {
@@ -742,7 +836,7 @@ int fy_generic_signature(fy_generic v, enum fy_generic_signature_flags flags,
 				sizeof("libfyaml-generic-signature") - 1);
 	fy_sig_update_u8(h, (flags & FYGSF_WITH_INDIRECTS) ? 1 : 0);
 
-	rc = fy_generic_signature_visit(h, v, flags);
+	rc = fy_generic_signature_visit_iterative(h, v, flags);
 	if (rc == 0) {
 		digest = fy_blake3_hasher_finalize(h);
 		if (digest)
