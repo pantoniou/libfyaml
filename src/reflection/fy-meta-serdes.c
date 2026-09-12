@@ -164,7 +164,9 @@ static bool type_info_equal(const struct fy_type_info *ti_a, const struct fy_typ
 
 	/* names must match, if they're not anonymous */
 	if (!(ti_a->flags & ti_b->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP))) {
-		if (strcmp(ti_a->name, ti_b->name))
+		if ((!ti_a->name || !ti_b->name) && ti_a->name != ti_b->name)
+			return false;
+		if (ti_a->name && strcmp(ti_a->name, ti_b->name))
 			return false;
 	}
 
