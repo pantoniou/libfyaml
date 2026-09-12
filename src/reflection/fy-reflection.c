@@ -967,7 +967,7 @@ char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsi
 {
 	struct fy_reflection *rfl;
 	const struct fy_type_kind_info *tki;
-	struct fy_type *ftd;
+	struct fy_type *ftd, *slow, *fast;
 	struct fy_decl *decld;
 	enum fy_type_kind type_kind;
 	struct fy_type **ft_stack;
@@ -991,6 +991,21 @@ char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsi
 	no_type = !!(flags & FYTGTF_NO_TYPE);
 
 	assert(ft->type_kind != FYTK_INVALID);
+
+	/* Reject a malformed dependent type cycle before counting the chain. */
+	slow = fast = ft;
+	for (;;) {
+		slow = slow && slow->dependent_type && slow->type_kind != FYTK_TYPEDEF &&
+		       slow->type_kind != FYTK_ENUM ? slow->dependent_type : NULL;
+		fast = fast && fast->dependent_type && fast->type_kind != FYTK_TYPEDEF &&
+		       fast->type_kind != FYTK_ENUM ? fast->dependent_type : NULL;
+		fast = fast && fast->dependent_type && fast->type_kind != FYTK_TYPEDEF &&
+		       fast->type_kind != FYTK_ENUM ? fast->dependent_type : NULL;
+		if (!slow || !fast)
+			break;
+		if (slow == fast)
+			return NULL;
+	}
 
 	/* create a stack of all deps, ending at no dep or typedef */
 	ftd = ft;
