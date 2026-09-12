@@ -18,8 +18,10 @@
 #include <check.h>
 
 #include <libfyaml.h>
+#include <libfyaml/libfyaml-generic.h>
 #ifdef HAVE_REFLECTION
 #include <libfyaml/libfyaml-reflection.h>
+#include "fy-reflection-private.h"
 #endif
 
 #include "fy-check.h"
@@ -33,6 +35,79 @@ START_TEST(fuzz_resolve_aliases_stars_amps)
 	fy_document_destroy(fy_document_build_from_string(&cfg, buf, FY_NT));
 }
 END_TEST
+
+#if defined(__linux__)
+/* Test: gh#340 - an alias path ends after it resolves to a sequence. */
+START_TEST(fuzz_issue_340_alias_path_end_repro)
+{
+	static const char doc[23] =
+		"-\r\n-\t*/3/1%:/.:\n-\r\n-\t*/";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_COLLECT_DIAG | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_DISABLE_RECYCLING | FYPCF_DISABLE_DEPTH_LIMIT |
+			 FYPCF_YPATH_ALIASES | FYPCF_CREATE_MARKERS |
+			 FYPCF_KEEP_STYLE | FYPCF_ENABLE_CACHE |
+			 FYPCF_DEFAULT_VERSION_1_3 | FYPCF_JSON_AUTO,
+	};
+	struct fy_document *fyd;
+	FILE *f;
+
+	f = fmemopen((void *)doc, sizeof(doc), "r");
+	ck_assert_ptr_ne(f, NULL);
+	fyd = fy_document_build_from_fp(&cfg, f);
+	fy_document_destroy(fyd);
+	fclose(f);
+}
+END_TEST
+#endif
+
+#ifdef HAVE_REFLECTION
+/* Test: gh#341 - a dependent type cycle must not loop forever. */
+START_TEST(fuzz_issue_341_dependent_type_cycle_repro)
+{
+	struct fy_type a = { .type_kind = FYTK_PTR };
+	struct fy_type b = { .type_kind = FYTK_PTR };
+	char *decl;
+
+	a.dependent_type = &b;
+	b.dependent_type = &a;
+	decl = fy_type_generate_c_declaration(&a, NULL, 0);
+	ck_assert_ptr_eq(decl, NULL);
+}
+END_TEST
+
+/* Test: gh#342 - reflection equality must accept nullable type names. */
+START_TEST(fuzz_issue_342_null_type_name_repro)
+{
+	static const unsigned char blob[] = {
+		0x46, 0x59, 0x50, 0x47, 0x01, 0x00, 0x00, 0x01,
+		0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x77, 0x6a,
+		0x79, 0x61, 0x01, 0x01, 0x17, 0x01, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x01,
+	};
+	struct fy_reflection *rfl, *rfl2;
+	void *blob2;
+	size_t blob2_size;
+
+	rfl = fy_reflection_from_packed_blob(blob, sizeof(blob), NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+	blob2 = fy_reflection_to_packed_blob(rfl, &blob2_size, true, true);
+	ck_assert_ptr_ne(blob2, NULL);
+	rfl2 = fy_reflection_from_packed_blob(blob2, blob2_size, NULL);
+	ck_assert_ptr_ne(rfl2, NULL);
+	(void)fy_reflection_equal(rfl, rfl2);
+	fy_reflection_destroy(rfl2);
+	free(blob2);
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+#endif
 
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
@@ -2252,7 +2327,12 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_336_thread_pool_key_leak_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_337_token_iter_restart_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_339_shared_document_state_merge_repro);
+#if defined(__linux__)
+	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
+#endif
 #ifdef HAVE_REFLECTION
+	fy_check_testcase_add_test(ctc, fuzz_issue_341_dependent_type_cycle_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_342_null_type_name_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_319_packed_blob_short_read_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_321_packed_blob_bad_id_size_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_322_packed_blob_bad_region_size_repro);

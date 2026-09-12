@@ -7471,6 +7471,28 @@ START_TEST(generic_signature)
 }
 END_TEST
 
+/* Test: gh#343 - signatures must not use the C stack for nested values. */
+START_TEST(generic_signature_deep_nesting)
+{
+	struct fy_generic_builder *gb;
+	uint8_t signature[FY_BLAKE3_OUT_LEN];
+	fy_generic v;
+	unsigned int i;
+	int rc;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	v = fy_null;
+	for (i = 0; i < 10000; i++)
+		v = fy_gb_sequence_create(gb, 1, &v);
+	ck_assert(fy_generic_is_valid(v));
+
+	rc = fy_generic_signature(v, FYGSF_WITH_INDIRECTS, signature);
+	ck_assert_int_eq(rc, 0);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /*
  * Auto-anchor emission: build a "billion laughs" style graph in a
  * deduplicated builder (each level is a 9-way sequence of the level below,
@@ -7927,6 +7949,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_linearize_many_chunks);
 
 	fy_check_testcase_add_test(ctc, generic_signature);
+	fy_check_testcase_add_test(ctc, generic_signature_deep_nesting);
 }
 
 FY_DIAG_POP
