@@ -208,7 +208,13 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         brew update
-        brew install pkg-config check libyaml gcc@13 llvm
+        llvm_formula=llvm
+        # Use LLVM 18 bottles on macOS 14.
+        if [[ "${{ matrix.os }}" == "macos-14" ]]; then
+          llvm_formula=llvm@18
+        fi
+        brew install pkg-config check libyaml gcc@13 "$llvm_formula"
+        echo "CMAKE_PREFIX_PATH=$(brew --prefix "$llvm_formula")" >> "$GITHUB_ENV"
 
     - name: "Install dependencies (Windows)"
       if: runner.os == 'Windows'
