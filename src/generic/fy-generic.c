@@ -3367,7 +3367,8 @@ int fy_gb_set_schema_from_parser_mode(struct fy_generic_builder *gb, enum fy_par
 	return 0;
 }
 
-void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
+static void
+fy_generic_dump_primitive_node(FILE *fp, int level, fy_generic vv, bool end)
 {
 	static const char *scalar_styles_txt[] = {
 		[FYSS_PLAIN] = "plain",
@@ -3382,15 +3383,19 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	};
 	const char *style_txt;
 	enum fy_generic_type type;
-	fy_generic vtag, vanchor, v, iv, key, value;
+	fy_generic vtag, vanchor, v;
 	fy_generic vdiag, vmark, vstyle;
 	fy_generic vtopc, vrightc, vbottomc;
 	const char *tag = NULL, *anchor = NULL;
-	const fy_generic *items;
-	const fy_generic_map_pair *pairs;
 	fy_generic_sized_string szstr;
 	struct fy_generic_decorated_int dint;
-	size_t i, count;
+	size_t i;
+
+	if (end) {
+		fprintf(fp, "%*s%c\n", level * 2, "",
+			fy_generic_is_sequence(vv) ? ']' : '}');
+		return;
+	}
 
 	vanchor = fy_generic_get_anchor(vv);
 	vtag = fy_generic_get_tag(vv);
@@ -3468,24 +3473,10 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 
 	case FYGT_SEQUENCE:
 		fprintf(fp, "<seq>   [\n");
-		items = fy_generic_sequence_get_items(v, &count);
-		for (i = 0; i < count; i++) {
-			iv = items[i];
-			fy_generic_dump_primitive(fp, level + 1, iv);
-		}
-		fprintf(fp, "%*s]\n", level * 2, "");
 		break;
 
 	case FYGT_MAPPING:
 		fprintf(fp, "<map>   {\n");
-		pairs = fy_generic_mapping_get_pairs(v, &count);
-		for (i = 0; i < count; i++) {
-			key = pairs[i].key;
-			value = pairs[i].value;
-			fy_generic_dump_primitive(fp, level + 1, key);
-			fy_generic_dump_primitive(fp, level + 1, value);
-		}
-		fprintf(fp, "%*s}\n", level * 2, "");
 		break;
 
 	case FYGT_ALIAS:
@@ -3500,6 +3491,35 @@ void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
+}
+
+void fy_generic_dump_primitive(FILE *fp, int level, fy_generic vv)
+{
+	struct fy_generic_iterator *iter;
+	struct fy_generic_iterator_body_result res;
+
+	if (!fp || level < 0 || level >= INT_MAX / 2)
+		return;
+	if (fy_generic_is_invalid(vv)) {
+		fy_generic_dump_primitive_node(fp, level, vv, false);
+		return;
+	}
+	/* The iterator uses a heap-backed stack for nested collections. */
+	iter = fy_generic_iterator_create();
+	if (!iter)
+		return;
+	fy_generic_iterator_generic_start(iter, vv);
+	while (fy_generic_iterator_body_next_internal(iter, &res)) {
+		if (res.end)
+			level--;
+		fy_generic_dump_primitive_node(fp, level, res.v, res.end);
+		if (!res.end && fy_generic_is_collection(res.v)) {
+			if (level >= INT_MAX / 2 - 1)
+				break;
+			level++;
+		}
+	}
+	fy_generic_iterator_destroy(iter);
 }
 
 bool fy_generic_has_comments(fy_generic v)
