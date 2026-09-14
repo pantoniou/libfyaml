@@ -363,10 +363,10 @@ int fy_generic_collection_op_data_setup(struct fy_generic_collection_op_data *co
 		if (xflags & FYGCODSF_NEED_WORK_IN_ITEMS_DIV2)
 			cod->work_in_items_div2 = cod->work_items_all + cod->work_in_items_div2_offset;
 
-		if (xflags & FYGCODSF_NEED_COPY_WORK_IN_ITEMS)
+		if ((xflags & FYGCODSF_NEED_COPY_WORK_IN_ITEMS) && cod->in_item_count > 0)
 			memcpy(cod->work_in_items, cod->in_items, sizeof(*cod->work_items) * cod->in_item_count);
 
-		if (xflags & FYGCODSF_NEED_COPY_WORK_ITEMS)
+		if ((xflags & FYGCODSF_NEED_COPY_WORK_ITEMS) && cod->item_count > 0)
 			memcpy(cod->work_items, cod->items, sizeof(*cod->work_items) * cod->item_count);
 
 		if (xflags & FYGCODSF_NEED_COPY_WORK_ITEMS_EXPANDED) {
@@ -782,7 +782,8 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc FY_UNUSED,
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
 	/* after */
-	iov[3].iov_base = (void *)cod->in_items + MULSZ(idx, cod->col_item_size);
+	iov[3].iov_base = remain_count ?
+		(void *)cod->in_items + MULSZ(idx, cod->col_item_size) : NULL;
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -849,7 +850,8 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc FY_UNUSED,
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
 	/* after */
-	iov[3].iov_base = (void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size);
+	iov[3].iov_base = remain_count ?
+		(void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size) : NULL;
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
