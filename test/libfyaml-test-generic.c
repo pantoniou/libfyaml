@@ -3643,6 +3643,38 @@ START_TEST(local_ops_retry)
 	printf("> Merge result length: %zu\n", fy_len(v));
 }
 
+/* Test: collection operations with empty inputs */
+START_TEST(empty_collection_ops)
+{
+	struct fy_generic_builder *gb;
+	fy_generic map, seq, v;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	map = fy_mapping(gb, "language", "C", "rule", "─");
+	seq = fy_sequence(gb, 1, 2);
+
+	v = fy_merge(gb, fy_map_empty, map);
+	ck_assert(fy_equal(v, map));
+	v = fy_merge(gb, map, fy_map_empty);
+	ck_assert(fy_equal(v, map));
+	v = fy_merge(gb, fy_map_empty, fy_map_empty);
+	ck_assert(fy_equal(v, fy_map_empty));
+	v = fy_generic_op(gb, FYGBOPF_ASSOC, map, 0, (const fy_generic *)NULL);
+	ck_assert(fy_equal(v, map));
+	v = fy_generic_op(gb, FYGBOPF_DISASSOC, map, 0, (const fy_generic *)NULL);
+	ck_assert(fy_equal(v, map));
+	v = fy_concat(gb, fy_seq_empty, seq);
+	ck_assert(fy_equal(v, seq));
+	v = fy_concat(gb, seq, fy_seq_empty);
+	ck_assert(fy_equal(v, seq));
+	v = fy_concat(gb, fy_seq_empty, fy_seq_empty);
+	ck_assert(fy_equal(v, fy_seq_empty));
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* Test: unified ops - auto-dispatch based on first argument type */
 START_TEST(unified_ops)
 {
@@ -7882,6 +7914,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* local ops retry mechanism */
 	fy_check_testcase_add_test(ctc, local_ops_retry);
+	fy_check_testcase_add_test(ctc, empty_collection_ops);
 
 	/* unified operations */
 	fy_check_testcase_add_test(ctc, unified_ops);
