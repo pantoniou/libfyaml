@@ -26,6 +26,57 @@
 
 #include "fy-check.h"
 
+#if defined(__linux__)
+/* Test: gh#344 - dump a deep collection with source markers. */
+START_TEST(fuzz_issue_344_deep_primitive_dump_repro)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_DISABLE_MMAP_OPT |
+			 FYPCF_DISABLE_DEPTH_LIMIT | FYPCF_DISABLE_BUFFERING |
+			 FYPCF_YPATH_ALIASES | FYPCF_CREATE_MARKERS |
+			 FYPCF_RELAXED_FLOW_DOC | FYPCF_KEEP_ANCHORS |
+			 FYPCF_ENABLE_CACHE | FYPCF_DEFAULT_VERSION_AUTO |
+			 FYPCF_JSON_NONE,
+	};
+	struct fy_generic_document_builder_cfg gdb_cfg = {0};
+	struct fy_generic_document_builder *gdb;
+	struct fy_generic_builder *gb;
+	struct fy_parser *parser;
+	unsigned char blob[9996];
+	fy_generic v;
+	FILE *fp;
+	unsigned int count = 0;
+
+	memcpy(blob, "\x5b\x02\x1d\x06\x1d\x06\x5d", 7);
+	memset(blob + 7, '[', sizeof(blob) - 7);
+	fp = fopen("/dev/null", "w");
+	ck_assert_ptr_ne(fp, NULL);
+	parser = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(parser, NULL);
+	ck_assert_int_eq(fy_parser_set_string(parser,
+			(const char *)blob, sizeof(blob)), 0);
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	gdb_cfg.parse_cfg = cfg;
+	gdb_cfg.gb = gb;
+	gdb_cfg.flags = FYGDBF_DEFAULT | FYGDBF_CREATE_MARKERS;
+	gdb = fy_generic_document_builder_create(&gdb_cfg);
+	ck_assert_ptr_ne(gdb, NULL);
+	while (fy_generic_is_valid(v =
+	       fy_generic_document_builder_load_document(gdb, parser))) {
+		fy_generic_dump_primitive(fp, 0, v);
+		count++;
+	}
+	ck_assert_uint_gt(count, 0);
+	ck_assert_int_eq(ferror(fp), 0);
+	fy_generic_document_builder_destroy(gdb);
+	fy_generic_builder_destroy(gb);
+	fy_parser_destroy(parser);
+	fclose(fp);
+}
+END_TEST
+#endif
+
 /* Test: parse "*********&&&&&&" with RESOLVE_DOCUMENT | YPATH_ALIASES */
 START_TEST(fuzz_resolve_aliases_stars_amps)
 {
@@ -2329,6 +2380,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_339_shared_document_state_merge_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
 #endif
 #ifdef HAVE_REFLECTION
 	fy_check_testcase_add_test(ctc, fuzz_issue_341_dependent_type_cycle_repro);
