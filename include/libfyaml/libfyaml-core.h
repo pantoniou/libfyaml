@@ -2499,7 +2499,7 @@ fy_emit_document_to_fp(struct fy_document *fyd,
  * fy_emit_document_to_file() - Emit a document to file
  *
  * Emits a document from the root to the given file.
- * The file will be fopen'ed using a "wa" mode.
+ * The file will be fopen'ed using a "w" mode.
  *
  * @fyd: The document to emit
  * @flags: The emitter flags to use

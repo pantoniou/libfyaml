@@ -3826,7 +3826,7 @@ int fy_emit_document_to_file(struct fy_document *fyd,
 	FILE *fp;
 	int rc;
 
-	fp = filename ? fopen(filename, "wa") : stdout;
+	fp = filename ? fopen(filename, "w") : stdout;
 	if (!fp)
 		return -1;
 
