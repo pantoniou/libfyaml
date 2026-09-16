@@ -111,7 +111,7 @@ int fy_reflection_type_filter(struct fy_reflection *rfl,
 			include_match = true;
 
 		if (type_exclude) {
-			ret = regexec(&type_include_reg, ti->name, 0, NULL, 0);
+			ret = regexec(&type_exclude_reg, ti->name, 0, NULL, 0);
 			exclude_match = ret == 0;
 		} else
 			exclude_match = false;
