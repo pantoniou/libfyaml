@@ -4699,8 +4699,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 	int start, end, count, i;
 	bool match;
 	struct fy_path_expr *exprt;
-	unsigned int nargs;
-	struct fy_walk_result **fwr_args;
+	unsigned int nargs = 0;
+	struct fy_walk_result **fwr_args = NULL;
 	void *prevp;
 	bool error;
 	int rc __FY_DEBUG_UNUSED__;
@@ -5225,6 +5225,10 @@ out:
 err_out:
 	if (errorp)
 		*errorp = true;
+	if (fwr_args) {
+		for (i = 0; i < (int)nargs; i++)
+			fy_walk_result_free(fwr_args[i]);
+	}
 	fy_walk_result_free(output);
 	output = NULL;
 	goto out;
