@@ -4751,11 +4751,13 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 			if (fi->flags & FYFIF_ENUM_UNSIGNED) {
 				if (fi->uval != next_enum_value.uval)
 					explicits++;
-				next_enum_value.uval = fi->uval + 1;
+				if (fi->uval != UINTMAX_MAX)
+					next_enum_value.uval = fi->uval + 1;
 			} else {
 				if (fi->sval != next_enum_value.sval)
 					explicits++;
-				next_enum_value.sval = fi->sval + 1;
+				if (fi->sval != INTMAX_MAX)
+					next_enum_value.sval = fi->sval + 1;
 			}
 		}
 
@@ -4803,11 +4805,13 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 				if (fi->flags & FYFIF_ENUM_UNSIGNED) {
 					if (force_explicit_enum || fi->uval != next_enum_value.uval)
 						fprintf(fp, " = %ju", fi->uval);
-					next_enum_value.uval = fi->uval + 1;
+					if (fi->uval != UINTMAX_MAX)
+						next_enum_value.uval = fi->uval + 1;
 				} else {
 					if (force_explicit_enum || fi->sval != next_enum_value.sval)
 						fprintf(fp, " = %jd", fi->sval);
-					next_enum_value.sval = fi->sval + 1;
+					if (fi->sval != INTMAX_MAX)
+						next_enum_value.sval = fi->sval + 1;
 				}
 
 				fprintf(fp, ",");
