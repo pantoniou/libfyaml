@@ -65,6 +65,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		         enum fy_node_walk_flags flags);
 
 #define FY_NODE_PATH_WALK_DEPTH_DEFAULT	16
+#define FY_NODE_MERGE_ALIAS_DEPTH_MAX	8
 
 static inline unsigned int
 fy_node_walk_max_depth_from_flags(enum fy_node_walk_flags flags)
@@ -4534,6 +4535,9 @@ fy_node_by_path_internal(struct fy_node *fyn,
 
 		/* failed! last ditch attempt, is there a merge key? */
 		if (!fyn && fynt && (flags & FYNWF_FOLLOW) && ptr_flags == FYNWF_PTR_YAML) {
+			if (fy_node_walk_marker_from_flags(flags) >=
+			    FY_NODE_MERGE_ALIAS_DEPTH_MAX)
+				goto out;
 			fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
 			if (!fyn)
 				goto out;
