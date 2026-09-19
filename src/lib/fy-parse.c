@@ -4078,7 +4078,8 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		if (chomp == FYAC_KEEP)
 			length += breaks + presentation_breaks_length;
 
-		if (final_lb && !content_is_eof)
+		/* clip does not add a final line break to empty content */
+		if (final_lb && !content_is_eof && (chomp == FYAC_KEEP || !empty))
 			length += (actual_lb_length == 0 && pending_nl) ? 1 : actual_lb_length;
 
 		ends_with_lb = final_lb || trailing_lb;

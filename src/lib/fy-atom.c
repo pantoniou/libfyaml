@@ -1120,8 +1120,10 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 					}
 				}
 
-				if (atom->chomp == FYAC_CLIP && (pending_nl || atom->ends_with_eof)) {
-					ret = fy_atom_iter_add_lb(iter, pending_lb[0]);
+				/* clip adds one line break, but not to empty content */
+				if (atom->chomp == FYAC_CLIP && !atom->empty &&
+				    (pending_nl || atom->ends_with_eof)) {
+					ret = fy_atom_iter_add_lb(iter, pending_nl ? pending_lb[0] : '\n');
 					if (ret)
 						goto out;
 				}
