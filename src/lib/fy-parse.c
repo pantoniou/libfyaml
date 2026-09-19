@@ -3670,7 +3670,9 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp,
 		/* non-empty line or EOF */
 		if (!fyp_is_lb(fyp, c)) {
 			*lastc = c;
-			indent = col;
+			/* an indentation indicator sets the indent */
+			if (!indent)
+				indent = col;
 
 			FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 					c < 0 || !first_scan || max_indent <= indent, err_out,
