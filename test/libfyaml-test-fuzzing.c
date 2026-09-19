@@ -294,6 +294,36 @@ START_TEST(fuzz_issue_349_block_scalar_indicator_repro)
 }
 END_TEST
 
+/* Test: gh#350 - an empty clipped block scalar must stay empty. */
+START_TEST(fuzz_issue_350_empty_clipped_block_scalar_repro)
+{
+	static const char * const yamls[] = {
+		" >\n  ",
+		" |\n  ",
+		" >\n  \n",
+	};
+	static const char keep[] = "- |+\n  ";
+	char text[16];
+	size_t len;
+	bool error;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(yamls) / sizeof(yamls[0]); i++) {
+		ck_assert_uint_eq(parse_first_scalar(yamls[i], strlen(yamls[i]),
+				text, sizeof(text), &len, &error), 1);
+		ck_assert(!error);
+		ck_assert_uint_eq(len, 0);
+	}
+
+	/* keep still has the line break (test suite JEF9) */
+	ck_assert_uint_eq(parse_first_scalar(keep, sizeof(keep) - 1,
+			text, sizeof(text), &len, &error), 1);
+	ck_assert(!error);
+	ck_assert_uint_eq(len, 1);
+	ck_assert_int_eq(text[0], '\n');
+}
+END_TEST
+
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
 {
@@ -2514,6 +2544,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_339_shared_document_state_merge_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_347_merge_alias_path_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_349_block_scalar_indicator_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_350_empty_clipped_block_scalar_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
