@@ -226,6 +226,74 @@ START_TEST(fuzz_issue_347_merge_alias_path_repro)
 }
 END_TEST
 
+/*
+ * Parse a stream and keep the text of its first scalar.
+ * Return the number of scalars.
+ */
+static unsigned int
+parse_first_scalar(const char *yaml, size_t size, char *text, size_t text_size,
+		   size_t *lenp, bool *errorp)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	const char *t;
+	size_t len;
+	unsigned int count = 0;
+
+	*lenp = 0;
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, size), 0);
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		if (fye->type == FYET_SCALAR) {
+			t = fy_token_get_text(fye->scalar.value, &len);
+			ck_assert_ptr_ne(t, NULL);
+			if (!count) {
+				ck_assert_uint_le(len, text_size);
+				memcpy(text, t, len);
+				*lenp = len;
+			}
+			count++;
+		}
+		fy_parser_event_free(fyp, fye);
+	}
+	*errorp = fy_parser_get_stream_error(fyp);
+	fy_parser_destroy(fyp);
+
+	return count;
+}
+
+/* Test: gh#349 - a line below the indentation indicator ends the scalar. */
+START_TEST(fuzz_issue_349_block_scalar_indicator_repro)
+{
+	static const char yaml[] =
+		"|9\n[\x01 # comment\0\0\x04\0[[]:]]";
+	static const char under[] = "|2\n abc\n";
+	static const char valid[] = "|2\n  abc\n";
+	char text[16];
+	size_t len;
+	bool error;
+
+	/* the reported line is less indented than the indicator */
+	ck_assert_uint_eq(parse_first_scalar(yaml, sizeof(yaml) - 1,
+			text, sizeof(text), &len, &error), 0);
+	ck_assert(error);
+
+	ck_assert_uint_eq(parse_first_scalar(under, sizeof(under) - 1,
+			text, sizeof(text), &len, &error), 0);
+	ck_assert(error);
+
+	ck_assert_uint_eq(parse_first_scalar(valid, sizeof(valid) - 1,
+			text, sizeof(text), &len, &error), 1);
+	ck_assert(!error);
+	ck_assert_uint_eq(len, 4);
+	ck_assert(!memcmp(text, "abc\n", 4));
+}
+END_TEST
+
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
 {
@@ -2445,6 +2513,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_337_token_iter_restart_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_339_shared_document_state_merge_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_347_merge_alias_path_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_349_block_scalar_indicator_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
