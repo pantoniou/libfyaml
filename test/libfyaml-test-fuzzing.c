@@ -160,6 +160,24 @@ START_TEST(fuzz_issue_342_null_type_name_repro)
 END_TEST
 #endif
 
+/* Test: gh#347 - merge alias path resolution must finish quickly. */
+START_TEST(fuzz_issue_347_merge_alias_path_repro)
+{
+	static const char yaml[] =
+		"<<:\n"
+		"- */z\n"
+		"- */z\n"
+		"- */z\n"
+		"- */z\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT,
+	};
+
+	fy_document_destroy(fy_document_build_from_string(&cfg, yaml,
+			sizeof(yaml) - 1));
+}
+END_TEST
+
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
 {
@@ -2378,6 +2396,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_336_thread_pool_key_leak_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_337_token_iter_restart_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_339_shared_document_state_merge_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_347_merge_alias_path_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
