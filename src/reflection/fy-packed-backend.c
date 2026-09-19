@@ -1449,6 +1449,10 @@ static int packed_reflection_setup_blob(struct fy_reflection *rfl)
 		} else
 			typep->flags = 0;
 
+		/* only a record can be an anonymous record declaration */
+		RFL_ASSERT(!(typep->flags & FYTF_ANONYMOUS_RECORD_DECL) ||
+			   fy_type_kind_is_record(typep->type_kind));
+
 		/* always have a decl */
 		typep->decl.id = Drf(&Br);
 
