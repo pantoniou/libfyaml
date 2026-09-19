@@ -627,6 +627,40 @@ START_TEST(fuzz_issue_352_ypath_method_args_leak_repro)
 }
 END_TEST
 
+/* Test: gh#356 - a failed YPath argument must free earlier arguments. */
+START_TEST(fuzz_issue_356_ypath_method_args_leak_repro)
+{
+	static const char yaml[] = "*$(sum(36>/tree/branch/b7\"name\")";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES,
+	};
+	struct fy_document *fyd, *fyd2;
+	struct fy_document_iterator *fydi;
+	struct fy_node *fyn;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyd2 = fy_document_clone(fyd);
+	ck_assert_ptr_ne(fyd2, NULL);
+	(void)fy_document_resolve(fyd2);
+
+	fydi = fy_document_iterator_create();
+	ck_assert_ptr_ne(fydi, NULL);
+	fy_document_iterator_node_start(fydi, fy_document_root(fyd));
+	while ((fyn = fy_document_iterator_node_next(fydi)) != NULL) {
+		if (fy_node_is_alias(fyn)) {
+			(void)fy_node_resolve_alias(fyn);
+			(void)fy_node_dereference(fyn);
+		}
+	}
+	fy_document_iterator_destroy(fydi);
+
+	fy_document_destroy(fyd2);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
 {
@@ -2850,6 +2884,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_350_empty_clipped_block_scalar_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_351_block_scalar_header_nul_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_352_ypath_method_args_leak_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_356_ypath_method_args_leak_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
