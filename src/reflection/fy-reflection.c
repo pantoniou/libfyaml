@@ -4788,7 +4788,17 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 		/* anonymous record decl struct foo { struct { int v; } ... } */
 		if (fi->type_info->flags & FYTIF_ANONYMOUS_RECORD_DECL) {
 
+			/* a record cannot contain a record that is in generation */
+			if (!fy_type_kind_is_record(fi->type_info->kind) ||
+			    c_in_ti_stack(cgen, fi->type_info))
+				goto err_out;
+
+			ret = c_push_ti_stack(cgen, fi->type_info);
+			if (ret < 0)
+				goto err_out;
+
 			ret = c_generate_type_with_fields(cgen, fp, fi->type_info, false, level + 1, "", false);
+			(void)c_pop_ti_stack(cgen);
 			if (ret < 0)
 				goto err_out;
 			lines += ret;
