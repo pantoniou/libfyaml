@@ -324,6 +324,28 @@ START_TEST(fuzz_issue_350_empty_clipped_block_scalar_repro)
 }
 END_TEST
 
+/* Test: gh#351 - a NUL after a block scalar header is an error. */
+START_TEST(fuzz_issue_351_block_scalar_header_nul_repro)
+{
+	static const char yaml[] = "\n>\0lu";
+	static const char literal[] = "|\0lu";
+	char text[16];
+	size_t len;
+	bool error;
+
+	/* the scalar is empty, and the NUL gives an error */
+	ck_assert_uint_eq(parse_first_scalar(yaml, sizeof(yaml) - 1,
+			text, sizeof(text), &len, &error), 1);
+	ck_assert(error);
+	ck_assert_uint_eq(len, 0);
+
+	ck_assert_uint_eq(parse_first_scalar(literal, sizeof(literal) - 1,
+			text, sizeof(text), &len, &error), 1);
+	ck_assert(error);
+	ck_assert_uint_eq(len, 0);
+}
+END_TEST
+
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
 {
@@ -2545,6 +2567,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_347_merge_alias_path_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_349_block_scalar_indicator_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_350_empty_clipped_block_scalar_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_351_block_scalar_header_nul_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
