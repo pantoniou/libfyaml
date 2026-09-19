@@ -2083,6 +2083,8 @@ int fy_type_update_info(struct fy_type *ft)
 	return 0;
 
 err_out:
+	/* do not let a failed update look like a recursive update */
+	ft->flags &= ~FYTF_TYPE_INFO_UPDATING;
 	return -1;
 }
 
@@ -4656,9 +4658,12 @@ c_generate_collect_co_dependents(struct fy_reflection *rfl, const struct fy_type
 			if (final_ti == ti || final_ti != final_start_ti)
 				continue;
 
-			if (tis)
+			if (tis) {
+				/* the second pass must not see more types */
+				if (i >= count)
+					break;
 				tis[i++] = ti;
-			else
+			} else
 				i++;
 		}
 
@@ -4671,7 +4676,7 @@ c_generate_collect_co_dependents(struct fy_reflection *rfl, const struct fy_type
 				return NULL;
 		}
 	}
-	tis[count] = NULL;	/* NULL terminate */
+	tis[i] = NULL;	/* NULL terminate */
 	return tis;
 }
 
