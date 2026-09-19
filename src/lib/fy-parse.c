@@ -3808,16 +3808,16 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 		generated_indent = true;
 	}
 
-	/* advance */
-	if (fy_utf8_is_valid(c))
+	/* advance over the line break, a NUL is left for the next token */
+	if (!fy_is_z(c))
 		fy_advance(fyp, c);
 
 	fy_fill_atom_start(fyp, &handle);
 
-	starts_with_eof = c < 0;
+	starts_with_eof = fy_is_z(c);
 
 	c = fy_parse_peek(fyp);
-	content_is_eof = c < 0;	/* any error or EOF */
+	content_is_eof = fy_is_z(c);	/* any error, NUL or EOF */
 
 	current_indent = fyp->indent >= 0 ? fyp->indent : 0;
 	indent = increment ? current_indent + increment : 0;
@@ -4052,7 +4052,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	ends_with_eof = starts_with_eof || (c == FYUG_EOF && !fyp_is_lb(fyp, lastc) && !breaks);
 
 	/* detect wrongly indented block scalar */
-	if (c != FYUG_EOF && !(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
+	if (!fy_is_z(c) && !(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
 			"block scalar with wrongly indented line after spaces only");
 		goto err_out;
