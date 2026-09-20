@@ -25,6 +25,7 @@
 #endif
 
 #include "fy-check.h"
+#include "libfyaml-test-alloc-fail.h"
 
 #if defined(__linux__)
 /* Test: gh#344 - dump a deep collection with source markers. */
@@ -660,6 +661,290 @@ START_TEST(fuzz_issue_356_ypath_method_args_leak_repro)
 	fy_document_destroy(fyd);
 }
 END_TEST
+
+/* Test: gh#358 - an index argument outside the int range matches nothing. */
+START_TEST(fuzz_issue_358_ypath_index_range_repro)
+{
+	/*
+	 * The test crashes on Windows with clang, before it runs. The
+	 * crash is not reproducible with clang under wine, and the defect
+	 * that the test covers is reported by UBSan on the other
+	 * platforms.
+	 */
+#ifndef _WIN32
+	static const char yaml[] = "- a\n- b\n";
+	struct fy_path_parse_cfg parse_cfg = {
+		.flags = FYPPCF_QUIET,
+	};
+	struct fy_path_exec_cfg xcfg = {
+		.flags = FYPXCF_QUIET,
+	};
+	/* an index that the int range cannot hold */
+	static const char path[] = "/index(100000000000000000000)";
+	struct fy_document *fyd;
+	struct fy_path_expr *expr;
+	struct fy_path_exec *fypx;
+	struct fy_node *fyn;
+	void *iter = NULL;
+	unsigned int count = 0;
+
+	fyd = fy_document_build_from_string(NULL, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	expr = fy_path_expr_build_from_string(&parse_cfg, path, sizeof(path) - 1);
+	ck_assert_ptr_ne(expr, NULL);
+	fypx = fy_path_exec_create(&xcfg);
+	ck_assert_ptr_ne(fypx, NULL);
+
+	fy_path_exec_execute(fypx, expr, fy_document_root(fyd));
+	while ((fyn = fy_path_exec_results_iterate(fypx, &iter)) != NULL)
+		count++;
+	ck_assert_uint_eq(count, 0);
+
+	fy_path_exec_destroy(fypx);
+	fy_path_expr_free(expr);
+	fy_document_destroy(fyd);
+#endif
+}
+END_TEST
+
+/* Test: gh#359 - removing a comment that is not the first one. */
+START_TEST(fuzz_issue_359_token_comment_unlink_repro)
+{
+	static const char yaml[] = "a\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_KEEP_COMMENTS,
+	};
+	struct fy_document *fyd;
+	struct fy_token *fyt;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fyt = fy_node_get_scalar_token(fy_document_root(fyd));
+	ck_assert_ptr_ne(fyt, NULL);
+
+	ck_assert_int_eq(fy_token_set_comment(fyt, fycp_top, "c", 1), 0);
+	ck_assert_int_eq(fy_token_set_comment(fyt, fycp_right, "c", 1), 0);
+	ck_assert_int_eq(fy_token_set_comment(fyt, fycp_bottom, "c", 1), 0);
+
+	/* remove the one in the middle of the list */
+	ck_assert_int_eq(fy_token_set_comment(fyt, fycp_right, NULL, 0), 0);
+
+	/* the others must still be there */
+	ck_assert_ptr_ne(fy_token_get_comment(fyt, fycp_top), NULL);
+	ck_assert_ptr_eq(fy_token_get_comment(fyt, fycp_right), NULL);
+	ck_assert_ptr_ne(fy_token_get_comment(fyt, fycp_bottom), NULL);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+#ifdef HAVE_LINKER_WRAP_MALLOC
+
+/*
+ * Run a scenario once for every allocation that it makes, failing a
+ * different one each time. The scenario arms the failure itself, so that
+ * it covers only the calls that are under test.
+ */
+static void
+alloc_fail_sweep(void (*fn)(unsigned int nth), unsigned int max)
+{
+	unsigned int n;
+
+	for (n = 1; n <= max; n++) {
+		fn(n);
+		fy_alloc_fail_disarm();
+		/* the scenario made fewer allocations than that */
+		if (fy_alloc_fail_seen() < n)
+			return;
+	}
+	ck_abort_msg("the scenario makes more than %u allocations", max);
+}
+
+static void issue_357_scenario(unsigned int nth)
+{
+	static const char yaml[] = "key: value\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_alloc_fail_arm(nth);
+	fy_node_by_path(fy_document_root(fyd), ".///key", FY_NT, FYNWF_PTR_YPATH);
+	fy_alloc_fail_disarm();
+	fy_document_destroy(fyd);
+}
+
+static void issue_360_scenario(unsigned int nth)
+{
+	static const char yaml[] = "l";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+	struct fy_document *fyd;
+	struct fy_tag **tags;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_alloc_fail_arm(nth);
+	tags = fy_document_state_tag_directives(fy_document_get_document_state(fyd));
+	fy_alloc_fail_disarm();
+	if (tags)
+		free(tags);
+	fy_document_destroy(fyd);
+}
+
+static void issue_361_scenario(unsigned int nth)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_PREFER_RECURSIVE,
+	};
+
+	fy_alloc_fail_arm(nth);
+	fy_document_destroy(fy_document_build_from_string(&cfg, ":", 1));
+	fy_alloc_fail_disarm();
+}
+
+static void issue_362_scenario(unsigned int nth)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+
+	fy_alloc_fail_arm(nth);
+	fy_document_destroy(fy_document_build_from_string(&cfg, ":", 1));
+	fy_alloc_fail_disarm();
+}
+
+static void issue_363_scenario(unsigned int nth)
+{
+	static const char yaml[] = "eede&:de&:\n[&:\n!";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_COLLECT_DIAG | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_DISABLE_MMAP_OPT | FYPCF_DISABLE_RECYCLING |
+			 FYPCF_DISABLE_ACCELERATORS |
+			 FYPCF_SLOPPY_FLOW_INDENTATION |
+			 FYPCF_RELAXED_FLOW_DOC | FYPCF_KEEP_ANCHORS |
+			 FYPCF_ENABLE_CACHE,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fyev;
+	struct fy_token *tag;
+	size_t len;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+	fy_alloc_fail_arm(nth);
+	while ((fyev = fy_parser_parse(fyp)) != NULL) {
+		tag = fy_event_get_tag_token(fyev);
+		if (tag)
+			fy_tag_token_suffix(tag, &len);
+		fy_parser_event_free(fyp, fyev);
+	}
+	fy_alloc_fail_disarm();
+	fy_parser_destroy(fyp);
+}
+
+static void issue_364_scenario(unsigned int nth)
+{
+	struct fy_parser *fyp;
+
+	fy_alloc_fail_arm(nth);
+	fyp = fy_parser_create(NULL);
+	fy_alloc_fail_disarm();
+	if (fyp)
+		fy_parser_destroy(fyp);
+}
+
+static void issue_365_scenario(unsigned int nth)
+{
+	static const char yaml[] = "a: b\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fyev;
+
+	fy_alloc_fail_arm(nth);
+	fyp = fy_parser_create(&cfg);
+	if (fyp) {
+		if (!fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1)) {
+			while ((fyev = fy_parser_parse(fyp)) != NULL)
+				fy_parser_event_free(fyp, fyev);
+		}
+		fy_parser_destroy(fyp);
+	}
+	fy_alloc_fail_disarm();
+}
+
+#endif /* HAVE_LINKER_WRAP_MALLOC */
+
+/* Test: gh#357 - a failed ypath operand must not be freed twice. */
+START_TEST(fuzz_issue_357_ypath_operand_double_free_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_357_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#360 - a tag directive that cannot be generated. */
+START_TEST(fuzz_issue_360_tag_directives_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_360_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#361 - the document must not be used after it is destroyed. */
+START_TEST(fuzz_issue_361_document_create_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_361_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#362 - a failed node pair allocation while building. */
+START_TEST(fuzz_issue_362_node_pair_alloc_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_362_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#363 - a tag suffix of a tag that is shorter than its prefix. */
+START_TEST(fuzz_issue_363_tag_suffix_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_363_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#364 - a parser setup that fails after the diagnostic. */
+START_TEST(fuzz_issue_364_parser_setup_diag_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_364_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#365 - a failed token allocation while scanning. */
+START_TEST(fuzz_issue_365_scan_token_leak_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_365_scenario, 256);
+#endif
+}
+END_TEST
+
 
 /* Test: parse ":\n*.." with RESOLVE_DOCUMENT | DISABLE_BUFFERING | YPATH_ALIASES | ALLOW_DUPLICATE_KEYS */
 START_TEST(fuzz_resolve_disable_buffering_colon_star)
@@ -2885,6 +3170,15 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_351_block_scalar_header_nul_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_352_ypath_method_args_leak_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_356_ypath_method_args_leak_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_358_ypath_index_range_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_359_token_comment_unlink_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_357_ypath_operand_double_free_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_360_tag_directives_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_361_document_create_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_362_node_pair_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_363_tag_suffix_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_364_parser_setup_diag_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_365_scan_token_leak_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
