@@ -724,7 +724,7 @@ endif()
 
 set(ASAN_C_FLAGS)
 if(HAVE_ASAN)
-  set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,undefined" "-fno-omit-frame-pointer")
+  set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,float-cast-overflow,undefined" "-fno-omit-frame-pointer")
 endif()
 
 # Some older toolchains need libatomic for 8-byte atomics.
