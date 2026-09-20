@@ -140,7 +140,11 @@ fi
 case "$test_suite" in
     libfyaml)
 	run_tool "${LIBFYAML_TEST}" "${test_id}"
-	exit $?
+	rc=$?
+	if [ $rc -ne 0 ]; then
+	    echo "test exited with $rc" >&2
+	fi
+	exit $rc
 	;;
 
     testerrors)
