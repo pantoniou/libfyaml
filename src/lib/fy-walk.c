@@ -3052,6 +3052,9 @@ int evaluate_new(struct fy_path_parser *fypp)
 		expr = NULL;
 
 		ret = push_operand_lr(fypp, fpet_chain, exprl, exprr, true);
+		/* push_operand_lr() owns the operands, even when it fails */
+		exprl = NULL;
+		exprr = NULL;
 		fyr_error_check(fyr, !ret, err_out,
 				"push_operand_lr() failed\n");
 		return 0;
@@ -3105,6 +3108,9 @@ int evaluate_new(struct fy_path_parser *fypp)
 		expr = NULL;
 
 		ret = push_operand_lr(fypp, type, exprl, exprr, true);
+		/* push_operand_lr() owns the operands, even when it fails */
+		exprl = NULL;
+		exprr = NULL;
 		fyr_error_check(fyr, !ret, err_out,
 				"push_operand_lr() failed\n");
 
@@ -3136,6 +3142,9 @@ int evaluate_new(struct fy_path_parser *fypp)
 
 		/* push as a chain */
 		ret = push_operand_lr(fypp, fpet_chain, exprl, exprr, true);
+		/* push_operand_lr() owns the operands, even when it fails */
+		exprl = NULL;
+		exprr = NULL;
 		fyr_error_check(fyr, !ret, err_out,
 				"push_operand_lr() failed\n");
 
@@ -3301,6 +3310,9 @@ int evaluate_new(struct fy_path_parser *fypp)
 		exprr = NULL;
 
 		ret = push_operand_lr(fypp, type, exprl, exprr, true);
+		/* push_operand_lr() owns the operands, even when it fails */
+		exprl = NULL;
+		exprr = NULL;
 		fyr_error_check(fyr, !ret, err_out,
 				"push_operand_lr() failed\n");
 
