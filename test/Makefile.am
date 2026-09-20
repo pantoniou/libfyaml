@@ -34,7 +34,8 @@ else
 if HAVE_COMPATIBLE_CHECK
 
 check_PROGRAMS = libfyaml-test
-libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/valgrind/ \
+libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/test/ \
+			 -I$(top_srcdir)/src/valgrind/ \
 			 -I$(top_srcdir)/src/check/ \
 			 -I$(top_srcdir)/src/lib/ \
 			 -I$(top_srcdir)/src/util \
@@ -45,7 +46,12 @@ libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml.la
 libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) @CLANG_BLOCKS_CFLAGS@
 libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS) @CLANG_BLOCKS_LIBS@
 
+# the allocation failure injection needs a linker that wraps malloc,
+# which the autotools build does not probe for; the tests that use it
+# are compiled out
 libfyaml_test_SOURCES = \
+	libfyaml-test-alloc-fail.c \
+	libfyaml-test-alloc-fail.h \
 	libfyaml-test.c \
 	libfyaml-test-core.c \
 	libfyaml-test-meta.c \

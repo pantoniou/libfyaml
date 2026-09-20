@@ -1503,6 +1503,27 @@ if(CAN_TEST)
     # Tests expect tools at build/src/
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src)
 
+    # Probe for linker malloc wrapping, used by allocation failure tests.
+    # GNU ld and lld support --wrap; the macOS and MSVC linkers do not.
+    if(NOT DEFINED HAVE_LINKER_WRAP_MALLOC)
+        if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
+            set(HAVE_LINKER_WRAP_MALLOC OFF CACHE INTERNAL "linker wraps malloc")
+            message(STATUS "Linker malloc wrapping: skipped (cross compiling)")
+        else()
+            include(CheckCSourceRuns)
+            set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--wrap=malloc")
+            check_c_source_runs("
+                #include <stdlib.h>
+                extern void *__real_malloc(size_t size);
+                static int wrapped;
+                void *__wrap_malloc(size_t size) { wrapped = 1; return __real_malloc(size); }
+                int main(void) { void *p = malloc(16); free(p); return (p && wrapped) ? 0 : 1; }
+            " LINKER_WRAPS_MALLOC)
+            unset(CMAKE_REQUIRED_LINK_OPTIONS)
+            set(HAVE_LINKER_WRAP_MALLOC ${LINKER_WRAPS_MALLOC} CACHE INTERNAL "linker wraps malloc")
+        endif()
+    endif()
+
     # Build libfyaml-test if check is available
     if(HAVE_COMPATIBLE_CHECK)
 
@@ -1517,6 +1538,7 @@ if(CAN_TEST)
             test/libfyaml-test-allocator.c
             test/libfyaml-test-durable-arena.c
             test/libfyaml-test-fuzzing.c
+            $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:test/libfyaml-test-alloc-fail.c>
             test/libfyaml-test-private.c
             test/libfyaml-test-private-id.c
             test/libfyaml-test-parser.c
@@ -1531,7 +1553,11 @@ if(CAN_TEST)
         target_compile_definitions(libfyaml-test PRIVATE
             HAVE_CONFIG_H
             ${COMMON_C_DEFINITIONS}
+            $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:HAVE_LINKER_WRAP_MALLOC>
         )
+        if(HAVE_LINKER_WRAP_MALLOC)
+            target_link_options(libfyaml-test PRIVATE "-Wl,--wrap=malloc")
+        endif()
 
         target_include_directories(libfyaml-test PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
