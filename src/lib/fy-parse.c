@@ -860,6 +860,9 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	return 0;
 
 err_out_rc:
+	/* the diagnostic was created or referenced above */
+	fy_diag_unref(fyp->diag);
+	fyp->diag = NULL;
 	return rc;
 }
 
