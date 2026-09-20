@@ -6175,8 +6175,11 @@ return_ok:
 	return fyep;
 
 err_out:
-	fy_token_unref_rl(fyp->recycled_token_list, anchor);
-	fy_token_unref_rl(fyp->recycled_token_list, tag);
+	/* when an event exists, it owns the anchor and the tag */
+	if (!fyep) {
+		fy_token_unref_rl(fyp->recycled_token_list, anchor);
+		fy_token_unref_rl(fyp->recycled_token_list, tag);
+	}
 	fy_parse_eventp_recycle(fyp, fyep);
 
 	return NULL;
