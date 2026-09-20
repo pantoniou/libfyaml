@@ -2560,6 +2560,10 @@ common_builtin_ref_exec(const struct fy_method *fym,
 		case fymi_index:
 			if (!fy_node_is_sequence(fynt))
 				break;
+			/* an index out of the int range matches nothing */
+			if (!(args[0]->number >= (double)INT_MIN &&
+			      args[0]->number <= (double)INT_MAX))
+				break;
 			fyn = fy_node_sequence_get_by_index(fynt, (int)args[0]->number);
 			break;
 
