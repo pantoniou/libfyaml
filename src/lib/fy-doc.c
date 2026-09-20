@@ -455,7 +455,9 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 err_out:
 	fy_parse_document_destroy(fyp, fyd);
 	fy_parse_eventp_recycle(fyp, fyep);
-	fyd->diag->on_error = false;
+	/* the document diagnostic is a reference of the parser one */
+	if (fyp->diag)
+		fyp->diag->on_error = false;
 	return NULL;
 }
 
