@@ -499,6 +499,9 @@ fy_document_state_tag_directives(struct fy_document_state *fyds)
 	size = 0;
 	iter = NULL;
 	while ((fytag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+		/* the handle and the prefix are generated, and may fail */
+		if (!fytag->handle || !fytag->prefix)
+			return NULL;
 		size += strlen(fytag->handle) + 1 + strlen(fytag->prefix) + 1;
 		i++;
 	}
@@ -515,6 +518,10 @@ fy_document_state_tag_directives(struct fy_document_state *fyds)
 	i = 0;
 	iter = NULL;
 	while ((fytag = fy_document_state_tag_directive_iterate(fyds, &iter)) != NULL) {
+		if (!fytag->handle || !fytag->prefix) {
+			free(tagsp);
+			return NULL;
+		}
 		tags[i].handle = s;
 		len = strlen(fytag->handle);
 		memcpy(s, fytag->handle, len + 1);
