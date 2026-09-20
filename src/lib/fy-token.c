@@ -781,8 +781,11 @@ const char *fy_tag_token_suffix(struct fy_token *fyt, size_t *lenp)
 		suffix = tag;
 		suffix_len = tag_len;
 	} else {
-		assert(prefix_len <= tag_len);
-		assert(tag_len >= prefix_len);
+		/* the prefix must fit in the tag text */
+		if (prefix_len > tag_len) {
+			*lenp = 0;
+			return NULL;
+		}
 		suffix = tag + prefix_len;
 		suffix_len = tag_len - prefix_len;
 	}
