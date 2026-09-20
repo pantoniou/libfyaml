@@ -260,7 +260,7 @@ fy_document_builder_process_event(struct fy_document_builder *fydb, struct fy_ev
 	enum fy_event_type etype;
 	struct fy_document *fyd;
 	struct fy_document_builder_ctx *c, *cp;
-	struct fy_node *fyn, *fyn_parent;
+	struct fy_node *fyn = NULL, *fyn_parent;
 	struct fy_node_pair *fynp;
 	struct fy_document_builder_ctx *newc;
 	struct fy_token *fyt;
@@ -464,6 +464,9 @@ push:
 	return 0;
 
 err_out:
+	/* a node that was not attached yet is ours to free */
+	if (fyn && !fyn->attached)
+		fy_node_detach_and_free(fyn);
 	return -1;
 
 complete:
@@ -490,7 +493,8 @@ complete:
 
 	case FYDBS_MAP_KEY:
 		fynp = fy_node_pair_alloc(fyd);
-		assert(fynp);
+		fydb_error_check(fydb, fynp, err_out,
+				"fy_node_pair_alloc() failed\n");
 		fynp->key = fyn;
 		c->fynp = fynp;
 
