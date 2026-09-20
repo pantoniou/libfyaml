@@ -8920,8 +8920,10 @@ struct fy_eventp *fy_parser_event_resolve_hook(struct fy_parser *fyp, struct fy_
 	fyp_error_check(fyp, fyep != NULL, err_out,
 			"fy_parser_event_resolve_hook_anchor_start() failed!");
 
-	/* collect afterwards */
+	/* collect afterwards; it does not take the event */
 	rc = fy_parser_event_resolve_hook_collect(fyp, fyep);
+	if (rc)
+		fy_parse_eventp_recycle(fyp, fyep);
 	fyp_error_check(fyp, !rc, err_out,
 			"fy_parser_event_resolve_hook_collect() failed!");
 
