@@ -3101,6 +3101,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	struct fy_mark tab_mark;
 	int rc;
 
+	/* the list must be valid for every error path below */
+	fy_token_list_init(&sk_tl);
+
 	fyp_error_check(fyp, c == ':', err_out,
 		"illegal value mark");
 
@@ -3145,8 +3148,6 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 		fyp->colon_follows_colon = false;
 
 	fy_get_mark(fyp, &mark);
-
-	fy_token_list_init(&sk_tl);
 
 	FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 			fy_flow_indent_check(fyp), err_out,
@@ -3309,6 +3310,9 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 	} else
 		fy_token_lists_splice(&fyp->queued_tokens, &sk_tl);
 
+	/* the splice moves the tokens but keeps the list head */
+	fy_token_list_init(&sk_tl);
+
 #ifdef FY_DEVMODE
 	fyp_debug_dump_token_list(fyp, &fyp->queued_tokens, fyt_insert, "fyp->queued_tokens (after): ");
 #endif
@@ -3373,6 +3377,8 @@ int fy_fetch_value(struct fy_parser *fyp, int c)
 err_out:
 	rc = -1;
 err_out_rc:
+	/* the local tokens were not queued, release them */
+	fy_token_list_unref_all(&sk_tl);
 	fy_parse_simple_key_recycle(fyp, fysk);
 	return rc;
 }
