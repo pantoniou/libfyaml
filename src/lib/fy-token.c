@@ -1196,7 +1196,7 @@ fy_token_set_comment(struct fy_token *fyt, enum fy_comment_placement which,
 		if (!tk_prev)
 			fyt->token_comment = tk->next;
 		else
-			tk_prev = tk->next;
+			tk_prev->next = tk->next;
 
 		fy_input_unref(tk->handle.fyi);
 		fy_atom_reset(&tk->handle);
