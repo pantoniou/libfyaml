@@ -6207,6 +6207,7 @@ fy_parse_empty_scalar(struct fy_parser *fyp)
 	return fyep;
 
 err_out:
+	fy_parse_eventp_recycle(fyp, fyep);
 	return NULL;
 }
 
