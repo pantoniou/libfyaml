@@ -1960,8 +1960,10 @@ struct fy_document *fy_parse_load_document_with_builder(struct fy_parser *fyp)
 		cfg.diag = fy_diag_ref(fyp->diag);
 
 		fyp->fydb = fy_document_builder_create(&cfg);
-		if (!fyp->fydb)
+		if (!fyp->fydb) {
+			fy_diag_unref(cfg.diag);
 			return NULL;
+		}
 	}
 
 	fyd = fy_document_builder_load_document(fyp->fydb, fyp);
