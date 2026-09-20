@@ -3049,11 +3049,14 @@ void fy_document_purge_anchors(struct fy_document *fyd)
 		fy_anchor_destroy(fya);
 	}
 
-	if (fy_document_is_accelerated(fyd)) {
+	/* release each accelerator, only one of them may exist */
+	if (fyd->axl) {
 		fy_accel_cleanup(fyd->axl);
 		free(fyd->axl);
 		fyd->axl = NULL;
+	}
 
+	if (fyd->naxl) {
 		fy_accel_cleanup(fyd->naxl);
 		free(fyd->naxl);
 		fyd->naxl = NULL;
