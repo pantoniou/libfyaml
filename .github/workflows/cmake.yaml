@@ -238,7 +238,7 @@ jobs:
       if: matrix.testing == 'ON'
       working-directory: build
       run: |
-        ctest -C ${{ matrix.build_type }} ${{ inputs.ctest_args }}
+        ctest -C ${{ matrix.build_type }} --output-on-failure ${{ inputs.ctest_args }}
 
     - name: "Upload test logs on failure"
       if: failure()
