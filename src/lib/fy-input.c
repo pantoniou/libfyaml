@@ -850,6 +850,13 @@ const void *fy_reader_ptr_slow_path(struct fy_reader *fyr, size_t *leftp)
 	/* tokens cannot cross boundaries */
 	start = fy_input_start_size(fyi, &size);
 
+	/* an input without a buffer has nothing to point at */
+	if (!start) {
+		if (leftp)
+			*leftp = 0;
+		return NULL;
+	}
+
 	current_input_pos = fy_reader_current_input_pos(fyr);
 	left = size - current_input_pos;
 	assert(left <= size);
@@ -973,7 +980,8 @@ const void *fy_reader_input_try_pull(struct fy_reader *fyr, struct fy_input *fyi
 		assert(fyi->chunk > 0);
 
 		left = fyi->read - pos;
-		p = (char *)fyi->buffer + pos;
+		/* the buffer is allocated further down when there is none */
+		p = fyi->buffer ? (char *)fyi->buffer + pos : NULL;
 
 		/* enough to satisfy directly */
 		if (left >= pull)
