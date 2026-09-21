@@ -1380,6 +1380,9 @@ int fy_atom_format_utf8_length(struct fy_atom *atom)
 		/* count utf8 characters */
 		while (s < e) {
 			w = fy_utf8_width_by_first_octet(*(uint8_t *)s);
+			/* an invalid octet counts as a single character */
+			if (w <= 0)
+				w = 1;
 
 			/* how many bytes of this run */
 			run = (e - s) > w ? w : (e - s);
