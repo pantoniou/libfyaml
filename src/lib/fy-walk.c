@@ -1010,10 +1010,11 @@ int fy_path_fetch_seq_index_or_slice(struct fy_path_parser *fypp, int c)
 		digits = 0;
 		val = 0;
 		while (fy_is_num((c = fy_reader_peek_at(fyr, i)))) {
-			nval = (val * 10) | (c - '0');
+			/* the check must happen before the multiplication */
 			FYR_PARSE_ERROR_CHECK(fyr, 0, i, FYEM_SCAN,
-					nval >= val && nval >= 0, err_out,
+					val <= (INT_MAX - (c - '0')) / 10, err_out,
 					"illegal sequence index (overflow)");
+			nval = (val * 10) | (c - '0');
 			val = nval;
 			i++;
 			digits++;
