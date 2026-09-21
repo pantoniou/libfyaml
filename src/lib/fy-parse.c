@@ -3663,12 +3663,12 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp,
 
 			/* skip over spaces only */
 			while ((c = fy_parse_peek(fyp)) == ' ' &&
-					(!indent || fyp_column(fyp) < indent)) {
+					((first_scan && !indent) || fyp_column(fyp) < indent)) {
 				fy_advance(fyp, c);
 			}
 		} else {
 			while (fy_is_ws((c = fy_parse_peek(fyp))) &&
-				(!indent || fyp_column(fyp) < indent))
+				((first_scan && !indent) || fyp_column(fyp) < indent))
 				fy_advance(fyp, c);
 		}
 		col = fyp_column(fyp);
