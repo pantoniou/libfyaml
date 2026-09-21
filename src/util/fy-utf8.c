@@ -382,6 +382,8 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 				case 0x85:
 				case 0xa0:
 					value = cc;
+					/* the escaped character is multi-octet */
+					s += w - 1;
 					break;
 				default:
 					break;
