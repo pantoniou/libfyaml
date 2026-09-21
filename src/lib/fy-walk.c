@@ -5208,6 +5208,8 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 
 		output = expr->fym->exec(expr->fym, fypx, level + 1, expr, input, fwr_args, nargs, &error);
 		input = NULL;
+		/* exec() owns the arguments, even when it fails */
+		fwr_args = NULL;
 		if (error)
 			goto err_out;
 
