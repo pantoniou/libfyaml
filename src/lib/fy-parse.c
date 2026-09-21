@@ -5987,6 +5987,7 @@ fy_parse_node(struct fy_parser *fyp, struct fy_token *fyt, bool is_block)
 		fye->type = FYET_SEQUENCE_START;
 		fye->sequence_start.anchor = anchor;
 		fye->sequence_start.tag = tag;
+		fye->sequence_start.sequence_start = NULL;
 
 		/* allocate and copy in place */
 		fytn = fy_token_alloc_rl(fyp->recycled_token_list);
