@@ -3257,6 +3257,10 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	memset(fyd, 0, sizeof(*fyd));
 	fyd->parse_cfg = *cfg;
 
+	/* the destroy walks these, so they start empty */
+	fy_anchor_list_init(&fyd->anchors);
+	fy_document_list_init(&fyd->children);
+
 	diag = cfg->diag;
 	if (!diag) {
 		diag = fy_diag_create(NULL);
@@ -3267,7 +3271,6 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 
 	fyd->diag = diag;
 
-	fy_anchor_list_init(&fyd->anchors);
 	if (fy_document_is_accelerated(fyd)) {
 		fyd->axl = malloc(sizeof(*fyd->axl));
 		fyd_error_check(fyd, fyd->axl, err_out,
@@ -3299,8 +3302,6 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 	/* turn on JSON mode if it's forced */
 	fyd->fyds->json_mode = (cfg->flags &
 			(FYPCF_JSON_MASK << FYPCF_JSON_SHIFT)) == FYPCF_JSON_FORCE;
-
-	fy_document_list_init(&fyd->children);
 
 	return fyd;
 
