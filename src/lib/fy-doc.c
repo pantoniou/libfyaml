@@ -162,7 +162,7 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 	struct fy_anchor *fya = NULL, *fyam = NULL;
 	struct fy_input *fyi = NULL;
 	struct fy_token *fyt = NULL;
-	struct fy_accel_entry *xle;
+	struct fy_accel_entry *xle, *xle_axl = NULL;
 	struct fy_atom handle;
 	char *data_copy = NULL;
 	const char *origtext;
@@ -258,6 +258,7 @@ static int fy_document_set_anchor_internal(struct fy_document *fyd, struct fy_no
 		xle = fy_accel_entry_insert(fyd->axl, fya->anchor, fya);
 		fyd_error_check(fyd, xle, err_out,
 				"fy_accel_entry_insert() fyd->axl failed");
+		xle_axl = xle;
 	}
 
 	if (fy_document_is_accelerated(fyd)) {
@@ -275,8 +276,14 @@ err_out:
 err_out_rc:
 	if (data_copy)
 		free(data_copy);
-	fy_anchor_destroy(fya);
-	fy_token_unref(fyt);
+	if (fya) {
+		/* the anchor is listed already, and it owns the token */
+		if (xle_axl)
+			fy_accel_entry_remove(fyd->axl, xle_axl);
+		fy_anchor_list_del(&fyd->anchors, fya);
+		fy_anchor_destroy(fya);
+	} else
+		fy_token_unref(fyt);
 	fy_input_unref(fyi);
 	fyd->diag->on_error = false;
 	return rc;
