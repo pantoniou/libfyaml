@@ -9068,6 +9068,15 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	fypc->recycled_eventp_list = NULL;
 	fypc->recycled_token_list = NULL;
 
+	/* the cleanup walks all of these, so they start empty */
+	fy_streaming_alias_list_init(&fypc->streaming_aliases);
+	fy_indent_list_init(&fypc->indent_stack);
+	fy_parse_state_log_list_init(&fypc->state_stack);
+	fy_token_list_init(&fypc->queued_tokens);
+	fy_simple_key_list_init(&fypc->simple_keys);
+	memset(&fypc->sas, 0, sizeof(fypc->sas));
+	memset(&fypc->cts, 0, sizeof(fypc->cts));
+
 	fy_input_list_init(&fypc->queued_inputs);
 	fypc->stream_end_token = fy_token_ref(fyp->stream_end_token);
 
@@ -9079,8 +9088,11 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	fypc->diag = NULL;
 	fypc->last_event_handle.fyi = fy_input_ref(fyp->last_event_handle.fyi);
 
+	fypc->fyep_peek = NULL;
 	if (fyp->fyep_peek) {
 		fypc->fyep_peek = fy_parse_eventp_clone(fyp, fyp->fyep_peek, false);
+		fyp_error_check(fyp, fypc->fyep_peek, err_out_chk,
+				"fy_parse_eventp_clone() failed!");
 		fyp_parse_debug(fyp, "checkpoint has a peeked event");
 	}
 
@@ -9098,27 +9110,31 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	/* copy the streaming alias list */
 	if (fyp->sas.stack) {
 		fyp_parse_debug(fyp, "checkpoint has a streaming alias list");
+		fypc->sas = fyp->sas;
 		if (fyp->sas.alloc <= (int)ARRAY_SIZE(fyp->sas.local))
 			fypc->sas.stack = fypc->sas.local;
 		else {
 			fypc->sas.stack = malloc(sizeof(*fyp->sas.stack) * fyp->sas.alloc);
-			assert(fypc->sas.stack);
+			fyp_error_check(fyp, fypc->sas.stack, err_out_chk,
+					"malloc() failed!");
 			memcpy(fypc->sas.stack, fyp->sas.stack, sizeof(*fyp->sas.stack) * fyp->sas.top);
 		}
 	}
 
-	fy_streaming_alias_list_init(&fypc->streaming_aliases);
 	for (fysa = fy_streaming_alias_list_head(&fyp->streaming_aliases); fysa != NULL;
 	     fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
 
 		fysac = fy_parse_streaming_alias_create(fyp, NULL);
-		assert(fysac);
+		fyp_error_check(fyp, fysac, err_out_chk,
+				"fy_parse_streaming_alias_create() failed!");
+		fy_streaming_alias_list_add_tail(&fypc->streaming_aliases, fysac);
 		fysac->anchor = fy_token_ref(fysa->anchor);
 		for (fyep = fy_eventp_list_head(&fysa->events); fyep;
 		     fyep = fy_eventp_next(&fysa->events, fyep)) {
 
 			fyepc = fy_parse_eventp_clone(fyp, fyep, false);
-			assert(fyepc);
+			fyp_error_check(fyp, fyepc, err_out_chk,
+					"fy_parse_eventp_clone() failed!");
 			fy_eventp_list_add_tail(&fysac->events, fyepc);
 
 			/* scan stack and replace pointers */
@@ -9133,34 +9149,36 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 
 	if (fyp->cts.stack) {
 		fyp_parse_debug(fyp, "checkpoint has a cts stack");
+		fypc->cts = fyp->cts;
 		if (fyp->cts.alloc <= (int)ARRAY_SIZE(fyp->cts.local))
 			fypc->cts.stack = fypc->cts.local;
 		else {
 			fypc->cts.stack = malloc(sizeof(*fyp->cts.stack) * fyp->cts.alloc);
-			assert(fypc->cts.stack);
+			fyp_error_check(fyp, fypc->cts.stack, err_out_chk,
+					"malloc() failed!");
 			memcpy(fypc->cts.stack, fyp->cts.stack, sizeof(*fyp->cts.stack) * fyp->cts.top);
 		}
 	}
 
 	/* copy all remaining lists */
-	fy_indent_list_init(&fypc->indent_stack);
 	for (fyit = fy_indent_list_head(&fyp->indent_stack); fyit != NULL;
 	     fyit = fy_indent_next(&fyp->indent_stack, fyit)) {
 
 		fyitc = fy_parse_indent_alloc(fyp);
-		assert(fyitc);
+		fyp_error_check(fyp, fyitc, err_out_chk,
+				"fy_parse_indent_alloc() failed!");
 
 		*fyitc = *fyit;
 
 		fy_indent_list_add_tail(&fypc->indent_stack, fyitc);
 	}
 
-	fy_parse_state_log_list_init(&fypc->state_stack);
 	for (fypsl = fy_parse_state_log_list_head(&fyp->state_stack); fypsl != NULL;
 	     fypsl = fy_parse_state_log_next(&fyp->state_stack, fypsl)) {
 
 		fypslc = fy_parse_parse_state_log_alloc(fyp);
-		assert(fypslc);
+		fyp_error_check(fyp, fypslc, err_out_chk,
+				"fy_parse_parse_state_log_alloc() failed!");
 
 		fypslc->state = fypsl->state;
 
@@ -9170,20 +9188,18 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	}
 
 	/* queued tokens and simple keys are 'special' */
-	fy_token_list_init(&fypc->queued_tokens);
 	/* count, and take refs */
 	for (fyt = fy_token_list_head(&fyp->queued_tokens), i = 0; fyt != NULL;
 	     fyt = fy_token_next(&fyp->queued_tokens, fyt), i++) { }
 	fypchk->queued_token_count = i;
 	fypchk->queued_tokens = malloc(i * sizeof(*fypchk->queued_tokens));
-	assert(fypchk->queued_tokens);
+	fyp_error_check(fyp, fypchk->queued_tokens, err_out_chk,
+			"malloc() failed!");
 	for (fyt = fy_token_list_head(&fyp->queued_tokens), i = 0; fyt != NULL;
 	     fyt = fy_token_next(&fyp->queued_tokens, fyt), i++) {
 		fypchk->queued_tokens[i] = fy_token_ref(fyt);
 	}
 	fyp_parse_debug(fyp, "checkpoint has #%d queued tokens", fypchk->queued_token_count);
-
-	fy_simple_key_list_init(&fypc->simple_keys);
 
 	if (!fy_simple_key_list_empty(&fyp->simple_keys))
 		fyp_parse_debug(fyp, "checkpoint has pending simple keys");
@@ -9192,7 +9208,8 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	     fysk = fy_simple_key_next(&fyp->simple_keys, fysk)) {
 
 		fyskc = fy_parse_simple_key_alloc(fyp);
-		assert(fyskc);
+		fyp_error_check(fyp, fyskc, err_out_chk,
+				"fy_parse_simple_key_alloc() failed!");
 
 		*fyskc = *fysk;
 		fyskc->token = fy_token_ref(fysk->token);
@@ -9206,7 +9223,8 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	     fyi = fy_input_next(&fyp->queued_inputs, fyi), i++) { }
 	fypchk->queued_input_count = i;
 	fypchk->queued_inputs = malloc(i * sizeof(*fypchk->queued_inputs));
-	assert(fypchk->queued_inputs);
+	fyp_error_check(fyp, fypchk->queued_inputs, err_out_chk,
+			"malloc() failed!");
 	for (fyi = fy_input_list_head(&fyp->queued_inputs), i = 0; fyi != NULL;
 	     fyi = fy_input_next(&fyp->queued_inputs, fyi), i++) {
 		fypchk->queued_inputs[i] = fy_input_ref(fyi);
@@ -9221,7 +9239,8 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	     fyf = fy_flow_next(&fyp->flow_stack, fyf)) {
 
 		fyfc = fy_parse_flow_alloc(fyp);
-		assert(fyfc);
+		fyp_error_check(fyp, fyfc, err_out_chk,
+				"fy_parse_flow_alloc() failed!");
 
 		*fyfc = *fyf;
 
@@ -9232,6 +9251,12 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 
 	fyp_parse_debug(fyp, "took checkpoint");
 	return fypchk;
+
+err_out_chk:
+	/* the checkpoint is consistent enough to be destroyed */
+	fy_parser_checkpoint_destroy(fypchk);
+	fyp->diag->on_error = false;
+	return NULL;
 
 err_out:
 	if (fypchk)
