@@ -9409,8 +9409,9 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	fyp->default_document_state = fy_document_state_ref(fypc->default_document_state);
 
 	fyp->next_single_document = fypc->next_single_document;
-	fyp->last_event_handle = fypc->last_event_handle;
+	/* drop the reference of the parser before the handle is replaced */
 	fy_input_unref(fyp->last_event_handle.fyi);
+	fyp->last_event_handle = fypc->last_event_handle;
 	fyp->last_event_handle.fyi = fy_input_ref(fypc->last_event_handle.fyi);
 
 	fy_parse_eventp_recycle(fyp, fyp->fyep_peek);
