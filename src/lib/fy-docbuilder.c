@@ -465,8 +465,12 @@ push:
 
 err_out:
 	/* a node that was not attached yet is ours to free */
-	if (fyn && !fyn->attached)
+	if (fyn && !fyn->attached) {
+		/* the context stack must not keep a reference to it */
+		if (fydb->next > 0 && fydb->stack[fydb->next - 1].fyn == fyn)
+			fydb->stack[fydb->next - 1].fyn = NULL;
 		fy_node_detach_and_free(fyn);
+	}
 	return -1;
 
 complete:
