@@ -432,6 +432,50 @@ START_TEST(fuzz_issue_355_type_info_iteration_repro)
 	fy_reflection_destroy(rfl);
 }
 END_TEST
+
+/* Test: gh#375 - emit the smallest value of a signed type. */
+START_TEST(fuzz_issue_375_integer_scalar_negate_repro)
+{
+	static const char yaml[] = "  -9223372036854775808";
+	struct fy_reflection *rfl;
+	struct fy_type_context *ctx;
+	struct fy_parser *fyp;
+	struct fy_emitter *emit;
+	void *data = NULL;
+	char *out;
+
+	rfl = fy_reflection_from_null(NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	ctx = fy_type_context_create(&(struct fy_type_context_cfg){
+		.rfl = rfl,
+		.entry_type = "long long",
+		.entry_meta = "- -" });
+	ck_assert_ptr_ne(ctx, NULL);
+
+	fyp = fy_parser_create(NULL);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+	ck_assert_int_eq(fy_type_context_parse(ctx, fyp, &data), 0);
+	ck_assert_ptr_ne(data, NULL);
+
+	emit = fy_emit_to_string(FYECF_DEFAULT);
+	ck_assert_ptr_ne(emit, NULL);
+
+	/* the negation of the value must not overflow */
+	fy_type_context_emit(ctx, emit, data,
+			     FYTCEF_SS | FYTCEF_DS | FYTCEF_DE | FYTCEF_SE);
+
+	out = fy_emit_to_string_collect(emit, NULL);
+	if (out)
+		free(out);
+	fy_emitter_destroy(emit);
+	fy_type_context_free_data(ctx, data);
+	fy_parser_destroy(fyp);
+	fy_type_context_destroy(ctx);
+	fy_reflection_destroy(rfl);
+}
+END_TEST
 #endif
 
 /* Test: gh#347 - merge alias path resolution must finish quickly. */
@@ -880,6 +924,210 @@ static void issue_365_scenario(unsigned int nth)
 	fy_alloc_fail_disarm();
 }
 
+static void issue_366_scenario(unsigned int nth)
+{
+	static const char yaml[] = "/////0";
+	struct fy_parser *fyp;
+	struct fy_parser_checkpoint *fypchk;
+	struct fy_event *fyev;
+	FILE *fp;
+	int i;
+
+	/* a stream input, so that the reader allocates a buffer of its own */
+	fp = tmpfile();
+	if (!fp)
+		return;
+	if (fwrite(yaml, 1, sizeof(yaml) - 1, fp) != sizeof(yaml) - 1) {
+		fclose(fp);
+		return;
+	}
+	rewind(fp);
+
+	fyp = fy_parser_create(&(struct fy_parse_cfg){ .flags = FYPCF_QUIET });
+	if (!fyp) {
+		fclose(fp);
+		return;
+	}
+
+	fy_alloc_fail_arm(nth);
+
+	if (!fy_parser_set_input_fp(fyp, NULL, fp)) {
+
+		/* pull one event so that the checkpoint is taken mid-stream */
+		fyev = fy_parser_parse(fyp);
+		if (fyev)
+			fy_parser_event_free(fyp, fyev);
+
+		fypchk = fy_parser_checkpoint_create(fyp);
+		if (fypchk) {
+			for (i = 0; i < 2; i++) {
+				fyev = fy_parser_parse(fyp);
+				if (!fyev)
+					break;
+				fy_parser_event_free(fyp, fyev);
+			}
+			fy_parser_rollback(fyp, fypchk);
+			fy_parser_checkpoint_destroy(fypchk);
+		}
+
+		while ((fyev = fy_parser_parse(fyp)) != NULL)
+			fy_parser_event_free(fyp, fyev);
+	}
+
+	/* reuse the parser over the same input */
+	fy_parser_reset(fyp);
+
+	rewind(fp);
+	if (!fy_parser_set_input_fp(fyp, NULL, fp)) {
+		while ((fyev = fy_parser_parse(fyp)) != NULL)
+			fy_parser_event_free(fyp, fyev);
+	}
+
+	fy_alloc_fail_disarm();
+	fy_parser_destroy(fyp);
+	fclose(fp);
+}
+
+static void issue_369_scenario(unsigned int nth)
+{
+	static const char yaml[] = ":[                 : &b\n-\n  ";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_DISABLE_RECYCLING |
+			 FYPCF_DEFAULT_VERSION_AUTO,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fyev;
+
+	fyp = fy_parser_create(&cfg);
+	if (!fyp)
+		return;
+
+	if (fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1)) {
+		fy_parser_destroy(fyp);
+		return;
+	}
+
+	fy_alloc_fail_arm(nth);
+	while ((fyev = fy_parser_parse(fyp)) != NULL)
+		fy_parser_event_free(fyp, fyev);
+	fy_alloc_fail_disarm();
+
+	fy_parser_destroy(fyp);
+}
+
+static void issue_374_scenario(unsigned int nth)
+{
+	struct fy_emitter *emit;
+	char *out;
+
+	emit = fy_emit_to_string(FYECF_DEFAULT);
+	if (!emit)
+		return;
+
+	fy_emit_eventf(emit, FYET_STREAM_START);
+
+	fy_alloc_fail_arm(nth);
+	fy_emit_eventf(emit, FYET_DOCUMENT_START, 0, NULL, NULL);
+	fy_alloc_fail_disarm();
+
+	out = fy_emit_to_string_collect(emit, NULL);
+	if (out)
+		free(out);
+	fy_emitter_destroy(emit);
+}
+
+static void issue_376_scenario(unsigned int nth)
+{
+	static const char yaml[] = "'a\tb'\n";
+	struct fy_document *fyd;
+	FILE *fp;
+
+	fyd = fy_document_build_from_string(NULL, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fp = tmpfile();
+	ck_assert_ptr_ne(fp, NULL);
+
+	fy_alloc_fail_arm(nth);
+	fy_emit_document_to_fp(fyd, FYECF_DEFAULT, fp);
+	fy_alloc_fail_disarm();
+
+	fclose(fp);
+	fy_document_destroy(fyd);
+}
+
+static void issue_377_scenario(unsigned int nth)
+{
+	static const char yaml[] = "OOOc";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_PREFER_RECURSIVE,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fy_alloc_fail_arm(nth);
+	fy_node_set_anchor(fy_document_root(fyd), yaml, sizeof(yaml) - 1);
+	fy_alloc_fail_disarm();
+
+	fy_document_destroy(fyd);
+}
+
+static void issue_378_scenario(unsigned int nth)
+{
+	static const char yaml[] = {
+		0x20, 0x20, 0x20, 0x20, 0x1f, 0x20, 0x26, 0x7e, 0x01, 0x2d,
+		0x2a, 0x3a, 0x20, 0x26, 0x61, 0x0a,
+	};
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_DISABLE_RECYCLING | FYPCF_SLOPPY_FLOW_INDENTATION |
+			 FYPCF_PREFER_RECURSIVE | FYPCF_RELAXED_FLOW_DOC |
+			 FYPCF_KEEP_ANCHORS | FYPCF_ENABLE_CACHE |
+			 FYPCF_DEFAULT_VERSION_1_3 | FYPCF_JSON_NONE,
+	};
+
+	fy_alloc_fail_arm(nth);
+	fy_document_destroy(fy_document_build_from_string(&cfg, yaml, sizeof(yaml)));
+	fy_alloc_fail_disarm();
+}
+
+static void checkpoint_alloc_scenario(unsigned int nth)
+{
+	static const char yaml[] = "a: [b, c]\n";
+	struct fy_parser *fyp;
+	struct fy_parser_checkpoint *fypchk;
+	struct fy_event *fyev;
+
+	fyp = fy_parser_create(&(struct fy_parse_cfg){ .flags = FYPCF_QUIET });
+	if (!fyp)
+		return;
+
+	if (fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1)) {
+		fy_parser_destroy(fyp);
+		return;
+	}
+
+	fyev = fy_parser_parse(fyp);
+	if (fyev)
+		fy_parser_event_free(fyp, fyev);
+
+	fy_alloc_fail_arm(nth);
+	fypchk = fy_parser_checkpoint_create(fyp);
+	fy_alloc_fail_disarm();
+
+	if (fypchk) {
+		fy_parser_rollback(fyp, fypchk);
+		fy_parser_checkpoint_destroy(fypchk);
+	}
+
+	while ((fyev = fy_parser_parse(fyp)) != NULL)
+		fy_parser_event_free(fyp, fyev);
+
+	fy_parser_destroy(fyp);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -942,6 +1190,274 @@ START_TEST(fuzz_issue_365_scan_token_leak_repro)
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	alloc_fail_sweep(issue_365_scenario, 256);
 #endif
+}
+END_TEST
+
+/* Test: a checkpoint that cannot be taken reports it instead of aborting. */
+START_TEST(fuzz_checkpoint_alloc_failure)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(checkpoint_alloc_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#366 - a rollback keeps the input reference of the parser. */
+START_TEST(fuzz_issue_366_rollback_input_ref_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_366_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#367 - the arguments of a failed ypath method are freed once. */
+START_TEST(fuzz_issue_367_ypath_method_args_double_free_repro)
+{
+	static const unsigned char yaml[] = {
+		0x20, 0x65, 0x7f, 0x65, 0x65, 0x65, 0x65, 0x20,
+		0x20, 0x3c, 0x42, 0x3a, 0x20, 0x2a, 0x2f, 0x2e,
+		0x69, 0x6e, 0x64, 0x65, 0x78, 0x2e, 0x0a, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x13, 0x7f,
+		0x01, 0x62, 0x64, 0x73, 0x65, 0x65, 0x65, 0x65,
+		0x65, 0x65, 0x65, 0x65, 0x65, 0x20, 0x74, 0x65,
+		0x73, 0x74, 0x0a, 0x25, 0x59, 0x62, 0x0a, 0x09,
+		0x20, 0x5b, 0x44, 0x5b, 0x5b, 0x7c, 0x2d, 0x2d,
+		0x0a, 0x23, 0x20, 0x6d, 0x6f, 0x72, 0x65, 0x20,
+		0x38, 0x39, 0x2a, 0x62, 0x0a, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x00, 0x00, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+		0x20, 0x3c, 0x42, 0x3a, 0x20,
+	};
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES |
+			 FYPCF_DEFAULT_VERSION_1_1,
+	};
+	struct fy_document *fyd, *fyd2;
+
+	fyd = fy_document_build_from_string(&cfg, (const char *)yaml,
+			sizeof(yaml));
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyd2 = fy_document_clone(fyd);
+	ck_assert_ptr_ne(fyd2, NULL);
+	(void)fy_document_resolve(fyd2);
+
+	fy_document_destroy(fyd2);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: gh#368 - a sequence index that the int range cannot hold. */
+START_TEST(fuzz_issue_368_seq_index_overflow_repro)
+{
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES,
+	};
+	static const char yaml[] =
+		"- &a [x, y, z]\n"
+		"- *a/333333333333\n";
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	/* the index does not resolve, but it must not overflow either */
+	ck_assert_int_ne(fy_document_resolve(fyd), 0);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: gh#369 - the start token of a bare sequence event starts cleared. */
+START_TEST(fuzz_issue_369_bare_seq_start_token_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_369_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#370 - count the characters of a scalar with an invalid octet. */
+START_TEST(fuzz_issue_370_utf8_length_invalid_octet_repro)
+{
+	/* a lone continuation octet starts no character */
+	static const char text[] = { 'a', (char)0x80, 'b' };
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+	fyn = fy_node_create_scalar_copy(fyd, text, sizeof(text));
+	ck_assert_ptr_ne(fyn, NULL);
+	fy_document_set_root(fyd, fyn);
+
+	/* it must count the octet as one character, and it must return */
+	ck_assert_int_eq(fy_node_get_scalar_utf8_length(fyn), 3);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/*
+ * Count the diagnostics of a parse. A build that keeps the assertions
+ * checks the size hint of every atom and corrects it, and only warns
+ * when it was wrong, so the count is the signal.
+ */
+static void count_diag_output(struct fy_diag *diag FY_UNUSED, void *user,
+			      const char *buf FY_UNUSED, size_t len FY_UNUSED)
+{
+	(*(unsigned int *)user)++;
+}
+
+/* Test: gh#371 - a block scalar whose content starts at column zero. */
+START_TEST(fuzz_issue_371_block_scalar_column_zero_repro)
+{
+	static const char yaml[] =
+		"--- >\n"
+		"\xef\xbf\xbd    ' \xef\xbf\xbd\x04   \n"
+		"   '\n";
+	static const char expected[] =
+		"\xef\xbf\xbd    ' \xef\xbf\xbd\x04   \n"
+		"   '\n";
+	unsigned int messages = 0;
+	struct fy_diag_cfg dcfg;
+	struct fy_parse_cfg cfg;
+	struct fy_diag *diag;
+	struct fy_document *fyd;
+	const char *text;
+	size_t len;
+
+	fy_diag_cfg_default(&dcfg);
+	dcfg.fp = NULL;
+	dcfg.output_fn = count_diag_output;
+	dcfg.user = &messages;
+	dcfg.level = FYET_WARNING;
+	diag = fy_diag_create(&dcfg);
+	ck_assert_ptr_ne(diag, NULL);
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.diag = diag;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	text = fy_node_get_scalar(fy_document_root(fyd), &len);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_uint_eq(len, sizeof(expected) - 1);
+	ck_assert_int_eq(memcmp(text, expected, len), 0);
+
+	/* the size hint of the scalar must have been right */
+	ck_assert_uint_eq(messages, 0);
+
+	fy_document_destroy(fyd);
+	fy_diag_unref(diag);
+}
+END_TEST
+
+/* Test: gh#373 - the context stack drops a node that the builder frees. */
+START_TEST(fuzz_issue_373_docbuilder_depth_repro)
+{
+	static char yaml[275];
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+	size_t o = 0;
+
+	memset(yaml + o, '{', 47); o += 47;
+	memset(yaml + o, '}', 4);  o += 4;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 7);  o += 7;
+	memset(yaml + o, '}', 32); o += 32;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 4);  o += 4;
+	memset(yaml + o, '}', 6);  o += 6;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 10); o += 10;
+	memset(yaml + o, '}', 8);  o += 8;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 7);  o += 7;
+	memset(yaml + o, '}', 9);  o += 9;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 82); o += 82;
+	memset(yaml + o, '}', 8);  o += 8;
+	memcpy(yaml + o, ", ", 2); o += 2;
+	memset(yaml + o, '{', 7);  o += 7;
+	memset(yaml + o, '}', 31); o += 31;
+	yaml[o++] = '\n';
+
+	/* the depth limit stops it, and nothing is freed twice */
+	fy_document_destroy(fy_document_build_from_string(&cfg, yaml, o));
+}
+END_TEST
+
+/* Test: gh#374 - a DOCUMENT-START event whose document state fails. */
+START_TEST(fuzz_issue_374_document_start_state_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_374_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#376 - an emitter setup that fails while emitting to a file. */
+START_TEST(fuzz_issue_376_emit_setup_failure_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_376_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#377 - an anchor that fails to be set is released once. */
+START_TEST(fuzz_issue_377_set_anchor_failure_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_377_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#378 - an anchor that fails to be registered is undone. */
+START_TEST(fuzz_issue_378_register_anchor_failure_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_378_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: the YAML 1.1 escape of a multi-octet character. */
+START_TEST(fuzz_utf8_multi_octet_escape)
+{
+	/* a backslash before U+00A0, which is the escape of itself */
+	static const char yaml[] = "\"\\\xc2\xa0Z\"";
+	static const char expected[] = "\xc2\xa0Z";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_DEFAULT_VERSION_1_1,
+	};
+	struct fy_document *fyd;
+	const char *text;
+	size_t len;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	text = fy_node_get_scalar(fy_document_root(fyd), &len);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_uint_eq(len, sizeof(expected) - 1);
+	ck_assert_int_eq(memcmp(text, expected, len), 0);
+
+	fy_document_destroy(fyd);
 }
 END_TEST
 
@@ -3179,6 +3695,19 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_363_tag_suffix_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_364_parser_setup_diag_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_365_scan_token_leak_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_366_rollback_input_ref_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_367_ypath_method_args_double_free_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_368_seq_index_overflow_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_369_bare_seq_start_token_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_370_utf8_length_invalid_octet_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_371_block_scalar_column_zero_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_373_docbuilder_depth_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_374_document_start_state_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_376_emit_setup_failure_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_377_set_anchor_failure_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_378_register_anchor_failure_repro);
+	fy_check_testcase_add_test(ctc, fuzz_utf8_multi_octet_escape);
+	fy_check_testcase_add_test(ctc, fuzz_checkpoint_alloc_failure);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
@@ -3190,6 +3719,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_353_anonymous_record_cycle_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_354_anonymous_record_kind_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_355_type_info_iteration_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_375_integer_scalar_negate_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_319_packed_blob_short_read_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_321_packed_blob_bad_id_size_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_322_packed_blob_bad_region_size_repro);
