@@ -1152,7 +1152,7 @@ int fy_document_register_anchor(struct fy_document *fyd,
 				struct fy_node *fyn, struct fy_token *anchor)
 {
 	struct fy_anchor *fya, *fyam;
-	struct fy_accel_entry *xle;
+	struct fy_accel_entry *xle, *xle_axl = NULL;
 	const char *text FY_DEBUG_UNUSED;
 	size_t text_len FY_DEBUG_UNUSED;
 	int rc;
@@ -1180,6 +1180,7 @@ int fy_document_register_anchor(struct fy_document *fyd,
 		xle = fy_accel_entry_insert(fyd->axl, fya->anchor, fya);
 		fyd_error_check(fyd, xle, err_out,
 				"fy_accel_entry_insert() fyd->axl failed");
+		xle_axl = xle;
 	}
 
 	if (fy_document_is_accelerated(fyd)) {
@@ -1193,6 +1194,14 @@ int fy_document_register_anchor(struct fy_document *fyd,
 err_out:
 	rc = -1;
 err_out_rc:
+	/* the token belongs to this function, listed or not */
+	if (fya) {
+		if (xle_axl)
+			fy_accel_entry_remove(fyd->axl, xle_axl);
+		fy_anchor_list_del(&fyd->anchors, fya);
+		fy_anchor_destroy(fya);
+	} else
+		fy_token_unref(anchor);
 	fyd->diag->on_error = false;
 	return rc;
 }
@@ -1494,10 +1503,11 @@ fy_parse_document_load_scalar(struct fy_parser *fyp,
 		fye->scalar.value = NULL;
 
 		if (fye->scalar.anchor) {
+			/* the registration owns the token, even when it fails */
 			rc = fy_document_register_anchor(fyd, fyn, fye->scalar.anchor);
+			fye->scalar.anchor = NULL;
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_document_register_anchor() failed");
-			fye->scalar.anchor = NULL;
 		}
 
 	} else if (fye->type == FYET_ALIAS) {
@@ -1517,6 +1527,7 @@ fy_parse_document_load_scalar(struct fy_parser *fyp,
 err_out:
 	rc = -1;
 err_out_rc:
+	fy_node_detach_and_free(fyn);
 	fy_parse_eventp_recycle(fyp, fyep);
 	fyd->diag->on_error = false;
 	return rc;
