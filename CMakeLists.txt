@@ -724,7 +724,10 @@ endif()
 
 set(ASAN_C_FLAGS)
 if(HAVE_ASAN)
-  set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,float-cast-overflow,undefined" "-fno-omit-frame-pointer")
+  # undefined behaviour must stop the program, so that a test reports it
+  set(ASAN_C_FLAGS "-fsanitize=address,signed-integer-overflow,float-cast-overflow,undefined"
+                   "-fno-sanitize-recover=signed-integer-overflow,float-cast-overflow,undefined"
+                   "-fno-omit-frame-pointer")
 endif()
 
 # Some older toolchains need libatomic for 8-byte atomics.
