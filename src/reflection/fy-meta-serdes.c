@@ -621,7 +621,8 @@ integer_scalar_emit(struct fy_emitter *emit,
 	is_signed = fy_type_kind_is_signed(type_kind);
 
 	if (is_signed && num.sval < 0) {
-		val = (uintmax_t)-num.sval;
+		/* negate as unsigned; the smallest value has no positive */
+		val = -(uintmax_t)num.sval;
 		neg = true;
 	} else {
 		val = num.uval;
