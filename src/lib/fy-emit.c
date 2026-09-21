@@ -3804,7 +3804,8 @@ int fy_emit_document_to_fp(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	emit_cfg.output = do_file_output;
 	emit_cfg.userdata = fp;
 	emit_cfg.flags = flags;
-	fy_emit_setup(emit, &emit_cfg);
+	if (fy_emit_setup(emit, &emit_cfg))
+		return -1;
 
 	fy_emit_prepare_document_state(emit, fyd->fyds);
 
@@ -3895,7 +3896,8 @@ int fy_emit_document_to_fd(struct fy_document *fyd, enum fy_emitter_cfg_flags fl
 	emit_cfg.output = do_fd_output;
 	emit_cfg.userdata = (void *)(uintptr_t)fd;
 	emit_cfg.flags = flags;
-	fy_emit_setup(emit, &emit_cfg);
+	if (fy_emit_setup(emit, &emit_cfg))
+		return -1;
 
 	fy_emit_prepare_document_state(emit, fyd->fyds);
 
