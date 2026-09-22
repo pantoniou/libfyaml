@@ -4495,6 +4495,11 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 			lastc = c;
 
+			/* a LS or PS is content here but the formatter can treat it
+			 * as a line break, so verify the storage hint */
+			if (fy_is_lb_LS_PS(c))
+				has_weird_nl = true;
+
 			/* regular character */
 			fy_reader_advance(fyr, c);
 
@@ -4566,7 +4571,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 	/* need to process to present */
 	handle->style = is_single ? FYAS_SINGLE_QUOTED : FYAS_DOUBLE_QUOTED;
-	handle->direct_output = !is_multiline && !has_esc && !has_json_esc &&
+	handle->direct_output = !is_multiline && !has_esc && !has_json_esc && !has_weird_nl &&
 				fy_atom_size(handle) == length;
 	handle->empty = ws_lb_only;
 	handle->has_lb = has_lb;
