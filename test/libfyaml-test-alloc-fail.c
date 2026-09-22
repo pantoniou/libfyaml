@@ -16,14 +16,30 @@
 #ifdef HAVE_LINKER_WRAP_MALLOC
 
 extern void *__real_malloc(size_t size);
+extern void *__real_calloc(size_t nmemb, size_t size);
+extern void *__real_realloc(void *ptr, size_t size);
 
 static unsigned int alloc_seen, alloc_fail_nth;
 
+/* count each allocation, and fail the one that is armed */
+static int alloc_fails(void)
+{
+	return alloc_fail_nth && ++alloc_seen == alloc_fail_nth;
+}
+
 void *__wrap_malloc(size_t size)
 {
-	if (alloc_fail_nth && ++alloc_seen == alloc_fail_nth)
-		return NULL;
-	return __real_malloc(size);
+	return alloc_fails() ? NULL : __real_malloc(size);
+}
+
+void *__wrap_calloc(size_t nmemb, size_t size)
+{
+	return alloc_fails() ? NULL : __real_calloc(nmemb, size);
+}
+
+void *__wrap_realloc(void *ptr, size_t size)
+{
+	return alloc_fails() ? NULL : __real_realloc(ptr, size);
 }
 
 void fy_alloc_fail_arm(unsigned int nth)
