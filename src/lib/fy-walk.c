@@ -4664,8 +4664,11 @@ fy_scalar_walk_result_to_expr(struct fy_path_exec *fypx FY_UNUSED,
 			goto err_out;
 
 		fyit = fy_input_from_malloc_data(buf, FY_NT, &handle, true);
-		if (!fyit)
+		if (!fyit) {
+			/* the input owns the buffer only when it is created */
+			free(buf);
 			goto err_out;
+		}
 
 		exprt = fy_path_expr_alloc();
 		if (!exprt)
