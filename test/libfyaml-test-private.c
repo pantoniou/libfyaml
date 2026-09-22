@@ -20,6 +20,7 @@
 
 #include <libfyaml.h>
 #include "fy-parse.h"
+#include "fy-doc.h"
 
 #include "fy-check.h"
 
@@ -152,6 +153,42 @@ START_TEST(parse_simple)
 }
 END_TEST
 
+/* Test: gh#394 - the document builder and the API create accelerated documents. */
+START_TEST(document_accelerated)
+{
+	static const char yaml[] = "a: 1\nb: { c: 2 }\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parse_cfg cfg_off = { .flags = FYPCF_QUIET | FYPCF_DISABLE_ACCELERATORS };
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+
+	/* built through the document builder */
+	fyd = fy_document_build_from_string(&cfg, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert(fy_document_is_accelerated(fyd));
+	ck_assert_ptr_ne(fy_document_root(fyd)->xl, NULL);
+	fyn = fy_node_by_path(fy_document_root(fyd), "/b", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_ptr_ne(fyn->xl, NULL);
+	ck_assert_ptr_eq(fy_node_mapping_lookup_by_string(fyn, "c", FY_NT),
+			 fy_node_by_path(fyn, "/c", FY_NT, FYNWF_DONT_FOLLOW));
+	fy_document_destroy(fyd);
+
+	/* created empty */
+	fyd = fy_document_create(&cfg);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert(fy_document_is_accelerated(fyd));
+	fy_document_destroy(fyd);
+
+	/* unless disabled */
+	fyd = fy_document_build_from_string(&cfg_off, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert(!fy_document_is_accelerated(fyd));
+	ck_assert_ptr_eq(fy_document_root(fyd)->xl, NULL);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 void libfyaml_case_private(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -161,4 +198,5 @@ void libfyaml_case_private(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parser_setup);
 	fy_check_testcase_add_test(ctc, scan_simple);
 	fy_check_testcase_add_test(ctc, parse_simple);
+	fy_check_testcase_add_test(ctc, document_accelerated);
 }

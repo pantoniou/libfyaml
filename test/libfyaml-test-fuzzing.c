@@ -1466,6 +1466,40 @@ static void anchor_collection_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+static void issue_395_scenario(unsigned int nth)
+{
+	static const char data[] = "ch-mar: true &node3 \n";
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+
+	fyd = fy_document_create(&(struct fy_parse_cfg){ .flags = FYPCF_QUIET });
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fy_alloc_fail_arm(nth);
+	fyn = fy_node_create_scalar(fyd, data, sizeof(data) - 1);
+	fy_alloc_fail_disarm();
+
+	fy_node_free(fyn);
+	fy_document_destroy(fyd);
+}
+
+static void issue_396_scenario(unsigned int nth)
+{
+	static const char yaml[] = "&A [ */**!][,,]\n";
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){ .flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES },
+			yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fy_alloc_fail_arm(nth);
+	fy_document_resolve(fyd);
+	fy_alloc_fail_disarm();
+
+	fy_document_destroy(fyd);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -1748,6 +1782,99 @@ START_TEST(fuzz_issue_392_merge_key_iterator_repro)
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	alloc_fail_sweep(issue_392_scenario, 2048);
 #endif
+}
+END_TEST
+
+/* Test: gh#393 - a duplicate key that the builder rejects is freed once. */
+START_TEST(fuzz_issue_393_duplicate_key_free_repro)
+{
+	static const char meta[] = "  ? |\r  ? |\r ";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET,
+	};
+
+	fy_document_destroy(fy_flow_document_build_from_string(NULL, meta, FY_NT, NULL));
+	ck_assert_ptr_eq(fy_document_build_from_string(&cfg, "a: 1\nb: 2\na: 3\n", FY_NT), NULL);
+	ck_assert_ptr_eq(fy_document_build_from_string(&cfg, "{a: 1, b: {c: 1, c: 2}}", FY_NT), NULL);
+}
+END_TEST
+
+/* Test: a duplicate key that is allowed, in a mapping with a lookup table. */
+START_TEST(fuzz_duplicate_keys_allowed_accelerated)
+{
+	static const char yaml[] = "a: 1\nb: 2\na: 3\n";
+	static const enum fy_parse_cfg_flags flags[] = {
+		FYPCF_QUIET | FYPCF_ALLOW_DUPLICATE_KEYS,
+		FYPCF_QUIET | FYPCF_ALLOW_DUPLICATE_KEYS | FYPCF_PREFER_RECURSIVE,
+	};
+	struct fy_document *fyd;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) {
+		fyd = fy_document_build_from_string(
+				&(struct fy_parse_cfg){ .flags = flags[i] }, yaml, FY_NT);
+		ck_assert_ptr_ne(fyd, NULL);
+		ck_assert_int_eq(fy_node_mapping_item_count(fy_document_root(fyd)), 3);
+		/* the first pair is found, as without a lookup table */
+		ck_assert_str_eq(fy_node_get_scalar0(fy_node_by_path(fy_document_root(fyd),
+						"/a", FY_NT, FYNWF_DONT_FOLLOW)), "1");
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
+/* Test: gh#395 - a scalar node whose token fails to be created. */
+START_TEST(fuzz_issue_395_create_scalar_input_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_395_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#396 - a ypath alias whose results fail to be flattened. */
+START_TEST(fuzz_issue_396_ypath_flatten_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_396_scenario, 1024);
+#endif
+}
+END_TEST
+
+/* Test: gh#397 - a folded scalar at column zero with a more-indented line. */
+START_TEST(fuzz_issue_397_folded_column_zero_text_repro)
+{
+	static const char yaml[] =
+		">\n\x13 foo \n \n\x0f \t baz\n\n  bar\n";
+	static const char expected[] =
+		"\x13 foo \n \n\x0f \t baz\n\n  bar\n";
+	static const char yaml2[] = ">\nxfoo\n baz\n";
+	static const char expected2[] = "xfoo\n baz\n";
+
+	check_root_scalar_text(0, yaml, sizeof(yaml) - 1,
+			       expected, sizeof(expected) - 1);
+	check_root_scalar_text(0, yaml2, sizeof(yaml2) - 1,
+			       expected2, sizeof(expected2) - 1);
+}
+END_TEST
+
+/* Test: gh#398 - a line break after an odd run of backslashes. */
+START_TEST(fuzz_issue_398_escaped_break_parity_repro)
+{
+	/* an escaped backslash pair, and a backslash that escapes the break */
+	static const char yaml[] = "\":M\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\xe2\x80\xa9" "c\"";
+	static const char expected[] = ":M\\\\\\\\\\\\\\c";
+	static const char yaml2[] = "\"a\\\\\\\nb\"";
+	static const char expected2[] = "a\\b";
+	static const char yaml3[] = "\"a\\\\\nb\"";
+	static const char expected3[] = "a\\ b";
+
+	check_root_scalar_text(FYPCF_DEFAULT_VERSION_1_1, yaml, sizeof(yaml) - 1,
+			       expected, sizeof(expected) - 1);
+	check_root_scalar_text(0, yaml2, sizeof(yaml2) - 1,
+			       expected2, sizeof(expected2) - 1);
+	check_root_scalar_text(0, yaml3, sizeof(yaml3) - 1,
+			       expected3, sizeof(expected3) - 1);
 }
 END_TEST
 
@@ -4261,6 +4388,12 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_391_walk_number_input_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_392_merge_key_iterator_repro);
 	fy_check_testcase_add_test(ctc, fuzz_anchor_collection_failure);
+	fy_check_testcase_add_test(ctc, fuzz_issue_393_duplicate_key_free_repro);
+	fy_check_testcase_add_test(ctc, fuzz_duplicate_keys_allowed_accelerated);
+	fy_check_testcase_add_test(ctc, fuzz_issue_395_create_scalar_input_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_396_ypath_flatten_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_397_folded_column_zero_text_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_398_escaped_break_parity_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
