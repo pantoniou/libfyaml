@@ -1743,7 +1743,10 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 		fynp_item->value = fyn_value;
 		fyn_key = NULL;
 		fyn_value = NULL;
-		if (fyn->xl) {
+		/* an allowed duplicate key leaves the first pair in the lookup */
+		if (fyn->xl &&
+		    !((fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS) &&
+		      fy_accel_lookup(fyn->xl, fynp_item->key))) {
 			rc = fy_accel_insert(fyn->xl, fynp_item->key, fynp_item);
 			fyp_error_check(fyp, !rc, err_out_rc,
 					"fy_accel_insert() failed");
