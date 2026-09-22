@@ -3423,7 +3423,8 @@ int fy_fetch_anchor_or_alias(struct fy_parser *fyp, int c)
 		    fy_is_unicode_control(c) || fy_is_unicode_space(c))
 			break;
 		fy_advance(fyp, c);
-		length++;
+		/* the storage hint is in octets, not in characters */
+		length += (int)fy_utf8_width(c);
 	}
 
 	if (!fyp_is_blankz(fyp, c) && !fy_is_flow_indicator(c)) {
