@@ -530,11 +530,19 @@ complete:
 		if (fynp->value)
 			fynp->value->parent = fyn_parent;
 
-		fy_node_pair_list_add_tail(&c->fyn->mapping, fynp);
-		if (fyn->xl) {
-			rc = fy_accel_insert(fyn->xl, fynp->key, fynp);
-			assert(!rc);
+		/* add the pair to the lookup table of the mapping, not of the
+		 * value. For an allowed duplicate key, keep the first pair: a
+		 * search without a lookup table also finds the first pair. */
+		if (fyn_parent->xl &&
+		    !((fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS) &&
+		      fy_accel_lookup(fyn_parent->xl, fynp->key))) {
+			rc = fy_accel_insert(fyn_parent->xl, fynp->key, fynp);
+			if (rc)	/* err_out frees the value; the pair stays on the stack */
+				fynp->value = NULL;
+			fydb_error_check(fydb, !rc, err_out,
+					"fy_accel_insert() failed\n");
 		}
+		fy_node_pair_list_add_tail(&c->fyn->mapping, fynp);
 		if (fynp->key)
 			fynp->key->attached = true;
 		if (fynp->value)
