@@ -1169,6 +1169,9 @@ int fy_path_fetch_flow_document(struct fy_path_parser *fypp, int c, enum fy_toke
 
 	/* document is NULL, is a simple key */
 	fyt = fy_path_token_queue(fypp, fytt, &handle, fyd);
+	/* the token owns the document only when it is created */
+	if (!fyt)
+		fy_document_destroy(fyd);
 	fyr_error_check(fyr, fyt, err_out, "fy_path_token_queue() failed\n");
 
 	return 0;
