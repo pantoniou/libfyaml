@@ -264,6 +264,8 @@ struct fy_input *fy_input_from_malloc_data(char *data, size_t size,
 
 	rc = fy_input_from_data_setup(fyi, handle, simple);
 	if (rc) {
+		/* on failure the data stays with the caller */
+		fyi->cfg.alloc.data = NULL;
 		fy_input_free(fyi);
 		return NULL;
 	}
