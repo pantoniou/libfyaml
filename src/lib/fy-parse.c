@@ -8818,6 +8818,11 @@ struct fy_eventp *fy_parser_event_resolve_hook_merge_key_start(struct fy_parser 
 		fyep_next = container_of(fye, struct fy_eventp, e);
 		fy_eventp_list_add_tail(&fysa->events, fyep_next);
 	}
+	/* the events are on the list, which releases them */
+	fyep_next = NULL;
+
+	fyp_error_check(fyp, !fy_document_iterator_get_error(fydi), err_out,
+			"fy_document_iterator_body_next() failed");
 
 	fy_document_iterator_destroy(fydi);
 	fydi = NULL;
@@ -8888,9 +8893,9 @@ err_out:
 		fy_parse_streaming_alias_state_pop(fyp);
 	if (fysa_added)
 		fy_streaming_alias_list_del(&fyp->streaming_aliases, fysa);
+	/* this also releases fyep_next, which is always on the list */
 	fy_parse_streaming_alias_clean(fyp, fysa);
 	fy_parse_streaming_alias_recycle(fyp, fysa);
-	fy_parse_eventp_recycle(fyp, fyep_next);
 	fy_parse_eventp_recycle(fyp, fyep);
 	return NULL;
 }
