@@ -8659,6 +8659,7 @@ fy_parser_get_merge_key_document(struct fy_parser *fyp, struct fy_eventp *fyep)
 	struct fy_document *fyd = NULL, *fyd_arg = NULL;
 	struct fy_document_state *fyds;
 	struct fy_node *fyn = NULL, *fyn_src = NULL;
+	struct fy_node *fyn_key, *fyn_value;
 	struct fy_node *new_root = NULL;
 	struct fy_node_pair *fynp, *fynp_exists;
 	void *iters, *iterm;
@@ -8742,7 +8743,16 @@ fy_parser_get_merge_key_document(struct fy_parser *fyp, struct fy_eventp *fyep)
 					continue;
 
 				/* add it to the mapping */
-				rc = fy_node_mapping_append(new_root, fy_node_copy(fyd, fynp->key), fy_node_copy(fyd, fynp->value));
+				fyn_key = fy_node_copy(fyd, fynp->key);
+				fyn_value = fy_node_copy(fyd, fynp->value);
+				rc = (fyn_key || !fynp->key) && (fyn_value || !fynp->value) ?
+					fy_node_mapping_append(new_root, fyn_key, fyn_value) : -1;
+				if (rc) {
+					/* the mapping owns them only on success */
+					fy_node_free(fyn_key);
+					fy_node_free(fyn_value);
+				}
+				fyn_key = fyn_value = NULL;
 				fyp_error_check(fyp, !rc, err_out,
 						"fy_node_mapping_append() failed\n");
 			}
@@ -8766,6 +8776,7 @@ fy_parser_get_merge_key_document(struct fy_parser *fyp, struct fy_eventp *fyep)
 	return fyd;
 
 err_out:
+	fy_node_free(fyn);
 	fy_node_free(new_root);
 	fy_document_destroy(fyd_arg);
 	fy_document_destroy(fyd);
