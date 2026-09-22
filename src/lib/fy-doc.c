@@ -1572,9 +1572,10 @@ fy_parse_document_load_sequence(struct fy_parser *fyp, struct fy_document *fyd,
 
 	if (fye->sequence_start.anchor) {
 		rc = fy_document_register_anchor(fyd, fyn, fye->sequence_start.anchor);
+		/* the anchor is consumed even when the registration fails */
+		fye->sequence_start.anchor = NULL;
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_document_register_anchor() failed");
-		fye->sequence_start.anchor = NULL;
 	}
 
 	if (fye->sequence_start.sequence_start) {
@@ -1670,9 +1671,10 @@ fy_parse_document_load_mapping(struct fy_parser *fyp, struct fy_document *fyd,
 
 	if (fye->mapping_start.anchor) {
 		rc = fy_document_register_anchor(fyd, fyn, fye->mapping_start.anchor);
+		/* the anchor is consumed even when the registration fails */
+		fye->mapping_start.anchor = NULL;
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_document_register_anchor() failed");
-		fye->mapping_start.anchor = NULL;
 	}
 
 	if (fye->mapping_start.mapping_start) {
@@ -2112,11 +2114,10 @@ struct fy_node *fy_node_copy_internal(struct fy_document *fyd, struct fy_node *f
 		if (!fya) {
 			fyd_doc_debug(fyd, "new anchor");
 			/* update the new anchor position */
-			rc = fy_document_register_anchor(fyd, fyn, fya_from->anchor);
+			/* the registration consumes the reference, also on failure */
+			rc = fy_document_register_anchor(fyd, fyn, fy_token_ref(fya_from->anchor));
 			fyd_error_check(fyd, !rc, err_out,
 					"fy_document_register_anchor() failed");
-
-			fy_token_ref(fya_from->anchor);
 		} else {
 			anchor = fy_anchor_get_text(fya, &anchor_len);
 			fyd_error_check(fyd, anchor, err_out,
