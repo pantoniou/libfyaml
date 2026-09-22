@@ -432,7 +432,7 @@ struct fy_document *fy_parse_document_create(struct fy_parser *fyp, struct fy_ev
 				"fy_accel_setup() failed");
 
 		fyd->naxl = malloc(sizeof(*fyd->naxl));
-		fyp_error_check(fyp, fyd->axl, err_out,
+		fyp_error_check(fyp, fyd->naxl, err_out,
 				"malloc() failed");
 
 		/* start with a very small bucket list */
@@ -3277,7 +3277,8 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 
 	fyd->diag = diag;
 
-	if (fy_document_is_accelerated(fyd)) {
+	/* nothing is set up yet, so check the configuration */
+	if (fy_document_can_be_accelerated(fyd)) {
 		fyd->axl = malloc(sizeof(*fyd->axl));
 		fyd_error_check(fyd, fyd->axl, err_out,
 				"malloc() failed");
@@ -3288,7 +3289,7 @@ struct fy_document *fy_document_create(const struct fy_parse_cfg *cfg)
 				"fy_accel_setup() failed");
 
 		fyd->naxl = malloc(sizeof(*fyd->naxl));
-		fyd_error_check(fyd, fyd->axl, err_out,
+		fyd_error_check(fyd, fyd->naxl, err_out,
 				"malloc() failed");
 
 		/* start with a very small bucket list */
