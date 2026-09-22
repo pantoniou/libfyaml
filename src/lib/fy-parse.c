@@ -8013,6 +8013,8 @@ int fy_parse_set_composer(struct fy_parser *fyp, fy_parse_composer_cb cb, void *
 	ccfg.userdata = fyp;
 	ccfg.diag = fy_parser_get_diag(fyp);
 	fyp->fyc = fy_composer_create(&ccfg);
+	if (!fyp->fyc)
+		fy_diag_unref(ccfg.diag);
 	fyp_error_check(fyp, fyp->fyc, err_out,
 			"fy_composer_create() failed");
 
