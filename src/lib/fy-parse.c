@@ -9014,6 +9014,8 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 
 	if (was_merge_key) {
 		rc = fy_parser_event_resolve_hook_collect(fyp, fyep_src);
+		if (rc)
+			fy_parse_eventp_recycle(fyp, fyep);
 		fyp_error_check(fyp, !rc, err_out,
 			"fy_parser_event_resolve_hook_collect() failed!");
 	}
