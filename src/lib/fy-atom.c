@@ -305,7 +305,7 @@ fy_atom_iter_line_analyze(struct fy_atom_iter *iter, struct fy_atom_iter_line_in
 			  const char *line_start, size_t len)
 {
 	const struct fy_atom *atom = iter->atom;
-	const char *s, *e, *ss;
+	const char *s, *e, *ss, *t;
 	int col, c, cn, w, wn, ts, cws, advws;
 	bool last_was_ws, is_block, can_be_nws_end;
 	int lastc;
@@ -693,10 +693,13 @@ out:
 	assert(li->nws_end);
 	assert(!is_block || li->chomp_start);
 
-	li->ends_with_backslash = atom->style == FYAS_DOUBLE_QUOTED &&
-				  !li->empty &&
-				  (li->nws_end > li->nws_start && li->nws_end[-1] == '\\') &&
-				  ((li->nws_end - li->nws_start) <= 1 || li->nws_end[-2] != '\\');
+	/* only an odd number of backslashes escapes the break */
+	li->ends_with_backslash = false;
+	if (atom->style == FYAS_DOUBLE_QUOTED && !li->empty) {
+		for (t = li->nws_end; t > li->nws_start && t[-1] == '\\'; t--)
+			;
+		li->ends_with_backslash = ((li->nws_end - t) & 1) != 0;
+	}
 #ifdef DEBUG_CHUNK
 	fprintf(stderr, "%s:%d ends_with_backslash=%s\n", __FILE__, __LINE__, li->ends_with_backslash ? "true" : "false");
 #endif
