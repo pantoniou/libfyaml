@@ -6651,14 +6651,14 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fyds->fyt_de = fy_token_ref(fye->document_end.document_end);
 
 		/* if there was a comment preserve it */
-		if (old_comment) {
-			rc = fy_document_state_set_bottom_comment(fyds, old_comment);
-			fyp_error_check(fyp, !rc, err_out,
-					"fy_document_state_set_bottom_comment() failed");
-		}
-		/* and get rid of it */
+		rc = old_comment ? fy_document_state_set_bottom_comment(fyds, old_comment) : 0;
+
+		/* and get rid of it, also when the comment copy failed */
 		fy_token_unref(fytn);
 		fytn = NULL;
+
+		fyp_error_check(fyp, !rc, err_out,
+				"fy_document_state_set_bottom_comment() failed");
 
 		if ((fyp->cfg.flags & FYPCF_PARSE_COMMENTS) &&
 		    fy_atom_is_set(&fyp->last_comment)) {
