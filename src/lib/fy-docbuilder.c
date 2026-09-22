@@ -496,21 +496,22 @@ complete:
 	switch (c->s) {
 
 	case FYDBS_MAP_KEY:
-		fynp = fy_node_pair_alloc(fyd);
-		fydb_error_check(fydb, fynp, err_out,
-				"fy_node_pair_alloc() failed\n");
-		fynp->key = fyn;
-		c->fynp = fynp;
-
 		/* if we don't allow duplicate keys */
 		if (!(fyd->parse_cfg.flags & FYPCF_ALLOW_DUPLICATE_KEYS)) {
 
-			/* make sure we don't add an already existing key */
+			/* check for a duplicate before the pair gets the key;
+			 * on error the key is freed here */
 			if (fy_node_mapping_key_is_duplicate(fyn_parent, fyn)) {
 				FYDB_NODE_ERROR(fydb, fyn, FYEM_DOC, "duplicate key");
 				goto err_out;
 			}
 		}
+
+		fynp = fy_node_pair_alloc(fyd);
+		fydb_error_check(fydb, fynp, err_out,
+				"fy_node_pair_alloc() failed\n");
+		fynp->key = fyn;
+		c->fynp = fynp;
 
 		c->s = FYDBS_MAP_VAL;
 		goto push;
