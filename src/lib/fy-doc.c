@@ -1029,8 +1029,10 @@ struct fy_token *fy_node_token(struct fy_node *fyn)
 		goto err_out;
 
 	fyi = fy_input_from_malloc_data(buf, FY_NT, &atom, true);
-	if (!fyi)
+	if (!fyi) {
+		free(buf);
 		goto err_out;
+	}
 
 	fyt = fy_token_create(FYTT_INPUT_MARKER, &atom);
 	if (!fyt)
