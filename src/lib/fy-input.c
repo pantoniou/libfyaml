@@ -71,11 +71,12 @@ void fy_input_free(struct fy_input *fyi)
 	switch (fyi->state) {
 	case FYIS_NONE:
 	case FYIS_QUEUED:
-	case FYIS_ERROR:
 		/* nothing to do */
 		break;
 	case FYIS_PARSE_IN_PROGRESS:
 	case FYIS_PARSED:
+	case FYIS_ERROR:
+		/* an input can fail after it was opened; the close is idempotent */
 		fy_input_close(fyi);
 		break;
 	}
