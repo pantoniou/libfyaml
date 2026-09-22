@@ -5262,7 +5262,7 @@ err_out:
 static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 		struct fy_path_expr *expr, struct fy_node *fyn_start)
 {
-	struct fy_walk_result *fwr;
+	struct fy_walk_result *fwr, *fwrf;
 	bool error;
 
 	if (!fypx || !expr || !fyn_start)
@@ -5286,9 +5286,12 @@ static int fy_path_exec_execute_internal(struct fy_path_exec *fypx,
 
 	/* flatten results */
 	if (fwr->type == fwrt_refs) {
-		fwr = fy_walk_result_flatten(fwr);
-		if (!fwr)
-			return -1;
+		fwrf = fy_walk_result_flatten(fwr);
+		/* the results hold a reference to the executor;
+		 * on failure we must free them */
+		if (!fwrf)
+			goto err_out;
+		fwr = fwrf;
 	}
 	fypx->result = fwr;
 
@@ -5638,7 +5641,7 @@ fy_node_alias_resolve_by_ypath_result(struct fy_node *fyn)
 	}
 
 	fypx = fy_path_exec_create_on_document(fyd);
-	fyd_error_check(fyd, !rc, err_out,
+	fyd_error_check(fyd, fypx, err_out,
 			"fy_path_exec_create_on_document() failed");
 
 	fy_path_exec_set_result_recycle_list(fypx, &pxdd->fwr_recycle);
