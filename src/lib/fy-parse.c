@@ -9404,13 +9404,17 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	}
 #endif
 
+	/* the simple keys point to queued tokens without a reference,
+	 * so drop them before the queued tokens are released */
+	fy_parse_simple_key_list_recycle_all(fyp, &fyp->simple_keys);
+	assert(fy_simple_key_list_empty(&fypc->simple_keys));
+
 	while ((fyt = fy_token_list_pop(&fyp->queued_tokens)) != NULL)
 		fy_token_unref(fyt);
 	for (i = 0; i < fypchk->queued_token_count; i++) {
 		fyt = fypchk->queued_tokens[i];
 		fy_token_list_add_tail(&fyp->queued_tokens, fy_token_ref(fyt));
 	}
-	assert(fy_simple_key_list_empty(&fypc->simple_keys));
 	assert(fy_streaming_alias_list_empty(&fypc->streaming_aliases));
 
 	fyp->default_version = fypc->default_version;
