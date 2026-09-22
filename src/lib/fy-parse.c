@@ -3654,8 +3654,12 @@ int fy_scan_block_scalar_indent(struct fy_parser *fyp,
 		/* skip over indentation */
 
 		if (!fyp_tabsize(fyp)) {
-			/* we must respect the enclosed indent */
-			while (fyp_column(fyp) <= fyp->indent && fy_is_ws(c = fy_parse_peek(fyp))) {
+			/* skip spaces only up to the enclosing indent; if the
+			 * content indent is at the same column, the spaces
+			 * are content */
+			while (fyp_column(fyp) <= fyp->indent &&
+			       (first_scan || fyp_column(fyp) < indent) &&
+			       fy_is_ws(c = fy_parse_peek(fyp))) {
 				FYP_PARSE_ERROR_CHECK(fyp, 0, 1, FYEM_SCAN,
 						!fy_is_tab(c), err_out,
 						"invalid tab character as indent instead of space");
