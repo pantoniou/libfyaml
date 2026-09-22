@@ -6799,6 +6799,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye = &fyep->e;
 
 		fye->type = FYET_SEQUENCE_END;
+		/* the token allocation can fail, and the event is then recycled */
+		fye->sequence_end.sequence_end = NULL;
 		if (orig_state == FYPS_INDENTLESS_SEQUENCE_ENTRY) {
 
 			/* allocate and copy in place */
@@ -7079,6 +7081,8 @@ static struct fy_eventp *fy_parse_internal(struct fy_parser *fyp)
 		fye = &fyep->e;
 
 		fye->type = FYET_MAPPING_END;
+		/* the token allocation can fail, and the event is then recycled */
+		fye->mapping_end.mapping_end = NULL;
 
 		/* allocate and copy in place */
 		fytn = fy_token_alloc_rl(fyp->recycled_token_list);
