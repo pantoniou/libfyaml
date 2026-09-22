@@ -7962,6 +7962,8 @@ parse_create_document_builder(struct fy_composer *fyc)
 	cfg.diag = fy_diag_ref(fyp->diag);
 
 	fydb = fy_document_builder_create(&cfg);
+	if (!fydb)
+		fy_diag_unref(cfg.diag);
 	fyp_error_check(fyp, fydb, err_out,
 			"fy_document_builder_create() failed\n");
 
@@ -8672,6 +8674,8 @@ fy_parser_get_merge_key_document(struct fy_parser *fyp, struct fy_eventp *fyep)
 	cfg.diag = fy_diag_ref(fyp->diag);
 
 	fydb = fy_document_builder_create(&cfg);
+	if (!fydb)
+		fy_diag_unref(cfg.diag);
 	fyp_error_check(fyp, fydb, err_out,
 			"fy_document_builder_create() failed\n");
 

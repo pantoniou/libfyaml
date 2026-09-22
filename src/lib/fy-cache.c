@@ -1739,8 +1739,10 @@ int fy_parse_cache_build_start(struct fy_parser *fyp, const char *file)
 	gdbcfg.diag = fy_diag_ref(fyp->cfg.diag);
 	gdbcfg.flags = fy_parse_cache_builder_flags(cache_flags);
 	fyp->cache_build.fygdb = fy_generic_document_builder_create(&gdbcfg);
-	if (!fyp->cache_build.fygdb)
+	if (!fyp->cache_build.fygdb) {
+		fy_diag_unref(gdbcfg.diag);
 		goto err_out;
+	}
 
 	fyp->cache_build.file = dupfile;
 	fyp->cache_build.enabled = true;

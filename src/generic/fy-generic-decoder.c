@@ -104,8 +104,10 @@ fy_generic fy_generic_decoder_parse(struct fy_generic_decoder *gd,
 	cfg.flags = fy_generic_decoder_to_builder_flags(flags);
 
 	fygdb = fy_generic_document_builder_create(&cfg);
-	if (!fygdb)
+	if (!fygdb) {
+		fy_diag_unref(cfg.diag);
 		goto err_out;
+	}
 
 	count = 0;
 	alloc = 0;
