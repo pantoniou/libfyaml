@@ -5570,7 +5570,7 @@ fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t
 	const bool copy = !!(flags & FYNCSIF_COPY);
 	const bool malloced = !!(flags & FYNCSIF_MALLOCED);
 	struct fy_node *fyn = NULL;
-	struct fy_input *fyi;
+	struct fy_input *fyi = NULL;
 	struct fy_atom handle;
 	enum fy_scalar_style style;
 	char *data_copy = NULL;
@@ -5639,6 +5639,7 @@ fy_node_create_scalar_internal(struct fy_document *fyd, const char *data, size_t
 err_out:
 	if (data_copy)
 		free(data_copy);
+	fy_input_unref(fyi);
 	fy_node_detach_and_free(fyn);
 	fyd->diag->on_error = false;
 	return NULL;
