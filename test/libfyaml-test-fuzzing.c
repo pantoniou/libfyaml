@@ -1587,6 +1587,23 @@ static void issue_407_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+static void issue_408_scenario(unsigned int nth)
+{
+	static const char yaml[] = "*%/(select(\"\")";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_DISABLE_RECYCLING | FYPCF_PREFER_RECURSIVE |
+			 FYPCF_YPATH_ALIASES,
+	};
+	struct fy_document *fyd;
+
+	fy_alloc_fail_arm(nth);
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	fy_alloc_fail_disarm();
+
+	fy_document_destroy(fyd);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -2130,6 +2147,62 @@ START_TEST(fuzz_issue_407_collection_method_alloc_repro)
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	alloc_fail_sweep(issue_407_scenario, 2048);
 #endif
+}
+END_TEST
+
+/* Test: gh#408 - a select whose clone fails, with a string argument. */
+START_TEST(fuzz_issue_408_select_clone_alloc_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_408_scenario, 1024);
+#endif
+}
+END_TEST
+
+/* Test: gh#409 - ypath aliases that resolve to a node that holds them. */
+START_TEST(fuzz_issue_409_ypath_alias_holds_itself_repro)
+{
+	static const char yaml[] =
+		"[a, b, *//**, *//**, *//**, *//**, *//**, *//**, *//**, *//**]";
+	static const char yaml2[] = "a: { x: 1 }\nb: */a/x\nc: */a\n";
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){
+				.flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES },
+			yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	/* count the allocations; each pass doubled the document */
+	fy_alloc_fail_arm(UINT_MAX);
+#endif
+	ck_assert_int_ne(fy_document_resolve(fyd), 0);
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_alloc_fail_disarm();
+	ck_assert_uint_lt(fy_alloc_fail_seen(), 100000);
+#endif
+
+	fy_document_destroy(fyd);
+
+	/* an alias to a node that does not hold it still resolves */
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){
+				.flags = FYPCF_QUIET | FYPCF_YPATH_ALIASES },
+			yaml2, sizeof(yaml2) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert_int_eq(fy_document_resolve(fyd), 0);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/b", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "1");
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/c/x", FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "1");
+
+	fy_document_destroy(fyd);
 }
 END_TEST
 
@@ -4695,6 +4768,8 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_405_ypath_nested_compare_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_406_expr_to_node_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_407_collection_method_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_408_select_clone_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_409_ypath_alias_holds_itself_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
