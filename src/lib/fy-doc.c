@@ -2674,6 +2674,15 @@ int fy_document_tag_directive_remove(struct fy_document *fyd, const char *handle
 	return 0;
 }
 
+static bool fy_node_is_self_or_ancestor(struct fy_node *fyn_anc, struct fy_node *fyn)
+{
+	for (; fyn; fyn = fyn->parent) {
+		if (fyn == fyn_anc)
+			return true;
+	}
+	return false;
+}
+
 static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 {
 	struct fy_node *fyn_copy = NULL;
@@ -2683,6 +2692,12 @@ static int fy_resolve_alias(struct fy_document *fyd, struct fy_node *fyn)
 	FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
 			fyn_copy, err_out,
 			"invalid alias");
+
+	/* a copy that holds the alias brings the alias back, and grows
+	 * the document on each pass */
+	FYD_NODE_ERROR_CHECK(fyd, fyn, FYEM_DOC,
+			!fy_node_is_self_or_ancestor(fyn_copy, fyn), err_out,
+			"recursive alias");
 
 	rc = fy_node_copy_to_scalar(fyd, fyn, fyn_copy);
 	fyd_error_check(fyd, !rc, err_out,
@@ -3158,6 +3173,9 @@ int fy_document_resolve(struct fy_document *fyd)
 
 	if (!fyd)
 		return 0;
+
+	/* the recursive alias check needs the parents */
+	fy_resolve_parent_node(fyd, fyd->root, NULL);
 
 	num_aliases_prev = INT_MAX;
 	do {
