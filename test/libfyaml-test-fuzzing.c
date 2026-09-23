@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 #include <assert.h>
 
 #include <check.h>
@@ -1500,6 +1501,21 @@ static void issue_396_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+static void issue_399_scenario(unsigned int nth)
+{
+	static const char yaml[] = "42\n   \t#\rc[[[''\x0f'''&\x10yyb";
+	struct fy_document *fyd;
+
+	fy_alloc_fail_arm(nth);
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){
+				.flags = FYPCF_QUIET | FYPCF_PARSE_COMMENTS },
+			yaml, sizeof(yaml) - 1);
+	fy_alloc_fail_disarm();
+
+	fy_document_destroy(fyd);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -1838,6 +1854,64 @@ START_TEST(fuzz_issue_396_ypath_flatten_repro)
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	alloc_fail_sweep(issue_396_scenario, 1024);
 #endif
+}
+END_TEST
+
+/* Test: gh#399 - a comment handle that fails to be allocated. */
+START_TEST(fuzz_issue_399_comment_handle_loop_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_399_scenario, 1024);
+#endif
+}
+END_TEST
+
+/* Test: gh#400 - path aliases that loop through a merge key. */
+START_TEST(fuzz_issue_400_merge_key_alias_loop_repro)
+{
+	static const char yaml[] =
+		"<<:\n- -:ln \x7f </-0:-8\n\n\n-\n */-0//8*/-0\n-\n */-0:8\n\n"
+		"\n-\n */-0/-0\n-\n */-0:8\n\n\n\n\n-\n *nul\n-\n */-<:\n-  *OBa<<:\n"
+		"-  */!e!suffi%Ba";
+	static const char yaml2[] =
+		"a: &a { x: 1 }\n"
+		"b: &b { <<: *a, y: 2 }\n"
+		"c: { <<: [ *b ], z: 3 }\n";
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){ .flags = FYPCF_QUIET },
+			yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	/* count the allocations; the loop made millions of them */
+	fy_alloc_fail_arm(UINT_MAX);
+#endif
+	ck_assert_int_ne(fy_document_resolve(fyd), 0);
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_alloc_fail_disarm();
+	ck_assert_uint_lt(fy_alloc_fail_seen(), 100000);
+#endif
+
+	fy_document_destroy(fyd);
+
+	/* merge keys that do not loop still find their keys */
+	fyd = fy_document_build_from_string(NULL, yaml2, sizeof(yaml2) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/b/x", FY_NT,
+			      FYNWF_FOLLOW | FYNWF_PTR_YAML);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "1");
+
+	fyn = fy_node_by_path(fy_document_root(fyd), "/c/y", FY_NT,
+			      FYNWF_FOLLOW | FYNWF_PTR_YAML);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_str_eq(fy_node_get_scalar0(fyn), "2");
+
+	fy_document_destroy(fyd);
 }
 END_TEST
 
@@ -4394,6 +4468,8 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_396_ypath_flatten_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_397_folded_column_zero_text_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_398_escaped_break_parity_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_399_comment_handle_loop_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_400_merge_key_alias_loop_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
