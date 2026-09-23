@@ -4184,7 +4184,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	uint32_t hi_surrogate, lo_surrogate, uvalue;
 	bool is_single, is_multiline, esc_lb, ws_lb_only, has_ws, has_lb, has_weird_nl, has_esc;
 	bool first, starts_with_ws, starts_with_lb, ends_with_ws, ends_with_lb, trailing_lb = false;
-	bool unicode_esc, is_json_unesc, has_json_esc;
+	bool unicode_esc, is_json_unesc, has_json_esc, breaks_after_esc_lb;
 	int last_esc_lb, break_length, presentation_breaks_length;
 	enum fy_flow_ws_mode ws_mode;
 	struct fy_mark mark, mark2;
@@ -4219,6 +4219,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 	blanks_found = 0;
 	esc_lb = false;
 	last_esc_lb = -1;
+	breaks_after_esc_lb = false;
 	ws_lb_only = true;
 	has_ws = false;
 	has_lb = false;
@@ -4297,7 +4298,11 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 			}
 
 			if (breaks_found) {
-				length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
+				/* after an escaped line break, no break folds */
+				if (breaks_after_esc_lb)
+					length += breaks_found_length;
+				else
+					length += breaks_found > 1 ? (breaks_found_length - first_break_length) : 1;
 				length += presentation_breaks_length;
 				breaks_found = 0;
 				blanks_found = 0;
@@ -4307,6 +4312,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 				lastc = ' ';
 				blanks_found = 0;
 			}
+			breaks_after_esc_lb = false;
 
 			if (c >= 0 && c <= 0x7f && (fy_utf8_low_ascii_flags[c] & F_SIMPLE_SCALAR)) {
 				size_t len, consumed;
@@ -4360,6 +4366,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 
 				esc_lb = true;
 				last_esc_lb = fy_reader_peek_at(fyr, 1);
+				breaks_after_esc_lb = true;
 
 				fy_reader_advance_by(fyr, 2);
 
