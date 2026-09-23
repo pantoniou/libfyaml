@@ -1085,8 +1085,10 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 				pending_lb_size = (int)ARRAY_SIZE(pending_lb_inplace);
 				pending_lb = pending_lb_inplace;
 
+				/* the break of an empty line is kept for the
+				 * content of the lines that follow it */
 				pending_nl = 0;
-				if (!li->empty) {
+				if (!li->empty || (li->lb_end && !atom->empty)) {
 					pending_lb[0] = li->actual_lb > 0 ? li->actual_lb : '\n';
 					pending_nl = 1;
 				}
