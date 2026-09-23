@@ -2062,6 +2062,23 @@ START_TEST(fuzz_issue_403_escaped_break_blank_lines_repro)
 }
 END_TEST
 
+/* Test: gh#404 - white space content after an empty line, and a NUL. */
+START_TEST(fuzz_issue_404_block_tab_line_nul_repro)
+{
+	static const char yaml[] = "|\n \n  \t\n";
+	static const char expected[] = "\n\t\n";
+	static const char yaml2[] = ">\n\n  \t\n";
+	static const char expected2[] = "\n\t\n";
+
+	CHECK_SCALAR_HINTS(0, "|\n \n  \t\0\x10\0\0");
+	CHECK_SCALAR_HINTS(0, ">\n \n  \t\0");
+	check_root_scalar_text(0, yaml, sizeof(yaml) - 1,
+			       expected, sizeof(expected) - 1);
+	check_root_scalar_text(0, yaml2, sizeof(yaml2) - 1,
+			       expected2, sizeof(expected2) - 1);
+}
+END_TEST
+
 /* Test: gh#405 - nested comparisons of recursive descents. */
 START_TEST(fuzz_issue_405_ypath_nested_compare_repro)
 {
@@ -4674,6 +4691,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_401_prepare_text_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_402_block_ls_ps_hint_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_403_escaped_break_blank_lines_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_404_block_tab_line_nul_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_405_ypath_nested_compare_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_406_expr_to_node_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_407_collection_method_alloc_repro);
