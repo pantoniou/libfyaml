@@ -3373,8 +3373,8 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 {
 	struct fy_document_vbuildf_ctx *vctx = user;
 	va_list ap, ap_orig;
-	int size, sizew;
-	char *buf;
+	int size, sizew, rc;
+	char *buf = NULL;
 
 	/* first try without allocating */
 	va_copy(ap_orig, vctx->ap);
@@ -3390,15 +3390,21 @@ static int parser_setup_from_fmt_ap(struct fy_parser *fyp, void *user)
 
 	va_copy(ap, vctx->ap);
 	sizew = vsnprintf(buf, size + 1, vctx->fmt, ap);
+	va_end(ap);
 	fyp_error_check(fyp, sizew == size, err_out,
 			"vsnprintf() failed");
-	va_end(ap);
 
 	buf[size] = '\0';
 
-	return fy_parser_set_malloc_string(fyp, buf, size);
+	/* on error the string stays ours */
+	rc = fy_parser_set_malloc_string(fyp, buf, size);
+	fyp_error_check(fyp, !rc, err_out,
+			"fy_parser_set_malloc_string() failed");
+
+	return 0;
 
 err_out:
+	free(buf);
 	return -1;
 }
 
