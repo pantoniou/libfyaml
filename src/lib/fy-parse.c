@@ -3851,6 +3851,10 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	fyp_error_check(fyp, new_indent >= 0, err_out,
 			"fy_scan_block_scalar_indent() failed");
 
+	/* a LS or PS in an empty line can be counted wrong,
+	 * so verify the storage hint */
+	has_weird_nl |= presentation_breaks_length > 0;
+
 	min_indent = fyp->indent;
 
 	if (!(fyp->state == FYPS_IMPLICIT_DOCUMENT_START ||
@@ -3946,6 +3950,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 					&max_indent, false);
 			fyp_error_check(fyp, check_indent >= 0, err_out,
 					"fy_scan_block_scalar_indent() failed");
+			has_weird_nl |= presentation_breaks_length > 0;
 			if (fy_is_lb_LS_PS(c))
 				presentation_breaks_length += actual_lb_length;
 
