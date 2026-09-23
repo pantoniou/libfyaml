@@ -1516,6 +1516,77 @@ static void issue_399_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+static void issue_401_scenario(unsigned int nth)
+{
+	/* a multi line single quoted scalar holding escaped quotes */
+	static const char yaml[] = "'''''''''''''''''@    \n    '\n";
+	struct fy_document *fyd, *fydx;
+	const char *text, *textx;
+	size_t len, lenx;
+
+	fydx = fy_document_build_from_string(
+			&(struct fy_parse_cfg){ .flags = FYPCF_QUIET },
+			yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fydx, NULL);
+	textx = fy_node_get_scalar(fy_document_root(fydx), &lenx);
+	ck_assert_ptr_ne(textx, NULL);
+
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){ .flags = FYPCF_QUIET },
+			yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fy_alloc_fail_arm(nth);
+	text = fy_node_get_scalar(fy_document_root(fyd), &len);
+	fy_alloc_fail_disarm();
+
+	/* either the full text or nothing, never a part of the buffer */
+	if (text && len) {
+		ck_assert_uint_eq(len, lenx);
+		ck_assert_int_eq(memcmp(text, textx, len), 0);
+	}
+
+	fy_document_destroy(fyd);
+	fy_document_destroy(fydx);
+}
+
+static void issue_406_scenario(unsigned int nth)
+{
+	static const char pathexpr[] = "*((()/)//\xd0/#//\xd0/#_";
+	struct fy_path_parse_cfg cfg = {
+		.flags = FYPPCF_QUIET | FYPPCF_DISABLE_RECYCLING |
+			 FYPPCF_DISABLE_ACCELERATORS,
+	};
+	struct fy_path_expr *expr;
+	struct fy_document *fyd;
+
+	fy_alloc_fail_arm(nth);
+	expr = fy_path_expr_build_from_string(&cfg, pathexpr, sizeof(pathexpr) - 1);
+	if (expr) {
+		fyd = fy_path_expr_to_document(expr);
+		fy_document_destroy(fyd);
+	}
+	fy_path_expr_free(expr);
+	fy_alloc_fail_disarm();
+}
+
+static void issue_407_scenario(unsigned int nth)
+{
+	static const char yaml[] = "- [ *%/.///****.select**.select..//////]";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT |
+			 FYPCF_DISABLE_ACCELERATORS | FYPCF_PREFER_RECURSIVE |
+			 FYPCF_YPATH_ALIASES,
+	};
+	struct fy_document *fyd;
+
+	fy_alloc_fail_arm(nth);
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	fy_alloc_fail_disarm();
+
+	fy_document_destroy(fyd);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -1912,6 +1983,136 @@ START_TEST(fuzz_issue_400_merge_key_alias_loop_repro)
 	ck_assert_str_eq(fy_node_get_scalar0(fyn), "2");
 
 	fy_document_destroy(fyd);
+}
+END_TEST
+
+/*
+ * Parse events and check that the size hint of each scalar is the length
+ * of its text. The text uses the real length, so only the hint shows the
+ * error.
+ */
+static void check_scalar_hints(enum fy_parse_cfg_flags flags,
+			       const char *yaml, size_t yaml_len)
+{
+	struct fy_parse_cfg cfg;
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	struct fy_token *fyt;
+	unsigned int count = 0;
+	size_t hint, len;
+	const char *text;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.flags = flags | FYPCF_QUIET;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, yaml_len), 0);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		if (fye->type == FYET_SCALAR) {
+			fyt = fye->scalar.value;
+			hint = fy_token_get_text_length(fyt);
+			text = fy_token_get_text(fyt, &len);
+			ck_assert_ptr_ne(text, NULL);
+			ck_assert_uint_eq(hint, len);
+			count++;
+		}
+		fy_parser_event_free(fyp, fye);
+	}
+	ck_assert_uint_gt(count, 0);
+
+	fy_parser_destroy(fyp);
+}
+
+#define CHECK_SCALAR_HINTS(_flags, _yaml) \
+	check_scalar_hints((_flags), (_yaml), sizeof(_yaml) - 1)
+
+/* Test: gh#401 - the scalar text when the atom iterator fails. */
+START_TEST(fuzz_issue_401_prepare_text_alloc_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_401_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#402 - a block scalar with LS or PS in its empty lines. */
+START_TEST(fuzz_issue_402_block_ls_ps_hint_repro)
+{
+	CHECK_SCALAR_HINTS(FYPCF_DEFAULT_VERSION_1_1,
+		">\n \t>\n \t\n\xe2\x80\xa9 \n\xe2\x80\xa9 \x7f" "ete");
+	CHECK_SCALAR_HINTS(FYPCF_DEFAULT_VERSION_1_1, ">\n a\n\xe2\x80\xa9 b\n");
+	CHECK_SCALAR_HINTS(FYPCF_DEFAULT_VERSION_1_1, ">\n a\n\xe2\x80\xa8 \n\xe2\x80\xa8 b\n");
+	CHECK_SCALAR_HINTS(FYPCF_DEFAULT_VERSION_1_1, "|\n a\n\xe2\x80\xa9 \n\xe2\x80\xa9 b\n");
+}
+END_TEST
+
+/* Test: gh#403 - empty lines after an escaped line break. */
+START_TEST(fuzz_issue_403_escaped_break_blank_lines_repro)
+{
+	static const char yaml[] = "\"a\\\n\n\nb\"\n";
+	static const char expected[] = "a\n\nb";
+
+	CHECK_SCALAR_HINTS(0,
+		"\"?\\\n\n\n?\\\n\n\n\n\n#\n#06u\b \n\n#\n#06u\b 789\"\n");
+	CHECK_SCALAR_HINTS(0, "\"a\\\n\n\n\nb\\\n\n\nc\"\n");
+	check_root_scalar_text(0, yaml, sizeof(yaml) - 1,
+			       expected, sizeof(expected) - 1);
+}
+END_TEST
+
+/* Test: gh#405 - nested comparisons of recursive descents. */
+START_TEST(fuzz_issue_405_ypath_nested_compare_repro)
+{
+	static const char path[] = "********========nts/0";
+	static char doc[2048], tmp[2 * sizeof(doc) + 16];
+	struct fy_document *fyd;
+	size_t len;
+	int i;
+
+	/* a balanced tree of mappings, with "x" at the leaves */
+	strcpy(doc, "x");
+	for (i = 0; i < 6; i++) {
+		snprintf(tmp, sizeof(tmp), "{a: %s, b: %s}", doc, doc);
+		len = strlen(tmp);
+		ck_assert_uint_lt(len, sizeof(doc));
+		memcpy(doc, tmp, len + 1);
+	}
+
+	fyd = fy_document_build_from_string(NULL, doc, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	/* count the allocations; the results grew as a product */
+	fy_alloc_fail_arm(UINT_MAX);
+#endif
+	fy_node_by_path(fy_document_root(fyd), path, sizeof(path) - 1,
+			FYNWF_PTR_YPATH);
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_alloc_fail_disarm();
+	ck_assert_uint_lt(fy_alloc_fail_seen(), 100000);
+#endif
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: gh#406 - an expression dump whose append fails. */
+START_TEST(fuzz_issue_406_expr_to_node_alloc_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_406_scenario, 1024);
+#endif
+}
+END_TEST
+
+/* Test: gh#407 - a collection method whose selected item fails to clone. */
+START_TEST(fuzz_issue_407_collection_method_alloc_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_407_scenario, 2048);
+#endif
 }
 END_TEST
 
@@ -4470,6 +4671,12 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_398_escaped_break_parity_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_399_comment_handle_loop_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_400_merge_key_alias_loop_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_401_prepare_text_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_402_block_ls_ps_hint_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_403_escaped_break_blank_lines_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_405_ypath_nested_compare_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_406_expr_to_node_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_407_collection_method_alloc_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
