@@ -1323,7 +1323,7 @@ err_out_rc:
 	return rc;
 err_out:
 	rc = -1;
-	goto err_out;
+	goto err_out_rc;
 }
 
 int fy_fetch_flow_collection_entry(struct fy_parser *fyp, int c);
@@ -1409,9 +1409,6 @@ int fy_parse_handle_comments_after_token(struct fy_parser *fyp, struct fy_token 
 
 err_out_rc:
 	return rc;
-err_out:
-	rc = -1;
-	goto err_out;
 }
 
 int fy_scan_to_next_token(struct fy_parser *fyp)
