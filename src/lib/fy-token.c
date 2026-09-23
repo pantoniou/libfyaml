@@ -924,6 +924,8 @@ const struct fy_version * fy_version_directive_token_version(struct fy_token *fy
 static void fy_token_prepare_text(struct fy_token *fyt)
 {
 	size_t ret;
+	ssize_t len, tlen;
+	char *p;
 
 	assert(fyt);
 
@@ -946,12 +948,40 @@ static void fy_token_prepare_text(struct fy_token *fyt)
 
 	fyt->text0[0] = '\0';
 
-	fyt->text_len = ret;
+	/* a tag is formatted with the same code as its length */
+	if (fyt->type == FYTT_TAG || fyt->type == FYTT_TAG_DIRECTIVE) {
+		fy_token_format_text(fyt, fyt->text0, ret + 1);
+		len = (ssize_t)ret;
+	} else {
+		len = fy_atom_format_text_n(&fyt->handle, fyt->text0, ret + 1);
 
-	fy_token_format_text(fyt, fyt->text0, ret + 1);
-	fyt->text0[ret] = '\0';
+		/* a size hint that is too small makes the format fail;
+		 * count the real length and format again */
+		if (len < 0 && fyt->handle.storage_hint_valid) {
+			fyt->handle.storage_hint_valid = false;
+			tlen = fy_atom_format_text_length(&fyt->handle);
+			if (tlen > 0 && (size_t)tlen > ret) {
+				p = realloc(fyt->text0, (size_t)tlen + 1);
+				if (p) {
+					fyt->text0 = p;
+					ret = (size_t)tlen;
+					len = fy_atom_format_text_n(&fyt->handle,
+							fyt->text0, ret + 1);
+				}
+			}
+		}
+	}
 
-	fyt->text_len = ret;
+	/* use only the text that the formatter wrote */
+	if (len < 0) {
+		free(fyt->text0);
+		fyt->text_len = 0;
+		fyt->text = fyt->text0 = strdup("");
+		return;
+	}
+	fyt->text0[len] = '\0';
+
+	fyt->text_len = (size_t)len;
 	fyt->text = fyt->text0;
 }
 

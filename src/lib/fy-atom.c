@@ -1324,7 +1324,7 @@ ssize_t fy_atom_format_text_length(struct fy_atom *atom)
 	return (ssize_t)len;
 }
 
-const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
+ssize_t fy_atom_format_text_n(struct fy_atom *atom, char *buf, size_t maxsz)
 {
 	struct fy_atom_iter iter;
 	const struct fy_iter_chunk *ic;
@@ -1332,7 +1332,7 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 	int ret;
 
 	if (!atom || !buf)
-		return NULL;
+		return -1;
 
 	s = buf;
 	e = s + maxsz;
@@ -1351,10 +1351,15 @@ const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
 	fy_atom_iter_finish(&iter);
 
 	if (ret != 0 || s >= e)
-		return NULL;
+		return -1;
 	*s = '\0';
 
-	return buf;
+	return (ssize_t)(s - buf);
+}
+
+const char *fy_atom_format_text(struct fy_atom *atom, char *buf, size_t maxsz)
+{
+	return fy_atom_format_text_n(atom, buf, maxsz) >= 0 ? buf : NULL;
 }
 
 int fy_atom_format_utf8_length(struct fy_atom *atom)
