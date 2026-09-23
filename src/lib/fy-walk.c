@@ -4557,9 +4557,12 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 				if (error)
 					goto err_out;
 
-				if (outputr)
+				if (outputr) {
 					fy_walk_result_refs_add_flattened(output, outputr);
-				else {
+					/* a condition keeps the left item one time */
+					if (fy_path_expr_type_is_conditional(expr->type))
+						break;
+				} else {
 					fy_walk_result_free(outputr);
 					outputr = NULL;
 				}
@@ -4590,8 +4593,12 @@ fy_walk_result_lhs_rhs(struct fy_path_exec *fypx,
 			} else
 				FY_IMPOSSIBLE_ABORT();
 
-			if (fwr)
+			if (fwr) {
 				fy_walk_result_refs_add_flattened(output, fwr);
+				/* a condition keeps the left item one time */
+				if (fy_path_expr_type_is_conditional(expr->type))
+					break;
+			}
 		}
 	}
 
