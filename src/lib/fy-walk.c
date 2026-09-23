@@ -1725,7 +1725,7 @@ fy_path_expr_to_node_internal(struct fy_document *fyd, struct fy_path_expr *expr
 	const char *style = "";
 	const char *text;
 	size_t len;
-	struct fy_node *fyn = NULL, *fyn2 = NULL, *fyn_seq = NULL;
+	struct fy_node *fyn = NULL, *fyn2 = NULL, *fyn_seq = NULL, *fyn_key = NULL;
 	int rc;
 
 	text = fy_token_get_text(expr->fyt, &len);
@@ -1788,21 +1788,22 @@ fy_path_expr_to_node_internal(struct fy_document *fyd, struct fy_path_expr *expr
 		fyn2 = NULL;
 	}
 
-	if (expr->type != fpet_method) {
-		rc = fy_node_mapping_append(fyn,
-				fy_node_create_scalar(fyd, fy_path_expr_type_txt[expr->type], FY_NT),
-				fyn_seq);
-	} else {
-		rc = fy_node_mapping_append(fyn,
-				fy_node_create_scalarf(fyd, "%s()", expr->fym->name),
-				fyn_seq);
-	}
+	if (expr->type != fpet_method)
+		fyn_key = fy_node_create_scalar(fyd, fy_path_expr_type_txt[expr->type], FY_NT);
+	else
+		fyn_key = fy_node_create_scalarf(fyd, "%s()", expr->fym->name);
+	if (!fyn_key)
+		goto err_out;
+
+	rc = fy_node_mapping_append(fyn, fyn_key, fyn_seq);
 	if (rc)
 		goto err_out;
 
 	return fyn;
 
 err_out:
+	fy_node_free(fyn_key);
+	fy_node_free(fyn2);
 	fy_node_free(fyn_seq);
 	fy_node_free(fyn);
 	return NULL;
