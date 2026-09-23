@@ -2643,7 +2643,7 @@ common_builtin_collection_exec(const struct fy_method *fym,
 {
 	enum fy_method_idx midx;
 	struct fy_walk_result *output = NULL;
-	struct fy_walk_result *fwr, *fwrn, *fwrt;
+	struct fy_walk_result *fwr, *fwrn = NULL, *fwrt;
 	struct fy_path_expr *expr_arg;
 	bool match, done;
 	int input_count, match_count;
@@ -2789,6 +2789,8 @@ out:
 err_out:
 	if (errorp)
 		*errorp = true;
+	/* the result of the argument, when a later step fails */
+	fy_walk_result_free(fwrn);
 	fy_walk_result_free(output);
 	output = NULL;
 	goto out;
