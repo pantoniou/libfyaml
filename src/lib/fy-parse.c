@@ -4067,6 +4067,11 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	/* are we ended with EOF? */
 	ends_with_eof = starts_with_eof || (c == FYUG_EOF && !fyp_is_lb(fyp, lastc) && !breaks);
 
+	/* a NUL ends the content without a line break or an EOF,
+	 * so verify the storage hint */
+	if (c == 0)
+		has_weird_nl = true;
+
 	/* detect wrongly indented block scalar */
 	if (!fy_is_z(c) && !(!empty || fyp_column(fyp) <= fyp->indent || c == '#' || doc_start_end_detected)) {
 		FYP_MARK_ERROR(fyp, &handle.start_mark, &handle.end_mark, FYEM_SCAN,
