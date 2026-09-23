@@ -4356,7 +4356,7 @@ fy_node_by_path_internal(struct fy_node *fyn,
 		         enum fy_node_walk_flags flags)
 {
 	enum fy_node_walk_flags ptr_flags;
-	struct fy_node *fynt, *fyni;
+	struct fy_node *fynt, *fyni, *fynm;
 	const char *s, *e, *ss, *ee, *p;
 	char *end_idx, *json_key, *t, *uri_path;
 	char c;
@@ -4571,9 +4571,19 @@ fy_node_by_path_internal(struct fy_node *fyn,
 			if (fy_node_walk_marker_from_flags(flags) >=
 			    FY_NODE_MERGE_ALIAS_DEPTH_MAX)
 				goto out;
+
+			/* a merge key of this mapping is in progress, it is a loop */
+			if (fynt->marks & FY_BIT(FYNWF_MERGE_MARKER)) {
+				fyn = NULL;
+				goto out;
+			}
+
 			fyn = fy_node_mapping_lookup_by_string(fynt, "<<", 2);
 			if (!fyn)
 				goto out;
+
+			fynt->marks |= FY_BIT(FYNWF_MERGE_MARKER);
+			fynm = fynt;
 
 			if (fy_node_is_alias(fyn)) {
 
@@ -4597,6 +4607,8 @@ fy_node_by_path_internal(struct fy_node *fyn,
 				}
 			} else
 				fyn = NULL;
+
+			fynm->marks &= ~FY_BIT(FYNWF_MERGE_MARKER);
 		}
 		break;
 
