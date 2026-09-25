@@ -28,7 +28,7 @@
 #include "fy-check.h"
 #include "libfyaml-test-alloc-fail.h"
 
-#if defined(__linux__)
+#if defined(__linux__) && defined(HAVE_GENERIC)
 /* Test: gh#344 - dump a deep collection with source markers. */
 START_TEST(fuzz_issue_344_deep_primitive_dump_repro)
 {
@@ -1268,6 +1268,7 @@ static void issue_382_scenario(unsigned int nth)
 			FYPCF_DEFAULT_VERSION_1_3 | FYPCF_JSON_NONE);
 }
 
+#ifdef HAVE_GENERIC
 static void issue_383_scenario(unsigned int nth)
 {
 	static const char yaml[] =
@@ -1314,6 +1315,7 @@ static void issue_383_scenario(unsigned int nth)
 	fy_generic_builder_destroy(gb);
 	fy_parser_destroy(fyp);
 }
+#endif
 
 static void issue_384_scenario(unsigned int nth)
 {
@@ -1726,7 +1728,7 @@ END_TEST
 /* Test: gh#383 - a bottom comment that fails to be copied. */
 START_TEST(fuzz_issue_383_bottom_comment_repro)
 {
-#ifdef HAVE_LINKER_WRAP_MALLOC
+#if defined(HAVE_LINKER_WRAP_MALLOC) && defined(HAVE_GENERIC)
 	alloc_fail_sweep(issue_383_scenario, 1024);
 #endif
 }
@@ -4772,7 +4774,9 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_409_ypath_alias_holds_itself_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
+#ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_344_deep_primitive_dump_repro);
+#endif
 #endif
 #ifdef HAVE_REFLECTION
 	fy_check_testcase_add_test(ctc, fuzz_issue_341_dependent_type_cycle_repro);
