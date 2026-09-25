@@ -27,9 +27,11 @@ extern "C" {
  *
  * **Compile-time attributes**
  *
- * - ``FY_ALIGNED_TO(x)``   — apply an alignment attribute to a variable or
- *   type; expands to ``__attribute__((aligned(x)))`` on GCC/Clang and
- *   ``__declspec(align(x))`` on MSVC
+ * - ``FY_ALIGNED_TO(x)``   — apply an alignment attribute to a variable,
+ *   struct field or struct; expands to ``__attribute__((aligned(x)))`` on
+ *   GCC/Clang and ``__declspec(align(x))`` on MSVC. Place it before the
+ *   declaration (or right after ``struct``), since MSVC does not accept it
+ *   after the declarator
  * - ``FY_CACHELINE_ALIGN`` — shorthand for cache-line (64-byte) alignment,
  *   useful for preventing false sharing between fields accessed concurrently
  *   by different threads
@@ -62,16 +64,22 @@ extern "C" {
  *
  * Expands to the appropriate compiler-specific alignment attribute:
  * - GCC/Clang: ``__attribute__((aligned(x)))``
- * - MSVC:      should be ``__declspec(align(x))`` but MSVC does not support trailing alignment...
+ * - MSVC:      ``__declspec(align(x))``
  * - Other:     empty (no enforced alignment)
  *
- * @x: Required alignment in bytes (must be a power of two).
+ * MSVC only accepts the attribute in leading position, so always place it
+ * before the declaration, or right after ``struct`` for a struct type::
+ *
+ *   FY_ALIGNED_TO(16) uint64_t mem[];
+ *   struct FY_ALIGNED_TO(32) foo { ... };
+ *
+ * @x: Required alignment in bytes (must be a power of two, and a literal
+ *     for MSVC).
  */
 #if defined(__GNUC__) || defined(__clang__)
 #define FY_ALIGNED_TO(x) __attribute__ ((aligned(x)))
 #elif defined(_MSC_VER)
-// #define FY_ALIGNED_TO(x) __declspec(align(x))
-#define FY_ALIGNED_TO(x) /* nothing - MSVC doesn't support trailing alignment */
+#define FY_ALIGNED_TO(x) __declspec(align(x))
 #else
 #define FY_ALIGNED_TO(x) /* nothing */
 #endif

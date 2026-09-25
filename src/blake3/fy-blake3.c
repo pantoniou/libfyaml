@@ -15,7 +15,7 @@
 #include <libfyaml/libfyaml-blake3.h>
 
 struct fy_blake3_hasher {
-	uint8_t output[FY_BLAKE3_OUT_LEN] FY_CACHELINE_ALIGN;
+	FY_CACHELINE_ALIGN uint8_t output[FY_BLAKE3_OUT_LEN];
 	struct fy_blake3_hasher_cfg cfg;
 	struct blake3_host_state *hs;
 	struct blake3_hasher *hasher;

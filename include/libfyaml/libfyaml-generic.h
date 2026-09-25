@@ -547,7 +547,7 @@ typedef struct fy_generic {
  * @failsafe_str are present only when the corresponding %FYGIF_* bit
  * is set in @flags.
  */
-typedef struct fy_generic_indirect {
+typedef FY_GENERIC_CONTAINER_ALIGNMENT struct fy_generic_indirect {
 	fy_generic_value flags;				/* styling and existence flags */
 	union {
 		fy_generic vindirect[FYGIIDX_MAX];	/* an array for ease of use */
@@ -564,7 +564,7 @@ typedef struct fy_generic_indirect {
 			fy_generic bottom_comment;	/* the bottom comment */
 		};
 	};
-} fy_generic_indirect FY_GENERIC_CONTAINER_ALIGNMENT;
+} fy_generic_indirect;
 
 /* fy_generic_indirect flags — indicate which optional metadata fields are present */
 #define FYGIF_VALUE		FY_BIT(FYGIIDX_VALUE)		/* @value field is present */
@@ -1389,10 +1389,10 @@ static inline enum fy_generic_type fy_generic_get_type(fy_generic v)
  * Do not rearrange fields: the @count / @items layout is shared with
  * &fy_generic_collection and assumed in various bithack operations.
  */
-typedef struct fy_generic_sequence {
+typedef FY_GENERIC_CONTAINER_ALIGNMENT struct fy_generic_sequence {
 	size_t count;
 	fy_generic items[];
-} fy_generic_sequence FY_GENERIC_CONTAINER_ALIGNMENT;
+} fy_generic_sequence;
 
 /**
  * typedef fy_generic_map_pair - A key/value pair within a generic mapping.
@@ -1416,10 +1416,10 @@ typedef union fy_generic_map_pair {
  * &fy_generic_map_pair elements. The allocation must remain 16-byte aligned.
  * Do not rearrange fields.
  */
-typedef struct fy_generic_mapping {
+typedef FY_GENERIC_CONTAINER_ALIGNMENT struct fy_generic_mapping {
 	size_t count;
 	fy_generic_map_pair pairs[];
-} fy_generic_mapping FY_GENERIC_CONTAINER_ALIGNMENT;
+} fy_generic_mapping;
 
 /**
  * DOC: fy_generic_collection - Generic view over a sequence or mapping buffer
@@ -1429,10 +1429,10 @@ typedef struct fy_generic_mapping {
  * key/value generics. It is used when processing sequences and mappings
  * uniformly without knowing the concrete type.
  */
-typedef struct fy_generic_collection {
+typedef FY_GENERIC_CONTAINER_ALIGNMENT struct fy_generic_collection {
 	size_t count;	/* *2 for mapping */
 	fy_generic items[];
-} fy_generic_collection FY_GENERIC_CONTAINER_ALIGNMENT;
+} fy_generic_collection;
 
 /**
  * typedef fy_generic_sized_string - A string with an explicit byte count.

@@ -30,27 +30,27 @@ enum blake3_flags {
 	DERIVE_KEY_MATERIAL = 1 << 6,
 };
 
-typedef struct blake3_chunk_state {
-	uint32_t cv[8] BLAKE3_ALIGN;
-	uint8_t buf[BLAKE3_BLOCK_LEN] BLAKE3_ALIGN;
+typedef struct BLAKE3_ALIGN blake3_chunk_state {
+	BLAKE3_ALIGN uint32_t cv[8];
+	BLAKE3_ALIGN uint8_t buf[BLAKE3_BLOCK_LEN];
 	uint64_t chunk_counter;
 	uint8_t buf_len;
 	uint8_t blocks_compressed;
 	uint8_t flags;
-} blake3_chunk_state BLAKE3_ALIGN;
+} blake3_chunk_state;
 
-typedef struct blake3_hasher {
+typedef struct BLAKE3_ALIGN blake3_hasher {
 	struct blake3_host_state *hs;
-	uint32_t key[8] BLAKE3_ALIGN;
-	blake3_chunk_state chunk BLAKE3_ALIGN;
+	BLAKE3_ALIGN uint32_t key[8];
+	BLAKE3_ALIGN blake3_chunk_state chunk;
 	// The stack size is MAX_DEPTH + 1 because we do lazy merging. For example,
 	// with 7 chunks, we have 3 entries in the stack. Adding an 8th chunk
 	// requires a 4th entry, rather than merging everything down to 1, because we
 	// don't know whether more input is coming. This is different from how the
 	// reference implementation does things.
-	uint8_t cv_stack[(BLAKE3_MAX_DEPTH + 1) * BLAKE3_OUT_LEN] BLAKE3_ALIGN;
+	BLAKE3_ALIGN uint8_t cv_stack[(BLAKE3_MAX_DEPTH + 1) * BLAKE3_OUT_LEN];
 	uint8_t cv_stack_len;
-} blake3_hasher BLAKE3_ALIGN;
+} blake3_hasher;
 
 typedef void (*blake3_hash_many_f)(const uint8_t *const *inputs, size_t num_inputs,
 				   size_t blocks, const uint32_t key[8], uint64_t counter,

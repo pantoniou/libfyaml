@@ -51,7 +51,8 @@ struct fy_durable_chunk_hdr {
 	uint64_t usable;			/* bump limit: bytes from this header to chunk end */
 	FY_ATOMIC(uint64_t) flags;		/* FYDCF_* */
 	FY_ATOMIC(size_t) next;			/* bump offset, measured from this header */
-	FY_ATOMIC(struct fy_durable_chunk_hdr *) next_chunk;	/* chunk-list link (fixed addr) */
+	/* next is only 4 bytes on 32-bit targets; keep the link 8-byte aligned */
+	FY_ALIGNED_TO(8) FY_ATOMIC(struct fy_durable_chunk_hdr *) next_chunk;	/* chunk-list link (fixed addr) */
 	uint8_t content_hash[32];		/* BLAKE3([DATA0..next]), written once when sealed */
 };
 
