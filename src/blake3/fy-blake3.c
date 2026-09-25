@@ -26,7 +26,9 @@ struct fy_blake3_hasher *fy_blake3_hasher_create(const struct fy_blake3_hasher_c
 	struct fy_blake3_hasher *fyh = NULL;
 	blake3_host_config hs_cfg;
 
-	fyh = malloc(sizeof(*fyh));
+	/* over-aligned (the cache-line aligned output), so malloc() is not
+	 * enough: gcc 15 zeroes it with aligned AVX stores */
+	fyh = fy_align_alloc(_Alignof(struct fy_blake3_hasher), sizeof(*fyh));
 	if (!fyh)
 		goto err_out;
 
@@ -73,7 +75,7 @@ void fy_blake3_hasher_destroy(struct fy_blake3_hasher *fyh)
 		blake3_hasher_destroy(fyh->hasher);
 	if (fyh->hs)
 		blake3_host_state_destroy(fyh->hs);
-	free(fyh);
+	fy_align_free(fyh);
 }
 
 void fy_blake3_hasher_update(struct fy_blake3_hasher *fyh, const void *input, size_t input_len)
