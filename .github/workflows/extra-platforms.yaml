@@ -87,7 +87,7 @@ jobs:
               dnf install -y epel-release dnf-plugins-core &&
               dnf config-manager --set-enabled crb &&
               dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
-              libyaml-devel check-devel bash jq diffutils findutils
+              libyaml-devel check-devel check-static bash jq diffutils findutils
 
           - name: Alpine (musl)
             image: alpine:latest

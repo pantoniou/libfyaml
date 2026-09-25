@@ -15,6 +15,11 @@ TESTING=${TESTING:-ON}
 JOBS=${JOBS:-2}
 
 uname -a
+
+# OpenBSD's default per-process data limit is too small for clang on the
+# larger test sources, so raise it to the hard limit where we can
+ulimit -d "$(ulimit -H -d)" 2>/dev/null || true
+
 cmake --version | head -n 1
 
 # libclang and the python bindings are optional and not available everywhere
