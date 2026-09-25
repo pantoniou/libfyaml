@@ -191,6 +191,49 @@ dt_run_parallel(fy_work_exec_fn fn, void *jobs, size_t jobsz, int count)
 	fy_thread_pool_destroy(tp);
 }
 
+/* region_base 0 selects the platform default base; check it is usable */
+START_TEST(durable_default_base)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	uint64_t base;
+	const char *s1;
+	uintptr_t a1;
+
+	base = fy_default_fixed_vm_base(0);
+	if (!base) {
+		fprintf(stderr, "SKIP: no default durable arena base on this platform\n");
+		return;
+	}
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, 0, 0);
+	if (!da) {
+		rm_rf(dir);
+		durable_unavailable();
+		return;
+	}
+	ck_assert_uint_eq(fy_allocator_region_base(da), base);
+
+	s1 = fy_allocator_store(da, FY_ALLOC_TAG_DEFAULT, "at the default base", 20, 16);
+	ck_assert_ptr_ne(s1, NULL);
+	a1 = (uintptr_t)s1;
+	ck_assert_uint_ge(a1, base);
+	ck_assert_uint_lt(a1, base + TEST_REGION_SIZE);
+	ck_assert_int_eq(fy_allocator_sync(da), 0);
+	fy_allocator_destroy(da);
+
+	/* reopen with the default again: same base, same data */
+	da = open_test_arena(dir, 0, 0);
+	ck_assert_ptr_ne(da, NULL);
+	ck_assert_uint_eq(fy_allocator_region_base(da), base);
+	ck_assert_mem_eq((const void *)a1, "at the default base", 20);
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
+
 START_TEST(durable_roundtrip_fixed_base)
 {
 	char dir[256];
@@ -2157,6 +2200,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, dedup_cross_session);
 	fy_check_testcase_add_test(ctc, dedup_cross_process);
 	fy_check_testcase_add_test(ctc, dedup_resize_under_load);
+	fy_check_testcase_add_test(ctc, durable_default_base);
 	fy_check_testcase_add_test(ctc, durable_roundtrip_fixed_base);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, durable_builder_roundtrip);
