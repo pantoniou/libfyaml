@@ -110,7 +110,9 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	size_page_align = fy_size_t_align(fy_mremap_useable_arena_size(mra, size), mra->pagesz);
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
-		mran = malloc(size_page_align);
+		/* the arena header is 16-byte aligned (mem[]); malloc() only
+		 * guarantees 8 bytes on some 32-bit targets */
+		mran = fy_align_alloc(_Alignof(struct fy_mremap_arena), size_page_align);
 		if (!mran)
 			return NULL;
 		memset(mran, 0, sizeof(*mran));
@@ -176,7 +178,7 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
 #endif
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
-		free(mran);
+		fy_align_free(mran);
 		break;
 
 	case FYMRAT_MMAP:
