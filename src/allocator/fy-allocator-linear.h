@@ -17,7 +17,7 @@
 #include "fy-allocator.h"
 
 struct fy_linear_allocator {
-	FY_ATOMIC(size_t) next FY_CACHELINE_ALIGN;	// hot hot hot
+	FY_CACHELINE_ALIGN FY_ATOMIC(size_t) next;	// hot hot hot
 	struct fy_allocator a;
 	struct fy_linear_allocator_cfg cfg;
 	void *alloc;

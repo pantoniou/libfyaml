@@ -99,8 +99,8 @@ INLINE uint8_t chunk_state_maybe_start_flag(const blake3_chunk_state *self) {
 }
 
 typedef struct {
-  uint32_t input_cv[8] BLAKE3_ALIGN;
-  uint8_t block[BLAKE3_BLOCK_LEN] BLAKE3_ALIGN;
+  BLAKE3_ALIGN uint32_t input_cv[8];
+  BLAKE3_ALIGN uint8_t block[BLAKE3_BLOCK_LEN];
   uint64_t counter;
   uint8_t block_len;
   uint8_t flags;
@@ -126,7 +126,7 @@ INLINE output_t make_output(const uint32_t input_cv[BLAKE3_OUT_WORDS],
 // bytes. For that reason, chaining values in the CV stack are represented as
 // bytes.
 INLINE void output_chaining_value(const blake3_hasher *hasher, output_t *self, uint8_t cv[BLAKE3_OUT_LEN]) {
-  uint32_t cv_words[BLAKE3_OUT_WORDS] BLAKE3_ALIGN;
+  BLAKE3_ALIGN uint32_t cv_words[BLAKE3_OUT_WORDS];
   memcpy(cv_words, self->input_cv, BLAKE3_OUT_LEN);
   memset(self->block + self->block_len, 0, BLAKE3_BLOCK_LEN - self->block_len);
   blake3_compress_in_place(cv_words, self->block, self->block_len,
@@ -138,7 +138,7 @@ INLINE void output_root_bytes(const blake3_hasher *hasher, output_t *self, uint6
                               size_t out_len) {
   uint64_t output_block_counter = seek / 64;
   size_t offset_within_block = seek % 64;
-  uint8_t wide_buf[64] BLAKE3_ALIGN;
+  BLAKE3_ALIGN uint8_t wide_buf[64];
   while (out_len > 0) {
     memset(self->block + self->block_len, 0, BLAKE3_BLOCK_LEN - self->block_len);
     blake3_compress_xof(self->input_cv, self->block, self->block_len,
@@ -478,7 +478,7 @@ INLINE void hasher_init_base(blake3_host_state *hs, blake3_hasher *self, const u
   self->cv_stack_len = 0;
 }
 
-static const uint32_t IV[8] BLAKE3_ALIGN = {
+static BLAKE3_ALIGN const uint32_t IV[8] = {
   B3_IV_0, B3_IV_1, B3_IV_2, B3_IV_3,
   B3_IV_4, B3_IV_5, B3_IV_6, B3_IV_7,
 };
@@ -487,7 +487,7 @@ void HASHER_OP(blake3_hasher_init) (blake3_host_state *hs, blake3_hasher *self) 
 
 void HASHER_OP(blake3_hasher_init_keyed) (blake3_host_state *hs, blake3_hasher *self,
                               const uint8_t key[BLAKE3_KEY_LEN]) {
-  uint32_t key_words[8] BLAKE3_ALIGN;
+  BLAKE3_ALIGN uint32_t key_words[8];
   load_key_words(key, key_words);
   hasher_init_base(hs, self, key_words, KEYED_HASH);
 }
@@ -595,7 +595,7 @@ void HASHER_OP(blake3_hasher_update) (blake3_hasher *self, const void *input,
     // chunk and proceed. In this case we know it's not the root.
     if (input_len > 0) {
       output_t output = chunk_state_output(&self->chunk);
-      uint8_t chunk_cv[32] BLAKE3_ALIGN;
+      BLAKE3_ALIGN uint8_t chunk_cv[32];
       output_chaining_value(self, &output, chunk_cv);
       hasher_push_cv(self, chunk_cv, self->chunk.chunk_counter);
       chunk_state_reset(&self->chunk, self->key, self->chunk.chunk_counter + 1);
@@ -647,13 +647,13 @@ void HASHER_OP(blake3_hasher_update) (blake3_hasher *self, const void *input,
       chunk_state.chunk_counter = self->chunk.chunk_counter;
       chunk_state_update(self, &chunk_state, input_bytes, subtree_len);
       output_t output = chunk_state_output(&chunk_state);
-      uint8_t cv[BLAKE3_OUT_LEN] BLAKE3_ALIGN;
+      BLAKE3_ALIGN uint8_t cv[BLAKE3_OUT_LEN];
       output_chaining_value(self, &output, cv);
       hasher_push_cv(self, cv, chunk_state.chunk_counter);
     } else {
       // This is the high-performance happy path, though getting here depends
       // on the caller giving us a long enough input.
-      uint8_t cv_pair[2 * BLAKE3_OUT_LEN] BLAKE3_ALIGN;
+      BLAKE3_ALIGN uint8_t cv_pair[2 * BLAKE3_OUT_LEN];
       compress_subtree_to_parent_node(self, input_bytes, subtree_len, self->key,
                                       self->chunk.chunk_counter,
                                       self->chunk.flags, cv_pair);
@@ -714,7 +714,7 @@ void HASHER_OP(blake3_hasher_finalize_seek) (const blake3_hasher *self, uint64_t
   }
   while (cvs_remaining > 0) {
     cvs_remaining -= 1;
-    uint8_t parent_block[BLAKE3_BLOCK_LEN] BLAKE3_ALIGN;
+    BLAKE3_ALIGN uint8_t parent_block[BLAKE3_BLOCK_LEN];
     memcpy(parent_block, &self->cv_stack[cvs_remaining * 32], 32);
     output_chaining_value(self, &output, &parent_block[32]);
     output = parent_output(parent_block, self->key, self->chunk.flags);
