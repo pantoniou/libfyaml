@@ -12,6 +12,9 @@ on:
     branches: [ master, stable, devel ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
+
 jobs:
   build:
     name: >-
@@ -35,7 +38,7 @@ jobs:
         git config --global core.eol lf
 
     - name: "Checkout"
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: "Install uv"
       uses: astral-sh/setup-uv@v5
