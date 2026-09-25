@@ -23,6 +23,7 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sys/resource.h>
@@ -1753,10 +1754,32 @@ int fy_munmap(void *addr, size_t len)
 
 #endif /* !_WIN32 */
 
+#if !defined(_WIN32) && !defined(__APPLE__)
+/* extend the file without reserving blocks, for when fallocate is missing */
+static int fy_fallocate_truncate(int fd, off_t offset, off_t len)
+{
+	struct stat st;
+
+	if (fstat(fd, &st) < 0)
+		return errno;
+	if (st.st_size >= offset + len)
+		return 0;
+	if (ftruncate(fd, offset + len) < 0)
+		return errno;
+	return 0;
+}
+#endif
+
 int fy_fallocate(int fd, off_t offset, off_t len)
 {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__)
-	return posix_fallocate(fd, offset, len);
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+	int rc;
+
+	rc = posix_fallocate(fd, offset, len);
+	/* not supported by this platform or filesystem (e.g. ZFS): just extend */
+	if (rc == ENOSYS || rc == EOPNOTSUPP || rc == EINVAL)
+		rc = fy_fallocate_truncate(fd, offset, len);
+	return rc;
 #elif defined(__APPLE__)
 	fstore_t fst;
 
@@ -1773,10 +1796,12 @@ int fy_fallocate(int fd, off_t offset, off_t len)
 	if (ftruncate(fd, offset + len) < 0)
 		return errno;
 	return 0;
-#else
-	/* not supported for anything else */
+#elif defined(_WIN32)
 	(void)fd; (void)offset; (void)len;
 	return ENOSYS;
+#else
+	/* no preallocation primitive (e.g. OpenBSD): just extend the file */
+	return fy_fallocate_truncate(fd, offset, len);
 #endif
 }
 
