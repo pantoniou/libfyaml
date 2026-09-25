@@ -13,6 +13,10 @@
 #ifdef _WIN32
 #include <malloc.h>
 #endif
+#ifdef __sun
+/* illumos/Solaris declare alloca() only in <alloca.h> */
+#include <alloca.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

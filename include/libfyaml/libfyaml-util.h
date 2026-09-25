@@ -46,6 +46,10 @@ extern "C" {
 #include <limits.h>
 #include <assert.h>
 #include <float.h>
+#ifdef __sun
+/* illumos/Solaris declare alloca() only in <alloca.h> */
+#include <alloca.h>
+#endif
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 #include <unistd.h>
