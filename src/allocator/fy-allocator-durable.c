@@ -903,15 +903,22 @@ fy_durable_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 	return top;
 }
 
-/* unmap every chunk this process mapped for a region, then drop the reservation */
+/*
+ * Drop the region: a single munmap() of the reservation also removes every
+ * chunk mapped inside it. Do not unmap the chunks one by one first: that
+ * leaves holes, and OpenBSD's munmap() fails with EINVAL (unmapping nothing)
+ * on a range that is not entirely mapped, which kept the base reserved.
+ */
 static void fy_durable_region_cleanup(struct fy_durable_region *rg)
 {
 	uint64_t i;
 
 	if (rg->chunks) {
-		for (i = 0; i < rg->max_chunks; i++) {
-			if (fy_atomic_load(&rg->chunks[i]))
-				fy_munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+		if (!rg->region) {
+			for (i = 0; i < rg->max_chunks; i++) {
+				if (fy_atomic_load(&rg->chunks[i]))
+					fy_munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+			}
 		}
 		free(rg->chunks);
 		rg->chunks = NULL;
@@ -2087,7 +2094,7 @@ static void fy_durable_prune_chunks_after(struct fy_durable_allocator *da,
 	for (i = max_gen + 1; i < total_gen && i < rg->max_chunks; i++) {
 		hdr = fy_atomic_load(&rg->chunks[i]);
 		if (hdr) {
-			fy_munmap(fy_durable_chunk_base(rg, i), rg->chunk_size);
+			/* map the reservation back over it; no munmap() hole */
 			fy_atomic_store(&rg->chunks[i], NULL);
 			fy_durable_unmap_to_reserved(rg, i);
 		}
