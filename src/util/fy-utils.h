@@ -254,6 +254,9 @@ int fy_rename(const char *old_file, const char *new_file, bool no_replace);
 /* atomically exchange two existing paths (RENAME_EXCHANGE); -1/ENOSYS if unsupported */
 int fy_rename_exchange(const char *file_a, const char *file_b);
 
+/* true if fy_rename_exchange() is available on this platform */
+bool fy_rename_exchange_supported(void);
+
 /* wrapper for realpath */
 const char *fy_realpath(const char *path, char *buf, size_t bufsize);
 

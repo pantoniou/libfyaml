@@ -1572,6 +1572,12 @@ int fy_durable_arena_gc(const char *dir_in)
 	if (!dir_in)
 		return -1;
 
+	/* the final swap needs an atomic directory exchange */
+	if (!fy_rename_exchange_supported()) {
+		errno = ENOSYS;
+		return -1;
+	}
+
 	/* canonicalize so that everyhing is stable */
 	if (!fy_realpath(dir_in, dir, sizeof(dir)))
 		return -1;
