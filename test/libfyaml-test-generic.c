@@ -6767,7 +6767,12 @@ END_TEST
 
 /* Test: fy_stringf() / fy_vstringf() with and without a builder */
 
-static fy_generic vstringf_local(const char *fmt, ...)
+/*
+ * The local result lives on this function's stack, so check it here; it
+ * cannot be returned (only short strings fit in-place in the generic, and
+ * on 32-bit targets that is just a few bytes).
+ */
+static void check_vstringf_local(const char *expected, const char *fmt, ...)
 {
 	va_list ap;
 	fy_generic v;
@@ -6776,8 +6781,8 @@ static fy_generic vstringf_local(const char *fmt, ...)
 	v = fy_vstringf(fmt, ap);
 	va_end(ap);
 
-	/* Return a copy that remains valid after this function returns. */
-	return fy_to_generic(fy_cast(v, ""));
+	ck_assert(fy_generic_is_string(v));
+	ck_assert_str_eq(fy_cast(v, ""), expected);
 }
 
 static fy_generic vstringf_gb(struct fy_generic_builder *gb, const char *fmt, ...)
@@ -6843,9 +6848,7 @@ START_TEST(stringf_op)
 	}
 
 	/* Check both va_list forms. */
-	v = vstringf_local("%s/%d", "path", 9);
-	ck_assert(fy_generic_is_string(v));
-	ck_assert_str_eq(fy_cast(v, ""), "path/9");
+	check_vstringf_local("path/9", "%s/%d", "path", 9);
 
 	v = vstringf_gb(gb, "%s/%d", "path", 9);
 	ck_assert(fy_generic_is_string(v));
