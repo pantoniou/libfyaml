@@ -211,6 +211,7 @@ clang_map_primary_type_kind(enum CXTypeKind clang_type_kind)
 	case CXType_Bool:
 		return FYTK_BOOL;
 	case CXType_Char_S:
+	case CXType_Char_U:	/* plain char where it is unsigned (arm, ppc, ...) */
 		return FYTK_CHAR;
 	case CXType_UChar:
 		return FYTK_UCHAR;
@@ -379,6 +380,7 @@ clang_type_kind_signess(enum CXTypeKind clang_type_kind)
 {
 	switch (clang_type_kind) {
 	case CXType_Bool:
+	case CXType_Char_U:
 	case CXType_UChar:
 	case CXType_UShort:
 	case CXType_UInt:
@@ -505,6 +507,7 @@ clang_type_is_primitive(CXType type)
 	case CXType_Void:
 	case CXType_Bool:
 	case CXType_Char_S:
+	case CXType_Char_U:
 	case CXType_UChar:
 	case CXType_SChar:
 	case CXType_Short:
