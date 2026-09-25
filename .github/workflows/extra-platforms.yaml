@@ -207,7 +207,7 @@ jobs:
         msystem: UCRT64
         update: true
         install: >-
-          git bash jq
+          git bash jq diffutils
           mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
           mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-libyaml mingw-w64-ucrt-x86_64-check
 
