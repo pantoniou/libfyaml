@@ -2174,7 +2174,8 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 	double dv;
 	char *tbuf, *t;
 	bool is_json, had_dot, had_pfx;
-	char cn, underscore_sep;
+	int cn;		/* next byte, or -1 at the end */
+	char underscore_sep;
 
 	if (len == FY_NT)
 		len = strlen(text);
@@ -2373,7 +2374,7 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 
 	dec = s;
 	if (s < e && *s == '0') {
-		cn = (s + 1) < e ? s[1] : -1;
+		cn = (s + 1) < e ? (unsigned char)s[1] : -1;
 
 		switch (schema) {
 		case FYGS_YAML1_2_JSON:
