@@ -1796,8 +1796,14 @@ static size_t fy_stack_size_attr_getstack(void)
 #if defined(__linux__) || defined(__NetBSD__) || defined(__DragonFly__)
 	rc = pthread_getattr_np(pthread_self(), &attr);
 #else
-	pthread_attr_init(&attr);
-	pthread_attr_get_np(pthread_self(), &attr);
+	rc = pthread_attr_init(&attr);
+	if (rc)
+		goto out;
+	rc = pthread_attr_get_np(pthread_self(), &attr);
+	if (rc) {
+		pthread_attr_destroy(&attr);
+		goto out;
+	}
 #endif
 	if (rc)
 		goto out;
