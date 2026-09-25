@@ -448,7 +448,19 @@ fy_term_set_raw(int fd, struct termios *oldt)
 
 	newt = t;
 
+#if defined(__sun)
+	/* illumos/Solaris have no cfmakeraw(); do what it does */
+	newt.c_iflag &= ~(IMAXBEL | IGNBRK | BRKINT | PARMRK | ISTRIP |
+			  INLCR | IGNCR | ICRNL | IXON);
+	newt.c_oflag &= ~OPOST;
+	newt.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+	newt.c_cflag &= ~(CSIZE | PARENB);
+	newt.c_cflag |= CS8;
+	newt.c_cc[VMIN] = 1;
+	newt.c_cc[VTIME] = 0;
+#else
 	cfmakeraw(&newt);
+#endif
 
 	ret = tcsetattr(fd, TCSANOW, &newt);
 	if (ret != 0)
