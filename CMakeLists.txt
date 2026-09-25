@@ -1899,13 +1899,17 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_MANDIR}/man3
 )
 if(NOT WIN32)
+    # CMAKE_INSTALL_MANDIR may be absolute (e.g. Nix split outputs); only
+    # prefix it when it is relative, at install time so --prefix works
     install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-dump.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-filter.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-testsuite.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-join.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-ypath.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 fy-compose.1 WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1)
+        set(_fy_mandir \"${CMAKE_INSTALL_MANDIR}\")
+        if(NOT IS_ABSOLUTE \"\${_fy_mandir}\")
+            set(_fy_mandir \"\${CMAKE_INSTALL_PREFIX}/\${_fy_mandir}\")
+        endif()
+        foreach(_fy_alias fy-dump fy-filter fy-testsuite fy-join fy-ypath fy-compose)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink fy-tool.1 \${_fy_alias}.1
+                            WORKING_DIRECTORY \"\$ENV{DESTDIR}\${_fy_mandir}/man1\")
+        endforeach()
     ")
 endif()
 
