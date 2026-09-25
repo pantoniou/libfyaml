@@ -46,6 +46,9 @@ on:
         default: false
         type: boolean
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
+
 jobs:
   build_wheels:
     name: Build Wheels (${{ matrix.name }})
@@ -102,7 +105,7 @@ jobs:
               LIBFYAML_CMAKE_ARGS=-DCMAKE_C_COMPILER=clang-cl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Windows Clang
         if: runner.os == 'Windows'
@@ -150,7 +153,7 @@ jobs:
           CIBW_ENVIRONMENT_WINDOWS: ${{ matrix.cibw_environment_windows }}
 
       - name: Upload wheel artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-${{ matrix.name }}
           path: wheelhouse/*.whl
@@ -160,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Validate release tag
         shell: bash
@@ -187,7 +190,7 @@ jobs:
           print(f"Validated core release version {raw_version}")
           PY
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -210,7 +213,7 @@ jobs:
         run: python -m build --sdist "${RUNNER_TEMP}/libfyaml-python-sdist"
 
       - name: Upload sdist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sdist
           path: ${{ runner.temp }}/libfyaml-python-sdist/dist/*.tar.gz
@@ -232,7 +235,7 @@ jobs:
 
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true

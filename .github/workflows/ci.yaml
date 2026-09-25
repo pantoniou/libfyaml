@@ -2,13 +2,16 @@ name: Standard Automake CI
 
 on: [push]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
+
 jobs:
   build:
 
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v5
 
     - name: apt-deps
       run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y gcc autoconf automake libtool git make libyaml-dev libltdl-dev pkg-config check python3 python3-pip python3-setuptools
