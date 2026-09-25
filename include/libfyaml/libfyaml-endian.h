@@ -27,10 +27,13 @@
  *   #endif
  *
  * Supported platforms:
+ *
  * - Linux / Cygwin / OpenBSD / GNU Hurd / Emscripten — via ``<endian.h>``
  * - macOS / iOS — via ``<libkern/OSByteOrder.h>`` + ``<machine/endian.h>``
  * - NetBSD / FreeBSD / DragonFly BSD — via ``<sys/endian.h>``
  * - Windows (MSVC) — via ``<winsock2.h>`` (+ ``<sys/param.h>`` for MinGW)
+ * - anything else (e.g. illumos / Solaris) — via the GCC/Clang predefined
+ *   ``__BYTE_ORDER__`` macros
  *
  * The non-standard ``BYTE_ORDER``, ``BIG_ENDIAN``, and ``LITTLE_ENDIAN``
  * spellings are aliased to the double-underscore variants if needed.
@@ -56,6 +59,11 @@ extern "C" {
 # define __LITTLE_ENDIAN 1234
 # define __BIG_ENDIAN    4321
 # define __BYTE_ORDER    __LITTLE_ENDIAN
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && defined(__ORDER_BIG_ENDIAN__)
+/* no known endian header (e.g. illumos); use the compiler's own macros */
+# define __LITTLE_ENDIAN __ORDER_LITTLE_ENDIAN__
+# define __BIG_ENDIAN    __ORDER_BIG_ENDIAN__
+# define __BYTE_ORDER    __BYTE_ORDER__
 #else
 # error unsupported platform
 #endif
