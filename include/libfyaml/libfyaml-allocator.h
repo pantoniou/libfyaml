@@ -949,11 +949,15 @@ fy_allocator_checkpoint_recover(struct fy_allocator *a,
  * from its published refs head, rewriting the arena as a compacted copy at the
  * same canonical base address.
  *
+ * The compacted arena replaces the live one with an atomic directory exchange,
+ * which is only available on Linux (``renameat2(RENAME_EXCHANGE)``) and macOS
+ * (``RENAME_SWAP``). Elsewhere this fails with errno set to ``ENOSYS``.
+ *
  * @dir: Path to the arena directory.
  *
  * Returns:
  * 0 on success, 1 if another collector currently holds the arena's GC lock, or
- * -1 on error
+ * -1 on error (errno is ``ENOSYS`` if the platform cannot collect)
  */
 int
 fy_durable_arena_gc(const char *dir)

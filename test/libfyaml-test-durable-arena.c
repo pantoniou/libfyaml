@@ -34,6 +34,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <libfyaml.h>
 
 #include "fy-check.h"
+#include "fy-utils.h"
 #include "fy-allocator.h"	/* fy_allocator_get_parent: reach the durable under the dedup wrapper */
 
 #ifdef HAVE_GENERIC
@@ -57,6 +58,15 @@ static void durable_unavailable(void)
 		return;
 	}
 	ck_abort_msg("the durable arena could not be opened");
+}
+
+/* GC needs an atomic directory exchange, which only Linux and macOS have */
+static bool gc_unsupported(void)
+{
+	if (fy_rename_exchange_supported())
+		return false;
+	fprintf(stderr, "SKIP: durable arena GC is not supported on this platform\n");
+	return true;
 }
 #define TEST_REGION_SIZE	(256ULL << 20)	/* 256 MiB -> 256 chunks */
 #define TEST_CHUNK_SIZE		(1ULL << 20)	/* 1 MiB */
@@ -1496,6 +1506,9 @@ START_TEST(gc_basic_compaction)
 	unsigned int chunks_before, chunks_after;
 	int i;
 
+	if (gc_unsupported())
+		return;
+
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
@@ -1560,6 +1573,9 @@ START_TEST(gc_address_stable)
 	fy_generic root;
 	uintptr_t p;
 
+	if (gc_unsupported())
+		return;
+
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
@@ -1605,6 +1621,9 @@ START_TEST(gc_dedup_identity)
 	struct fy_allocator *da;
 	fy_generic sub, root, c0, c1;
 
+	if (gc_unsupported())
+		return;
+
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
@@ -1649,6 +1668,9 @@ START_TEST(gc_empty_noop)
 	char dir[256];
 	struct fy_allocator *da;
 
+	if (gc_unsupported())
+		return;
+
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
@@ -1678,6 +1700,9 @@ START_TEST(gc_stale_staging_cleanup)
 	struct fy_allocator *da;
 	struct stat st;
 	int fd;
+
+	if (gc_unsupported())
+		return;
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
@@ -1727,6 +1752,9 @@ START_TEST(gc_sparse_roundtrip)
 	struct fy_generic_builder *gb;
 	struct fy_allocator *da;
 	fy_generic root;
+
+	if (gc_unsupported())
+		return;
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
