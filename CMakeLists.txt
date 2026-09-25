@@ -120,7 +120,8 @@ function(link_whole_archive_static target_name static_target)
         target_link_libraries(${target_name} PRIVATE
             -Wl,-force_load,$<TARGET_FILE:${static_target}>
         )
-    elseif(WIN32)
+    elseif(WIN32 AND NOT MINGW)
+        # MinGW uses GNU ld and takes the --whole-archive path below
         target_link_libraries(${target_name} PRIVATE ${static_target})
         target_link_options(${target_name} PRIVATE
             "LINKER:/WHOLEARCHIVE:$<TARGET_FILE:${static_target}>"
