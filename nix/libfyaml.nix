@@ -21,9 +21,19 @@ stdenv.mkDerivation {
   # the tree carries its version in .tarball-version (there is no .git here)
   version = lib.strings.trim (builtins.readFile ../.tarball-version);
 
-  # this checkout, without build directories and editor files; use
+  # this checkout, without VCS/editor files, build directories (build,
+  # build-*, but not build-aux) and nix-build result links; use
   # overrideAttrs to build another source
-  src = lib.cleanSource ../.;
+  src = lib.cleanSourceWith {
+    src = lib.cleanSource ../.;
+    filter =
+      path: type:
+      let
+        rel = lib.removePrefix (toString ../. + "/") (toString path);
+      in
+      !(rel == "build" || (lib.hasPrefix "build-" rel && rel != "build-aux" && !(lib.hasInfix "/" rel)))
+      && !(lib.hasPrefix "result" rel && !(lib.hasInfix "/" rel));
+  };
 
   outputs = [
     "out"
