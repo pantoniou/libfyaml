@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Introduction &mdash; libfyaml 1.0.0-alpha7 documentation</title>
+  <title>Introduction &mdash; libfyaml 1.0.0-beta2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4a1a819b"></script>
+      <script src="_static/documentation_options.js?v=a533f0d1"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -48,6 +48,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#core-library-responsibilities">Core Library Responsibilities</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-the-generic-subsystem-exists">Why The Generic Subsystem Exists</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#why-the-reflection-subsystem-exists">Why The Reflection Subsystem Exists</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-platforms">Supported Platforms</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#choosing-the-right-layer">Choosing The Right Layer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#further-reading">Further Reading</a></li>
 </ul>
@@ -324,6 +325,82 @@ handled with a schema such as:</p>
 <p>The corresponding example is <code class="docutils literal notranslate"><span class="pre">examples/intro-reflection-update.c</span></code>.</p>
 <p>The end-to-end workflow, including reflection metadata sources and packed
 representations, is described in <a class="reference internal" href="reflection-guide.html"><span class="doc">Reflection Guide</span></a>.</p>
+</section>
+<section id="supported-platforms">
+<h2>Supported Platforms<a class="headerlink" href="#supported-platforms" title="Link to this heading"></a></h2>
+<p>libfyaml is built and tested on these platforms:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Platform</p></th>
+<th class="head"><p>Versions</p></th>
+<th class="head"><p>Architectures</p></th>
+<th class="head"><p>Compilers</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Linux (Ubuntu)</p></td>
+<td><p>22.04, 24.04, 26.04</p></td>
+<td><p>x86-64, arm64</p></td>
+<td><p>gcc, clang</p></td>
+</tr>
+<tr class="row-odd"><td><p>Linux (other distributions)</p></td>
+<td><p>Debian stable and testing, Fedora, Arch, Rocky Linux 9, Alpine (musl),
+Nix</p></td>
+<td><p>x86-64</p></td>
+<td><p>gcc</p></td>
+</tr>
+<tr class="row-even"><td><p>Linux (other architectures)</p></td>
+<td><p>Ubuntu / Debian</p></td>
+<td><p>i386, armv7, riscv64, ppc64 (big-endian)</p></td>
+<td><p>gcc</p></td>
+</tr>
+<tr class="row-odd"><td><p>macOS</p></td>
+<td><p>15, 26</p></td>
+<td><p>arm64</p></td>
+<td><p>Apple clang, gcc</p></td>
+</tr>
+<tr class="row-even"><td><p>Windows</p></td>
+<td><p>Server 2022, Server 2025, 11</p></td>
+<td><p>x64, arm64, x86 (Win32)</p></td>
+<td><p>MSVC, clang, MinGW-w64 gcc</p></td>
+</tr>
+<tr class="row-odd"><td><p>FreeBSD</p></td>
+<td><p>15.1</p></td>
+<td><p>x86-64</p></td>
+<td><p>clang</p></td>
+</tr>
+<tr class="row-even"><td><p>NetBSD</p></td>
+<td><p>11.0</p></td>
+<td><p>x86-64</p></td>
+<td><p>gcc</p></td>
+</tr>
+<tr class="row-odd"><td><p>OpenBSD</p></td>
+<td><p>7.9</p></td>
+<td><p>x86-64</p></td>
+<td><p>clang</p></td>
+</tr>
+<tr class="row-even"><td><p>illumos (OmniOS)</p></td>
+<td><p>r151058</p></td>
+<td><p>x86-64</p></td>
+<td><p>gcc</p></td>
+</tr>
+</tbody>
+</table>
+<p>Pushes and pull requests build a subset of these. The full CMake matrix,
+including ASAN builds on Linux and macOS, runs daily, and every platform above
+runs weekly.</p>
+<p>Some features depend on the platform:</p>
+<ul class="simple">
+<li><p>The generic subsystem (and so the Python bindings) needs GCC or Clang
+statement expressions and a little-endian target: it is not available with
+MSVC or on big-endian targets.</p></li>
+<li><p>Durable arena garbage collection needs an atomic directory exchange, which
+only Linux and macOS provide; <code class="docutils literal notranslate"><span class="pre">fy_durable_arena_gc()</span></code> fails with
+<code class="docutils literal notranslate"><span class="pre">ENOSYS</span></code> elsewhere.</p></li>
+<li><p>Durable arenas have a default fixed base address on Linux and macOS (x86-64
+and arm64) and on the BSDs and illumos (x86-64); on other targets pass an
+explicit <code class="docutils literal notranslate"><span class="pre">region_base</span></code>.</p></li>
+</ul>
 </section>
 <section id="choosing-the-right-layer">
 <h2>Choosing The Right Layer<a class="headerlink" href="#choosing-the-right-layer" title="Link to this heading"></a></h2>

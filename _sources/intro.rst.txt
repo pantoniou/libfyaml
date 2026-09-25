@@ -242,6 +242,72 @@ The corresponding example is ``examples/intro-reflection-update.c``.
 The end-to-end workflow, including reflection metadata sources and packed
 representations, is described in :doc:`reflection-guide`.
 
+Supported Platforms
+-------------------
+
+libfyaml is built and tested on these platforms:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Platform
+     - Versions
+     - Architectures
+     - Compilers
+   * - Linux (Ubuntu)
+     - 22.04, 24.04, 26.04
+     - x86-64, arm64
+     - gcc, clang
+   * - Linux (other distributions)
+     - Debian stable and testing, Fedora, Arch, Rocky Linux 9, Alpine (musl),
+       Nix
+     - x86-64
+     - gcc
+   * - Linux (other architectures)
+     - Ubuntu / Debian
+     - i386, armv7, riscv64, ppc64 (big-endian)
+     - gcc
+   * - macOS
+     - 15, 26
+     - arm64
+     - Apple clang, gcc
+   * - Windows
+     - Server 2022, Server 2025, 11
+     - x64, arm64, x86 (Win32)
+     - MSVC, clang, MinGW-w64 gcc
+   * - FreeBSD
+     - 15.1
+     - x86-64
+     - clang
+   * - NetBSD
+     - 11.0
+     - x86-64
+     - gcc
+   * - OpenBSD
+     - 7.9
+     - x86-64
+     - clang
+   * - illumos (OmniOS)
+     - r151058
+     - x86-64
+     - gcc
+
+Pushes and pull requests build a subset of these. The full CMake matrix,
+including ASAN builds on Linux and macOS, runs daily, and every platform above
+runs weekly.
+
+Some features depend on the platform:
+
+* The generic subsystem (and so the Python bindings) needs GCC or Clang
+  statement expressions and a little-endian target: it is not available with
+  MSVC or on big-endian targets.
+* Durable arena garbage collection needs an atomic directory exchange, which
+  only Linux and macOS provide; ``fy_durable_arena_gc()`` fails with
+  ``ENOSYS`` elsewhere.
+* Durable arenas have a default fixed base address on Linux and macOS (x86-64
+  and arm64) and on the BSDs and illumos (x86-64); on other targets pass an
+  explicit ``region_base``.
+
 Choosing The Right Layer
 ------------------------
 

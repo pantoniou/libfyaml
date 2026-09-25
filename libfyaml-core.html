@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Core API &mdash; libfyaml 1.0.0-alpha7 documentation</title>
+  <title>Core API &mdash; libfyaml 1.0.0-beta2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4a1a819b"></script>
+      <script src="_static/documentation_options.js?v=a533f0d1"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -2557,7 +2557,7 @@ Including it pulls in all subsystem headers:</p>
 (<code class="docutils literal notranslate"><span class="pre">libfyaml/libfyaml-dociter.h</span></code>)</p></li>
 <li><p>Composer: callback-driven, path-aware event processing
 (<code class="docutils literal notranslate"><span class="pre">libfyaml/libfyaml-composer.h</span></code>)</p></li>
-<li><p>Pluggable memory allocators
+<li><p>Pluggable memory allocators, including the durable fixed-base arena
 (<code class="docutils literal notranslate"><span class="pre">libfyaml/libfyaml-allocator.h</span></code>)</p></li>
 <li><p>Thread pool for parallel work
 (<code class="docutils literal notranslate"><span class="pre">libfyaml/libfyaml-thread.h</span></code>)</p></li>
@@ -4829,6 +4829,10 @@ an error.</p>
 <p>Prepare an iterator for operating on the given token.
 The iterator must be created via a previous call to <a class="reference internal" href="#c.fy_token_iter_create" title="fy_token_iter_create"><code class="xref c c-func docutils literal notranslate"><span class="pre">fy_token_iter_create()</span></code></a>
 for user level API access.</p>
+<p>Each start must have a matching call to <a class="reference internal" href="#c.fy_token_iter_finish" title="fy_token_iter_finish"><code class="xref c c-func docutils literal notranslate"><span class="pre">fy_token_iter_finish()</span></code></a> before the
+iterator is started again. The start does not release the resources of an
+earlier iteration; it cannot, because it gets no guarantee about the state
+of the iterator. An iterator that is started twice leaks.</p>
 </section>
 </section>
 <section id="fy-token-iter-finish">
@@ -4848,7 +4852,9 @@ for user level API access.</p>
 
 <section id="fy-token-iter-finish-description">
 <span id="id188"></span><h4>Description<a class="headerlink" href="#fy-token-iter-finish-description" title="Link to this heading"></a></h4>
-<p>Stop the iteration operation.</p>
+<p>Stop the iteration operation and release the resources that it holds.
+Call it for each call to <a class="reference internal" href="#c.fy_token_iter_start" title="fy_token_iter_start"><code class="xref c c-func docutils literal notranslate"><span class="pre">fy_token_iter_start()</span></code></a>, before the iterator is
+started again or destroyed.</p>
 </section>
 </section>
 <section id="fy-token-iter-peek-chunk">
@@ -5669,7 +5675,8 @@ is the way to convert a runtime document structure back to YAML.</p>
 <span class="w">    </span><span class="n">FYEXCF_VISIBLE_WS</span><span class="p">,</span>
 <span class="w">    </span><span class="n">FYEXCF_EXTENDED_INDICATORS</span><span class="p">,</span>
 <span class="w">    </span><span class="n">FYEXCF_INDENTED_SEQ_IN_MAP</span><span class="p">,</span>
-<span class="w">    </span><span class="n">FYEXCF_PRESERVE_FLOW_LAYOUT</span>
+<span class="w">    </span><span class="n">FYEXCF_PRESERVE_FLOW_LAYOUT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">FYEXCF_GENERIC_AUTO_ANCHOR</span>
 <span class="p">};</span>
 </pre></div>
 </div>
@@ -5702,6 +5709,8 @@ is the way to convert a runtime document structure back to YAML.</p>
 <dt>FYEXCF_INDENTED_SEQ_IN_MAP</dt><dd><p>Indent block sequences that are mapping values</p>
 </dd>
 <dt>FYEXCF_PRESERVE_FLOW_LAYOUT</dt><dd><p>Preserve oneline flow collections in streaming mode</p>
+</dd>
+<dt>FYEXCF_GENERIC_AUTO_ANCHOR</dt><dd><p>Auto-emit anchors/aliases for repeated (deduplicated) generic values</p>
 </dd>
 </dl>
 </section>
@@ -6415,7 +6424,7 @@ you need finer control over the emitting output.</p>
 <section id="fy-emit-document-to-file-description">
 <span id="id322"></span><h4>Description<a class="headerlink" href="#fy-emit-document-to-file-description" title="Link to this heading"></a></h4>
 <p>Emits a document from the root to the given file.
-The file will be fopen’ed using a “wa” mode.</p>
+The file will be fopen’ed using a “w” mode.</p>
 </section>
 <section id="fy-emit-document-to-file-return">
 <span id="id323"></span><h4>Return<a class="headerlink" href="#fy-emit-document-to-file-return" title="Link to this heading"></a></h4>
@@ -14171,6 +14180,8 @@ The varargs analogous to <a class="reference internal" href="#c.fy_parse_event_c
 <span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">arena_size</span><span class="p">;</span>
 <span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">map_size</span><span class="p">;</span>
 <span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">header_size</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">index_root</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">has_dedup_index</span><span class="p">;</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -14211,6 +14222,12 @@ The varargs analogous to <a class="reference internal" href="#c.fy_parse_event_c
 <dt>map_size</dt><dd><p>Total mapped payload size in bytes</p>
 </dd>
 <dt>header_size</dt><dd><p>Total header size in bytes, including stored source name</p>
+</dd>
+<dt>index_root</dt><dd><p>Merged dedup tag-data pointer recorded in the header, or 0 if
+no dedup index was persisted (see <code class="docutils literal notranslate"><span class="pre">has_dedup_index</span></code>)</p>
+</dd>
+<dt>has_dedup_index</dt><dd><p>True if a dedup index was persisted with this cache entry
+(so a load+restore can keep deduplicating against it)</p>
 </dd>
 </dl>
 </section>
@@ -14457,11 +14474,14 @@ document and may be executed repeatedly.</p>
 <section id="fy-path-parse-cfg-flags-constants">
 <span id="id1118"></span><h4>Constants<a class="headerlink" href="#fy-path-parse-cfg-flags-constants" title="Link to this heading"></a></h4>
 <dl class="simple">
-<dt>FYPPCF_QUIET</dt><dd><p>Quiet, do not output any information messages</p>
+<dt>FYPPCF_QUIET</dt><dd><p>Quiet, do not output any information messages.
+It applies only when the path parser creates its own
+diagnostic object, that is, when <code class="docutils literal notranslate"><span class="pre">diag</span></code> is NULL.</p>
 </dd>
 <dt>FYPPCF_DISABLE_RECYCLING</dt><dd><p>Disable recycling optimization</p>
 </dd>
-<dt>FYPPCF_DISABLE_ACCELERATORS</dt><dd><p>Disable use of access accelerators (saves memory)</p>
+<dt>FYPPCF_DISABLE_ACCELERATORS</dt><dd><p>Reserved. The path parser keeps no access
+accelerators, so this flag does nothing.</p>
 </dd>
 </dl>
 </section>

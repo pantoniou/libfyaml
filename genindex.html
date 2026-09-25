@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; libfyaml 1.0.0-alpha7 documentation</title>
+  <title>Index &mdash; libfyaml 1.0.0-beta2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=4a1a819b"></script>
+      <script src="_static/documentation_options.js?v=a533f0d1"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -1289,6 +1289,8 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_ALIGNED_TO">FY_ALIGNED_TO (C macro)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.fy_alloc_checkpoint_iter_fn">fy_alloc_checkpoint_iter_fn (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.fy_alloca_align">fy_alloca_align (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_ALLOCA_COPY_FREE">FY_ALLOCA_COPY_FREE (C macro)</a>
@@ -1298,6 +1300,14 @@
       <li><a href="libfyaml-misc.html#c.fy_allocator_alloc">fy_allocator_alloc (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_cap_flags">fy_allocator_cap_flags (C enum)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_checkpoint">fy_allocator_checkpoint (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_checkpoint_iterate">fy_allocator_checkpoint_iterate (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_checkpoint_recover">fy_allocator_checkpoint_recover (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_chunk_count">fy_allocator_chunk_count (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_contains">fy_allocator_contains (C function)</a>
 </li>
@@ -1309,6 +1319,8 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_free">fy_allocator_free (C function)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_generation">fy_allocator_generation (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_get_caps">fy_allocator_get_caps (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_get_tag">fy_allocator_get_tag (C function)</a>
@@ -1319,6 +1331,12 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_get_tag_single_linear">fy_allocator_get_tag_single_linear (C function)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_get_usage">fy_allocator_get_usage (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_index_region_base">fy_allocator_index_region_base (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_index_region_size">fy_allocator_index_region_size (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_is_available">fy_allocator_is_available (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_iterate">fy_allocator_iterate (C function)</a>
@@ -1326,6 +1344,14 @@
       <li><a href="libfyaml-misc.html#c.fy_allocator_lookup">fy_allocator_lookup (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_lookupv">fy_allocator_lookupv (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_refs_get">fy_allocator_refs_get (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_refs_publish">fy_allocator_refs_publish (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_region_base">fy_allocator_region_base (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_region_size">fy_allocator_region_size (C function)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_release_tag">fy_allocator_release_tag (C function)</a>
 </li>
@@ -1337,11 +1363,19 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_storev">fy_allocator_storev (C function)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_sync">fy_allocator_sync (C function)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.fy_allocator_trim_tag">fy_allocator_trim_tag (C function)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_usage">fy_allocator_usage (C struct)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_allocator_verify">fy_allocator_verify (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_anchor_get_text">fy_anchor_get_text (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_anchor_node">fy_anchor_node (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_any_equal">fy_any_equal (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_ATOMIC">FY_ATOMIC (C macro)</a>
 </li>
@@ -1454,50 +1488,6 @@
       <li><a href="libfyaml-generics.html#c.FY_CONST_P_INIT">FY_CONST_P_INIT (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_CONSTRUCTOR">FY_CONSTRUCTOR (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EMPTY">FY_CPP_EMPTY (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL">FY_CPP_EVAL (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL1">FY_CPP_EVAL1 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL16">FY_CPP_EVAL16 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL2">FY_CPP_EVAL2 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL4">FY_CPP_EVAL4 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_EVAL8">FY_CPP_EVAL8 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_FIFTH">FY_CPP_FIFTH (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_FIRST">FY_CPP_FIRST (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_FOURTH">FY_CPP_FOURTH (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_MAP">FY_CPP_MAP (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_MAP2">FY_CPP_MAP2 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_POSTPONE1">FY_CPP_POSTPONE1 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_POSTPONE2">FY_CPP_POSTPONE2 (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_REST">FY_CPP_REST (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_SECOND">FY_CPP_SECOND (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_SIXTH">FY_CPP_SIXTH (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_THIRD">FY_CPP_THIRD (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_VA_COUNT">FY_CPP_VA_COUNT (C macro)</a>
-</li>
-      <li><a href="libfyaml-generics.html#c.FY_CPP_VA_GBITEMS">FY_CPP_VA_GBITEMS (C macro)</a>
-</li>
-      <li><a href="libfyaml-generics.html#c.FY_CPP_VA_GITEMS">FY_CPP_VA_GITEMS (C macro)</a>
-</li>
-      <li><a href="libfyaml-misc.html#c.FY_CPP_VA_ITEMS">FY_CPP_VA_ITEMS (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_cpu_relax">fy_cpu_relax (C function)</a>
 </li>
@@ -1775,6 +1765,10 @@
 </li>
       <li><a href="libfyaml-core.html#c.fy_document_vscanf">fy_document_vscanf (C function)</a>
 </li>
+      <li><a href="libfyaml-misc.html#c.fy_durable_allocator_cfg">fy_durable_allocator_cfg (C struct)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_durable_arena_gc">fy_durable_arena_gc (C function)</a>
+</li>
       <li><a href="libfyaml-core.html#c.fy_emit_body_node">fy_emit_body_node (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_emit_document">fy_emit_document (C function)</a>
@@ -1981,6 +1975,10 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_foreach">fy_foreach (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_foreach_idx_item">fy_foreach_idx_item (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_foreach_key_value">fy_foreach_key_value (C macro)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.FY_FORMAT">FY_FORMAT (C macro)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_alias_create">fy_gb_alias_create (C function)</a>
@@ -1992,6 +1990,8 @@
       <li><a href="libfyaml-generics.html#c.fy_gb_cfg_flags">fy_gb_cfg_flags (C enum)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_copy">fy_gb_copy (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_copy_memoized">fy_gb_copy_memoized (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_copy_out_of_place">fy_gb_copy_out_of_place (C function)</a>
 </li>
@@ -2006,6 +2006,8 @@
       <li><a href="libfyaml-generics.html#c.fy_gb_get_schema">fy_gb_get_schema (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_indirect_create">fy_gb_indirect_create (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_intern_string_size">fy_gb_intern_string_size (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_internalize">fy_gb_internalize (C function)</a>
 </li>
@@ -2038,6 +2040,8 @@
       <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_SLICE_N">FY_GB_OR_LOCAL_SLICE_N (C macro)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.FY_GB_OR_LOCAL_SLICE_PY">FY_GB_OR_LOCAL_SLICE_PY (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_gb_path_split">fy_gb_path_split (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_gb_release">fy_gb_release (C function)</a>
 </li>
@@ -2122,6 +2126,8 @@
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_set_userdata">fy_generic_builder_set_userdata (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_builder_setup">fy_generic_builder_setup (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_calc_storage_stats">fy_generic_calc_storage_stats (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_cast_const_char_ptr_default">fy_generic_cast_const_char_ptr_default (C function)</a>
 </li>
@@ -2313,8 +2319,8 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_indirect_reset">fy_generic_indirect_reset (C function)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="libfyaml-generics.html#c.fy_generic_indirect_set_comment">fy_generic_indirect_set_comment (C function)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.FY_GENERIC_INT_LVAL_TEMPLATE">FY_GENERIC_INT_LVAL_TEMPLATE (C macro)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct">fy_generic_is_direct (C function)</a>
@@ -2329,6 +2335,8 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_int_type">fy_generic_is_direct_int_type (C function)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_invalid">fy_generic_is_direct_invalid (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_is_direct_mapping">fy_generic_is_direct_mapping (C function)</a>
@@ -2549,7 +2557,29 @@
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_sequencep_items">fy_generic_sequencep_items (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_collection_style">fy_generic_set_collection_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_diag">fy_generic_set_diag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_failsafe_str">fy_generic_set_failsafe_str (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_marker">fy_generic_set_marker (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_node_style">fy_generic_set_node_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_scalar_style">fy_generic_set_scalar_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_style">fy_generic_set_style (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_set_tag">fy_generic_set_tag (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_signature">fy_generic_signature (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_signature_flags">fy_generic_signature_flags (C enum)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_generic_sized_string">fy_generic_sized_string (C type)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_generic_storage_stats">fy_generic_storage_stats (C struct)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_generic_type">fy_generic_type (C enum)</a>
 </li>
@@ -2981,6 +3011,12 @@
 </li>
       <li><a href="libfyaml-misc.html#c.FY_NT">FY_NT (C macro)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_null_filtered_mapping">fy_null_filtered_mapping (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_null_filtered_sequence">fy_null_filtered_sequence (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_number">fy_number (C macro)</a>
+</li>
       <li><a href="libfyaml-generics.html#c.fy_op_common_args">fy_op_common_args (C struct)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_op_convert_args">fy_op_convert_args (C struct)</a>
@@ -3285,11 +3321,19 @@
 </li>
       <li><a href="libfyaml-misc.html#c.fy_skip_size_nocheck">fy_skip_size_nocheck (C function)</a>
 </li>
+      <li><a href="libfyaml-generics.html#c.fy_sorted_mapping">fy_sorted_mapping (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_sorted_sequence">fy_sorted_sequence (C macro)</a>
+</li>
       <li><a href="libfyaml-misc.html#c.fy_sprintfa">fy_sprintfa (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_STACK_RESTORE">FY_STACK_RESTORE (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.FY_STACK_SAVE">FY_STACK_SAVE (C macro)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_str">fy_str (C macro)</a>
+</li>
+      <li><a href="libfyaml-misc.html#c.fy_str_empty">fy_str_empty (C function)</a>
 </li>
       <li><a href="libfyaml-generics.html#c.fy_string">fy_string (C macro)</a>
 </li>
@@ -3594,6 +3638,8 @@
       <li><a href="libfyaml-core.html#c.fy_version_is_supported">fy_version_is_supported (C function)</a>
 </li>
       <li><a href="libfyaml-core.html#c.fy_version_supported_iterate">fy_version_supported_iterate (C function)</a>
+</li>
+      <li><a href="libfyaml-generics.html#c.fy_vstringf">fy_vstringf (C macro)</a>
 </li>
       <li><a href="libfyaml-misc.html#c.fy_work_check_fn">fy_work_check_fn (C function)</a>
 </li>
