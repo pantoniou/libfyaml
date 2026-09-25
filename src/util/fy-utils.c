@@ -1618,15 +1618,28 @@ char *fy_mkdtemp(char *tmpl)
  * macOS/x86_64. It is intentionally not suitable for AArch64 39/42-bit VMA,
  * whose user address spaces are too small to overlap x86_64 ASAN HighMem.
  *
+ * The window also stays clear of address space randomization. With the
+ * maximum mmap_rnd_bits (32 on x86_64, 33 on arm64, the Ubuntu 26.04
+ * defaults) the mmap area, and the ASAN heap that newer runtimes let the
+ * kernel place, can land anywhere in the top 16-32 TiB, and the PIE base
+ * up to 16-32 TiB above 0x555555554000 (x86_64) or 0xaaaaaaaaa000 (arm64).
+ * Measured on GitHub runners, nothing maps between the ASAN shadow and
+ * 0x500000000000 on either architecture.
+ *
+ * The BSDs and illumos on x86_64 use the same window: it is below
+ * FreeBSD's ASAN shadow (0x400000000000) and the durable arena tests map
+ * there on FreeBSD, NetBSD, OpenBSD and OmniOS.
+ *
  * ASAN's allocator may still reserve dynamic HighMem ranges, so callers that
  * require stronger guarantees should reserve their chosen range early.
- * Unsupported OS/architecture targets, including macOS/arm64 until its ASAN
- * range is pinned here, return 0. The 4 TiB stride keeps successive regions
- * clear of each other for any practical region size.
+ * Unsupported OS/architecture targets return 0. The 4 TiB stride keeps
+ * successive regions clear of each other for any practical region size.
  */
 uint64_t fy_default_fixed_vm_base(unsigned int region)
 {
-#if (defined(__linux__) || defined(__APPLE__)) && defined(__x86_64__)
+#if (defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || \
+     defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || \
+     defined(__sun)) && defined(__x86_64__)
 	return 0x201000000000ULL + (uint64_t)region * 0x040000000000ULL;
 #elif (defined(__linux__) || defined(__APPLE__)) && defined(__aarch64__)
 	/* Darwin/arm64 honours fixed maps in this high window (verified) */
