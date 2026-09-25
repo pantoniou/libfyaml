@@ -1315,7 +1315,7 @@ void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
 		gb->cleanup(gb);
 
 	if (gb->linear)
-		free(gb->linear);
+		fy_align_free(gb->linear);
 
 	/* if we own the allocator, just destroy it, everything is gone */
 	if (gb->flags & FYGBF_OWNS_ALLOCATOR)
@@ -1522,7 +1522,7 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 	gb->userdata = NULL;
 
 	if (gb->linear) {
-		free(gb->linear);
+		fy_align_free(gb->linear);
 		gb->linear = NULL;
 	}
 
@@ -3244,8 +3244,11 @@ const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_gener
 
 	arenas = alloca(sizeof(*arenas) * num_arenas);
 
-	free(gb->linear);
-	gb->linear = malloc(size);
+	fy_align_free(gb->linear);
+	/* the arenas are laid out at container-aligned offsets from here, so
+	 * the base must be container aligned too (malloc only guarantees 8
+	 * bytes on some 32-bit targets) */
+	gb->linear = fy_align_alloc(FY_GENERIC_CONTAINER_ALIGN, size);
 	if (!gb->linear)
 		goto out;
 
