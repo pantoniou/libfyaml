@@ -5,12 +5,12 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0-beta2] - 2026-09-25
 
-Portability work: libfyaml is now built and tested on many more platforms, and
-the bugs that turned up there are fixed. See "Supported platforms" in the
-README. (The parser, document and fuzzing fixes since `v1.0.0-beta1` are not
-listed here yet.)
+A correctness and portability release. It fixes the fuzzing reports gh#317 to
+gh#409 and the error paths found by allocation failure injection, and adds
+support for more platforms. It adds no new API. The linker interface version
+moves to `8:1:6`.
 
 ### Added
 
@@ -20,6 +20,9 @@ listed here yet.)
 - `nix`: CMake based Nix derivation (`nix-build` in a checkout)
 - `durable`: default fixed VM base on the BSDs and illumos (x86-64)
 - `test`: cover opening a durable arena at the default base
+- `test`: allocation failure injection, including `calloc()` and `realloc()`
+- `test`: cover the gh#317 to gh#409 fuzzing reports
+- `build`: stop on undefined behaviour and check float casts in ASAN builds
 
 ### Changed
 
@@ -28,9 +31,18 @@ listed here yet.)
 - `durable`: `fy_durable_arena_gc()` fails early with `ENOSYS` where there is no atomic directory exchange (anything but Linux and macOS)
 - `utils`: `fy_fallocate()` extends the file where it cannot preallocate (NetBSD, OpenBSD, ZFS)
 - `endian`: fall back to the compiler's byte order macros on platforms without a known endian header
+- `doc`: bound the disabled depth limit by the stack size
+- `generic`: use explicit stacks for the signature walk and the primitive dump
+- `doc`: describe the path parse configuration flags and the token iterator start and finish pairing
 
 ### Fixed
 
+- `scanner`, `atom`, `token`: block scalar indentation, clipping, NUL and LS/PS handling, size hints of aliases, quoted and block scalars, and escaped line breaks
+- `parser`: release events, tokens, diagnostics and merge key copies on error and rollback paths, and keep the input reference balanced on rollback
+- `document`, `docbuilder`: fix leaks, double frees and use after free on error paths, duplicate key handling in accelerated mappings, recursive aliases and merge key loops
+- `ypath`: fix leaks and double frees of method arguments and results, index overflow, and exponential growth of nested comparisons
+- `reflection`: validate packed blobs, reject type cycles and invalid anonymous records, and fix enum and integer overflows
+- `input`, `emit`, `compose`, `thread`, `utf8`, `util`: fix leaks and bounds checks on error paths, and open emitted files with mode `"w"`
 - `durable`: implement fixed no-replace mappings on the BSDs, and never punch holes in the region reservation (OpenBSD `munmap()`)
 - `durable`: keep the chunk header link 8-byte aligned on 32-bit targets
 - `utils`: set `rc` from `pthread_attr_get_np()` on FreeBSD (crash with `FYPCF_DISABLE_DEPTH_LIMIT`)
@@ -901,6 +913,7 @@ Jose Luis Blanco-Claraco, Andrey Somov, Orange_233, Martin Diehl
 
 Initial public release with comprehensive YAML 1.2 support.
 
+[1.0.0-beta2]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-beta1...v1.0.0-beta2
 [1.0.0-beta1]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha8...v1.0.0-beta1
 [1.0.0-alpha8]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha7...v1.0.0-alpha8
 [1.0.0-alpha7]: https://github.com/pantoniou/libfyaml/compare/v1.0.0-alpha6...v1.0.0-alpha7

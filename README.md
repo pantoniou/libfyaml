@@ -1,4 +1,4 @@
-# libfyaml 1.0-beta1
+# libfyaml 1.0-beta2
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,42 +17,23 @@ The 1.0 series adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-beta1 matters
+## Why 1.0-beta2 matters
 
-`1.0.0-beta1` is the first beta for the 1.0 line. The main API areas are now in
-place: the core parser/emitter API, the generic value API, reflection-based
-typed serdes, Python bindings over generics, transparent parse caching, and
-durable generic storage.
+`1.0.0-beta2` is a correctness and portability release. It adds no new API.
 
-This release keeps the durable-storage and comment-handling work from `alpha8`
-and adds smaller generic helpers that were missing from normal use:
+* fixes for the fuzzing reports gh#317 to gh#409: memory leaks, double frees,
+  use after free, unbounded recursion and size hint errors in the scanner,
+  parser, document builder, YPath and reflection code
+* allocation failure injection in the tests, and fixes for the error paths it
+  found
+* ASAN builds stop on undefined behaviour and check float casts
+* support for FreeBSD, NetBSD, OpenBSD, illumos, MinGW-w64, 32-bit x86 and arm,
+  riscv64 and big-endian ppc64, with fixes for the problems found there
+* a weekly CI run of all supported platforms, and pinned runner images in the
+  daily run
+* a CMake based Nix derivation
 
-* direct string and number conversion helpers for generic values
-* short scalar predicates for compact type checks
-* indexed sequence iteration and mapping item iteration helpers
-* builder-backed string formatting helpers
-* better handling for empty generic item lists and empty collection comparison
-* parser/emitter fixes for large block scalars, empty-string round-trips, and cached line-break scans
-
-The intent is to make common generic operations available through public entry
-points. Code can now ask whether a value is a short scalar, convert values to
-strings or numbers, iterate sequences with indexes, iterate mapping items, and
-format strings through a generic builder without using lower-level internals.
-
-Transparent parse caching remains the main performance feature for repeated
-loads. It avoids reparsing unchanged content and can reuse deduplicated generic
-storage. Durable allocator support allows that state to persist across process
-runs.
-
-This release also fixes several edge cases. Empty generic lists now use valid
-storage. Empty collections compare by value rather than backing address.
-Decorated scalar accessors unwrap correctly. Cached line-break scans are reused.
-Block scalars with many empty lines no longer keep pending line-break state on
-the stack.
-
-The linker interface version advances for beta1 because the release adds public
-generic APIs. CMake and Autotools both read the same `.libtool-version`, so
-shared-library ABI naming stays aligned across build systems.
+The linker interface version moves to `8:1:6`: the interfaces are unchanged.
 
 ### Generic runtime
 
@@ -342,7 +323,8 @@ caching, optimized generic emission, and Stable ABI Python wheels.
 `v1.0.0-alpha8` adds durable storage, auto-anchor emission, stronger comment
 round-tripping, and more complete generic helper APIs. `v1.0.0-beta1` starts
 the beta cycle with additional conversion, predicate, iteration, formatting,
-and correctness fixes on top of that alpha surface.
+and correctness fixes on top of that alpha surface. `v1.0.0-beta2` fixes the
+fuzzing reports and extends the supported platforms.
 
 ## License
 
