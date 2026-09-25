@@ -155,8 +155,17 @@ typedef struct _U64_S
 #  pragma pack(pop)
 #endif
 
-#define A32(x) (((U32_S *)(x))->v)
-#define A64(x) (((U64_S *)(x))->v)
+/*
+ * Unaligned reads through memcpy(). The packed structs above are not
+ * enough: callers cast the input to U32 * / U64 * first, which lets the
+ * compiler assume natural alignment and use e.g. ldrd on 32-bit arm, which
+ * faults on unaligned input. memcpy() compiles to the right load everywhere.
+ */
+static inline U32 XXH_read32_unaligned(const void *p) { U32 v; memcpy(&v, p, sizeof(v)); return v; }
+static inline U64 XXH_read64_unaligned(const void *p) { U64 v; memcpy(&v, p, sizeof(v)); return v; }
+
+#define A32(x) XXH_read32_unaligned(x)
+#define A64(x) XXH_read64_unaligned(x)
 
 
 //***************************************
