@@ -1,0 +1,17 @@
+name: Weekly full CI
+
+# Everything, once a week: the full CMake matrix (every OS, compiler, build
+# type, ASAN and the pinned runner images) and every extra platform group.
+on:
+  schedule:
+    - cron: '0 0 * * 0'   # Sunday 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  cmake:
+    name: CMake CI
+    uses: ./.github/workflows/cmake.yaml
+
+  extra-platforms:
+    name: Extra platforms CI
+    uses: ./.github/workflows/extra-platforms.yaml

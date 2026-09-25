@@ -5,8 +5,9 @@ run-name: >-
       format('Extra platforms CI · manual · group={0} tests={1}', inputs.group, inputs.tests) }}
 
 # Manual only - these are slow (VMs, QEMU emulation) and not part of the
-# push, pull request or daily runs. To try it without merging, push any
-# branch named extra-ci/<something>; that runs every group with the tests.
+# push, pull request or daily runs. weekly.yaml runs them every week. To try
+# it without merging, push any branch named extra-ci/<something>; that runs
+# every group with the tests.
 on:
   push:
     branches: [ 'extra-ci/**' ]
@@ -30,6 +31,25 @@ on:
         type: string
       ctest_args:
         description: "Extra ctest arguments (e.g. -R foo, -E bar, -V)"
+        required: false
+        default: ""
+        type: string
+  # called from weekly.yaml (choice inputs are not allowed here)
+  workflow_call:
+    inputs:
+      group:
+        required: false
+        default: all
+        type: string
+      tests:
+        required: false
+        default: true
+        type: boolean
+      build_type:
+        required: false
+        default: Release
+        type: string
+      ctest_args:
         required: false
         default: ""
         type: string
