@@ -5397,13 +5397,15 @@ START_TEST(generic_keep_style_typed_accessors)
 
 	ck_assert_int_eq(fy_get(root, "integer", -1LL), 32000);
 	ck_assert_double_eq(fy_get(root, "floating", -1.0), 0.5);
-	ck_assert(fy_get(root, "boolean", false));
+	/* cast the defaults: musl and the BSDs define true/false as int even
+	 * under C23, and a bool value does not convert to an int default */
+	ck_assert(fy_get(root, "boolean", (bool)false));
 
 	seq = fy_get(root, "sequence", fy_invalid);
 	ck_assert(fy_generic_is_sequence(seq));
 	ck_assert_int_eq(fy_get_at(seq, 0, -1LL), 123);
 	ck_assert_double_eq(fy_get_at(seq, 1, -1.0), 1.5);
-	ck_assert(!fy_get_at(seq, 2, true));
+	ck_assert(!fy_get_at(seq, 2, (bool)true));
 }
 END_TEST
 
