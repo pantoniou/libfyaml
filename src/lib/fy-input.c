@@ -1282,6 +1282,9 @@ struct fy_input *fy_input_create(const struct fy_input_cfg *fyic)
 	return fyi;
 
 err_out:
+	/* on failure the caller keeps ownership of an alloc input's data */
+	if (fyi->cfg.type == fyit_alloc)
+		fyi->cfg.alloc.data = NULL;
 	fy_input_unref(fyi);
 	return NULL;
 }
