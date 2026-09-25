@@ -1,0 +1,258 @@
+name: Extra platforms CI
+
+run-name: >-
+  ${{ github.event_name == 'push' && format('Extra platforms CI · {0}', github.ref_name) ||
+      format('Extra platforms CI · manual · group={0} tests={1}', inputs.group, inputs.tests) }}
+
+# Manual only - these are slow (VMs, QEMU emulation) and not part of the
+# push, pull request or daily runs. To try it without merging, push any
+# branch named extra-ci/<something>; that runs every group with the tests.
+on:
+  push:
+    branches: [ 'extra-ci/**' ]
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Platform group to run"
+        required: true
+        default: all
+        type: choice
+        options: [ all, distros, bsd, 32bit, endian ]
+      tests:
+        description: "Run the tests (unchecked: build only)"
+        required: false
+        default: true
+        type: boolean
+      build_type:
+        description: "Build type (Debug or Release)"
+        required: false
+        default: Release
+        type: string
+      ctest_args:
+        description: "Extra ctest arguments (e.g. -R foo, -E bar, -V)"
+        required: false
+        default: ""
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
+  # inputs are empty on push, so every one needs a fallback
+  BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
+  TESTING: ${{ inputs.tests == false && 'OFF' || 'ON' }}
+  CTEST_ARGS: ${{ inputs.ctest_args }}
+  JOBS: 4
+
+jobs:
+  # ===========================================
+  # Linux distributions, in containers
+  # ===========================================
+  distros:
+    name: ${{ matrix.name }}
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'distros'
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian stable
+            image: debian:stable
+            install: >-
+              apt-get update -qq &&
+              apt-get install -y --no-install-recommends ca-certificates git build-essential
+              cmake pkg-config libyaml-dev check bash jq
+
+          - name: Debian testing
+            image: debian:testing
+            install: >-
+              apt-get update -qq &&
+              apt-get install -y --no-install-recommends ca-certificates git build-essential
+              cmake pkg-config libyaml-dev check bash jq
+
+          - name: Fedora
+            image: fedora:latest
+            install: >-
+              dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
+              libyaml-devel check-devel bash jq diffutils findutils
+
+          - name: Arch Linux
+            image: archlinux:latest
+            install: >-
+              pacman -Syu --noconfirm git base-devel cmake pkgconf libyaml check jq
+
+          - name: Rocky Linux 9
+            image: rockylinux/rockylinux:9
+            install: >-
+              dnf install -y epel-release dnf-plugins-core &&
+              dnf config-manager --set-enabled crb &&
+              dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
+              libyaml-devel check-devel bash jq diffutils findutils
+
+          - name: Alpine (musl)
+            image: alpine:latest
+            install: >-
+              apk add --no-cache git build-base cmake pkgconf yaml-dev check-dev
+              bash jq linux-headers
+
+    steps:
+    - name: "Install dependencies"
+      run: ${{ matrix.install }}
+
+    # actions/checkout needs a glibc Node, which musl and some older images
+    # lack, so fetch the source with git. The full history is needed for
+    # the version (git-version-gen).
+    - name: "Checkout"
+      run: |
+        git config --global --add safe.directory '*'
+        git clone "${{ github.server_url }}/${{ github.repository }}" .
+        git checkout --detach "${{ github.sha }}"
+
+    - name: "Build and test"
+      run: sh .github/scripts/extra-build.sh
+
+  # ===========================================
+  # BSDs, in VMs
+  # ===========================================
+  bsd:
+    name: ${{ matrix.name }}
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'bsd'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: cpa.sh {0}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: FreeBSD 15.1
+            os: freebsd
+            version: '15.1'
+            install: sudo pkg install -y git cmake pkgconf libyaml check bash jq
+
+          - name: NetBSD 11.0
+            os: netbsd
+            version: '11.0'
+            install: sudo pkgin -y install git cmake pkgconf libyaml check bash jq
+
+          - name: OpenBSD 7.9
+            os: openbsd
+            version: '7.9'
+            install: sudo pkg_add git cmake libyaml check bash jq
+
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Start VM"
+      uses: cross-platform-actions/action@v1.6.0
+      with:
+        operating_system: ${{ matrix.os }}
+        version: ${{ matrix.version }}
+        cpu_count: 4
+        environment_variables: BUILD_TYPE TESTING CTEST_ARGS JOBS
+
+    - name: "Install dependencies"
+      run: ${{ matrix.install }}
+
+    - name: "Build and test"
+      run: sh .github/scripts/extra-build.sh
+
+  # ===========================================
+  # 32-bit builds
+  # ===========================================
+  linux-i386:
+    name: Linux i386 (gcc -m32)
+    if: (inputs.group || 'all') == 'all' || inputs.group == '32bit'
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Install dependencies"
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y gcc-multilib g++-multilib cmake pkg-config jq \
+          libyaml-dev:i386 check:i386 libsubunit-dev:i386
+
+    - name: "Build and test"
+      env:
+        PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig
+        CMAKE_EXTRA_ARGS: -DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32
+      run: sh .github/scripts/extra-build.sh
+
+  windows-win32:
+    name: Windows Win32 (msvc)
+    if: (inputs.group || 'all') == 'all' || inputs.group == '32bit'
+    runs-on: windows-2025
+
+    steps:
+    - name: "Git Sane LF"
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Configure"
+      run: cmake -B build -G "Visual Studio 18 2026" -A Win32 -DBUILD_TESTING=${{ env.TESTING }} -DENABLE_LIBCLANG=OFF -DENABLE_PYTHON_BINDINGS=OFF
+
+    - name: "Build"
+      run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+    - name: "Test"
+      if: env.TESTING == 'ON'
+      working-directory: build
+      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure ${{ env.CTEST_ARGS }}
+
+  # ===========================================
+  # Big-endian: Debian ppc64, under QEMU
+  # ===========================================
+  # Debian ppc64 is only in debian-ports (unstable), with no Docker image,
+  # so bootstrap a chroot and run it with QEMU user-mode emulation.
+  ppc64:
+    name: Debian ppc64 (big-endian, QEMU)
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'endian'
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Install QEMU and debootstrap"
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y qemu-user-static debootstrap
+        # Ubuntu's copy of the debian-ports keyring lags behind the yearly
+        # key rotation, so take the current one from Debian
+        pool=https://deb.debian.org/debian/pool/main/d/debian-ports-archive-keyring
+        kr=$(curl -fsSL "$pool/" | grep -o 'debian-ports-archive-keyring_[^"]*_all\.deb' | grep -v '~' | sort -uV | tail -n 1)
+        curl -fsSLO "$pool/$kr"
+        sudo dpkg -i "$kr"
+
+    - name: "Bootstrap Debian ppc64"
+      run: |
+        sudo debootstrap --arch=ppc64 --variant=minbase \
+          --keyring=/usr/share/keyrings/debian-ports-archive-keyring.gpg \
+          --include=build-essential,cmake,pkg-config,libyaml-dev,check,bash,jq,git,ca-certificates \
+          unstable /srv/ppc64 http://deb.debian.org/debian-ports
+        sudo mount -t proc proc /srv/ppc64/proc
+        sudo cp -a "$GITHUB_WORKSPACE" /srv/ppc64/src
+
+    - name: "Build and test"
+      run: |
+        sudo chroot /srv/ppc64 env BUILD_TYPE="$BUILD_TYPE" TESTING="$TESTING" \
+          CTEST_ARGS="$CTEST_ARGS" JOBS="$JOBS" \
+          sh -c 'git config --global --add safe.directory "*" && cd /src && sh .github/scripts/extra-build.sh'
