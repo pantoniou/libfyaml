@@ -38,7 +38,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
   # inputs are empty on push, so every one needs a fallback
   BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
-  TESTING: ${{ inputs.tests == false && 'OFF' || 'ON' }}
+  TESTING: ${{ (github.event_name != 'workflow_dispatch' || inputs.tests) && 'ON' || 'OFF' }}
   CTEST_ARGS: ${{ inputs.ctest_args }}
   JOBS: 4
 
