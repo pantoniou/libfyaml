@@ -241,8 +241,8 @@ static inline size_t fy_size_t_align(size_t size, size_t align)
  * fy_alloca_align() - Stack-allocate a buffer with a specific alignment.
  *
  * Expands to a statement expression (GCC extension) that allocates @_sz bytes
- * on the stack, aligned to @_align bytes. When @_align <= ``sizeof(max_align_t)``
- * a plain ``alloca()`` is used; otherwise @_sz + @_align - 1 bytes are allocated
+ * on the stack, aligned to @_align bytes. When @_align <= the alignment of
+ * ``max_align_t`` a plain ``alloca()`` is used; otherwise @_sz + @_align - 1 bytes are allocated
  * and the pointer is advanced with fy_ptr_align().
  * This macro does not work on MSVC.
  *
@@ -259,7 +259,7 @@ static inline size_t fy_size_t_align(size_t size, size_t align)
 		const size_t __sz = (_sz); \
 		const size_t __align = (_align); \
 		void *__p; \
-		__p = __align <= sizeof(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
+		__p = __align <= __alignof__(max_align_t) ? alloca(__sz) : fy_ptr_align(alloca(__sz + __align - 1), __align); \
 		__p; \
 	})
 
