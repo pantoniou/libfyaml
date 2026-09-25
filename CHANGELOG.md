@@ -5,6 +5,48 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Portability work: libfyaml is now built and tested on many more platforms, and
+the bugs that turned up there are fixed. See "Supported platforms" in the
+README. (The parser, document and fuzzing fixes since `v1.0.0-beta1` are not
+listed here yet.)
+
+### Added
+
+- `ci`: extra platforms workflow: Debian, Fedora, Arch, Rocky Linux 9, Alpine (musl), Nix, FreeBSD, NetBSD, OpenBSD, illumos (OmniOS), MinGW-w64, Linux i386, Windows Win32, armv7, riscv64 and big-endian ppc64
+- `ci`: pinned Ubuntu 22.04/24.04/26.04 (x86-64 and arm64), macOS 15/26 and Windows 2025 runners in the daily and manual CMake runs
+- `ci`: weekly run of the full CMake matrix and every extra platform
+- `nix`: CMake based Nix derivation (`nix-build` in a checkout)
+- `durable`: default fixed VM base on the BSDs and illumos (x86-64)
+- `test`: cover opening a durable arena at the default base
+
+### Changed
+
+- `ci`: run every action on Node 24
+- `align`: `FY_ALIGNED_TO` now works on MSVC; it must be placed before the declaration (or right after `struct`)
+- `durable`: `fy_durable_arena_gc()` fails early with `ENOSYS` where there is no atomic directory exchange (anything but Linux and macOS)
+- `utils`: `fy_fallocate()` extends the file where it cannot preallocate (NetBSD, OpenBSD, ZFS)
+- `endian`: fall back to the compiler's byte order macros on platforms without a known endian header
+
+### Fixed
+
+- `durable`: implement fixed no-replace mappings on the BSDs, and never punch holes in the region reservation (OpenBSD `munmap()`)
+- `durable`: keep the chunk header link 8-byte aligned on 32-bit targets
+- `utils`: set `rc` from `pthread_attr_get_np()` on FreeBSD (crash with `FYPCF_DISABLE_DEPTH_LIMIT`)
+- `align`: `fy_alloca_align()` compared against the size instead of the alignment of `max_align_t` (32-bit arm)
+- `generic`: allocate the linearized builder image container aligned
+- `cache`: allocate the packed cache images container aligned
+- `blake3`: allocate the hasher with its real alignment (crashes with gcc 15)
+- `mremap`: allocate malloc-type arenas with their real alignment
+- `xxhash`: read unaligned input through `memcpy()` (SIGBUS on 32-bit arm)
+- `generic`: resolve a lone `0` as an integer under the YAML 1.1 schemas where `char` is unsigned
+- `reflection`: handle plain `char` where it is unsigned (arm64 Linux)
+- `input`: leave an alloc input's data with the caller when creation fails (double free under allocation failure)
+- `generic`, `utils`, `include`: build on illumos (`iov_base` casts, `cfmakeraw()`, `<alloca.h>`)
+- `cmake`: detect 32-bit builds on 64-bit kernels, find libm by linking, accept `Check::checkShared`, link the test binary with `--whole-archive` on MinGW, let the linker name the DLL in the generated `.def` file, and handle absolute install directories in `libfyaml.pc` and the man page links
+- `test`: fix tests that relied on signed `char`, glibc `stdbool.h`, stack lifetimes, a durable arena base inside the ASAN heap range, or silently passed when the arena could not be opened
+
 ## [1.0.0-beta1] - 2026-08-13
 
 The first beta release for the 1.0 line. The main 1.0 API areas are now in
