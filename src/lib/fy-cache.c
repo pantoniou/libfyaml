@@ -1245,7 +1245,9 @@ fy_cache_count_arenas(const struct fy_allocator_info *info)
 	return n;
 }
 
-/* pack every arena whose parent tag == @want_tag into a fresh malloc'd image */
+/* pack every arena whose parent tag == @want_tag into a fresh image (free
+ * with fy_align_free()); the arenas sit at container-aligned offsets, so the
+ * image base is container aligned too */
 static void *
 fy_cache_pack_tag(const struct fy_allocator_info *info, int want_tag,
 		  struct fy_arena_reloc *reloc, unsigned int *ridx, size_t *size_out)
@@ -1267,7 +1269,7 @@ fy_cache_pack_tag(const struct fy_allocator_info *info, int want_tag,
 	if (!total)
 		return NULL;
 
-	image = malloc(total);
+	image = fy_align_alloc(FY_GENERIC_CONTAINER_ALIGN, total);
 	if (!image)
 		return NULL;
 
@@ -1346,8 +1348,8 @@ fy_cache_build_split_images(const struct fy_allocator_snapshot *snap, fy_generic
 
 err_out:
 	free(reloc);
-	free(content_img);
-	free(index_img);
+	fy_align_free(content_img);
+	fy_align_free(index_img);
 	return -1;
 }
 
@@ -1557,8 +1559,8 @@ static void fy_parse_cache_store_generic_keyed(const struct fy_parse_cfg *cfg,
 
 out:
 	if (have_split)
-		free(content_img);	/* split image is malloc'd; linearize buffer is builder-owned */
-	free(index_img);
+		fy_align_free(content_img);	/* split image is ours; linearize buffer is builder-owned */
+	fy_align_free(index_img);
 }
 
 void fy_parse_cache_store_generic(const struct fy_parse_cfg *cfg, const char *file,
