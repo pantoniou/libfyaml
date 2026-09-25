@@ -23,7 +23,7 @@ if is_windows_bash; then
         FY_TOOL=`cygpath $FY_TOOL`
     fi
     if [ -n "$LIBFYAML_TEST" ]; then
-        FY_TOOL=`cygpath $FY_TOOL`
+        LIBFYAML_TEST=`cygpath $LIBFYAML_TEST`
     fi
     if [ -n "$TEST_DIR" ]; then
         TEST_DIR=`cygpath $TEST_DIR`
