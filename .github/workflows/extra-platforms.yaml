@@ -245,11 +245,12 @@ jobs:
         arch: ${{ matrix.arch }}
         distro: ubuntu24.04
         githubToken: ${{ github.token }}
+        # quoted, since an empty value would be null and the action rejects it
         env: |
-          BUILD_TYPE: ${{ env.BUILD_TYPE }}
-          TESTING: ${{ env.TESTING }}
-          CTEST_ARGS: ${{ env.CTEST_ARGS }}
-          JOBS: ${{ env.JOBS }}
+          BUILD_TYPE: "${{ env.BUILD_TYPE }}"
+          TESTING: "${{ env.TESTING }}"
+          CTEST_ARGS: "${{ env.CTEST_ARGS }}"
+          JOBS: "${{ env.JOBS }}"
         install: |
           apt-get update -qq
           apt-get install -y --no-install-recommends git build-essential cmake pkg-config \
