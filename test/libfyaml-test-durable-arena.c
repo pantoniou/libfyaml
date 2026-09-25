@@ -48,8 +48,12 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
  * test skips, but only where that is expected: a 32-bit target (no room for
  * the base) or a sandbox that sets FY_TEST_DURABLE_ALLOW_SKIP. Anywhere else
  * a failure to open is a real bug, so fail instead of passing silently.
+ *
+ * The bases sit above 0x700000000000: the ASAN heap uses 0x500000000000
+ * (clang) and 0x600000000000 (gcc) on x86-64, 4 TiB each, so a base in that
+ * range is taken in ASAN builds.
  */
-#define TEST_REGION_BASE	0x520000000000ULL
+#define TEST_REGION_BASE	0x700000000000ULL
 
 static void durable_unavailable(void)
 {
@@ -72,7 +76,7 @@ static bool gc_unsupported(void)
 #define TEST_CHUNK_SIZE		(1ULL << 20)	/* 1 MiB */
 
 /* separate dedup-index region, well clear of the content region above */
-#define TEST_INDEX_REGION_BASE	0x560000000000ULL
+#define TEST_INDEX_REGION_BASE	0x740000000000ULL
 #define TEST_INDEX_REGION_SIZE	(64ULL << 20)	/* 64 MiB */
 #define TEST_INDEX_CHUNK_SIZE	(1ULL << 20)	/* 1 MiB */
 
@@ -446,7 +450,7 @@ START_TEST(durable_base_conflict)
 {
 	char dir[256];
 	struct fy_allocator *da;
-	uint64_t base = 0x528000000000ULL;	/* separate from the others */
+	uint64_t base = 0x780000000000ULL;	/* separate from the others */
 	void *occupy;
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
