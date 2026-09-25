@@ -1250,6 +1250,16 @@ int fy_rename_exchange(const char *file_a, const char *file_b)
 #endif
 }
 
+bool fy_rename_exchange_supported(void)
+{
+#if (defined(__linux__) && (defined(RENAME_EXCHANGE) || defined(SYS_renameat2))) || \
+    (defined(__APPLE__) && defined(__MACH__) && defined(RENAME_SWAP))
+	return true;
+#else
+	return false;
+#endif
+}
+
 const char *fy_realpath(const char *path, char *buf, size_t bufsize)
 {
 #ifndef _WIN32
