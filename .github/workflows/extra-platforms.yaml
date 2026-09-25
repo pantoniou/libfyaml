@@ -81,13 +81,16 @@ jobs:
             install: >-
               pacman -Syu --noconfirm git base-devel cmake pkgconf libyaml check jq
 
+          # check's CMake config points at a libcheck.a that EL9 does not
+          # ship, so drop it and let pkg-config find check
           - name: Rocky Linux 9
             image: rockylinux/rockylinux:9
             install: >-
               dnf install -y epel-release dnf-plugins-core &&
               dnf config-manager --set-enabled crb &&
               dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
-              libyaml-devel check-devel check-static bash jq diffutils findutils
+              libyaml-devel check-devel bash jq diffutils findutils &&
+              rm -rf /usr/lib64/cmake/check
 
           - name: Alpine (musl)
             image: alpine:latest
