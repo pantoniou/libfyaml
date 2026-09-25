@@ -17,7 +17,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [ all, distros, bsd, 32bit, endian ]
+        options: [ all, distros, unix, windows, 32bit, arch, endian ]
       tests:
         description: "Run the tests (unchecked: build only)"
         required: false
@@ -115,11 +115,11 @@ jobs:
       run: sh .github/scripts/extra-build.sh
 
   # ===========================================
-  # BSDs, in VMs
+  # BSDs and illumos, in VMs
   # ===========================================
-  bsd:
+  unix:
     name: ${{ matrix.name }}
-    if: (inputs.group || 'all') == 'all' || inputs.group == 'bsd'
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'unix'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -144,6 +144,18 @@ jobs:
             version: '7.9'
             install: sudo pkg_add git cmake libyaml check bash jq
 
+          # check is not packaged; CMake fetches and builds it
+          - name: OmniOS r151058
+            os: omnios
+            version: 'r151058'
+            install: >-
+              sudo pkg install developer/gcc14 developer/pkg-config developer/versioning/git
+              ooce/developer/cmake ooce/developer/ninja ooce/library/yaml ooce/util/jq
+              || [ $? -eq 4 ]
+            env: >-
+              PATH=/opt/ooce/bin:$PATH CC=gcc CXX=g++ CMAKE_GENERATOR=Ninja
+              PKG_CONFIG_PATH=/opt/ooce/lib/amd64/pkgconfig
+
     steps:
     - name: "Checkout"
       uses: actions/checkout@v5
@@ -162,7 +174,89 @@ jobs:
       run: ${{ matrix.install }}
 
     - name: "Build and test"
+      run: ${{ matrix.env }} sh .github/scripts/extra-build.sh
+
+  # ===========================================
+  # Windows with MinGW-w64 gcc (MSYS2)
+  # ===========================================
+  # gcc has statement expressions, so unlike MSVC this builds the generic
+  # subsystem on Windows
+  mingw:
+    name: Windows MinGW-w64 (gcc, UCRT64)
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'windows'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - name: "Git Sane LF"
+      shell: pwsh
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Setup MSYS2"
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          git bash jq
+          mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-libyaml mingw-w64-ucrt-x86_64-check
+
+    - name: "Build and test"
+      env:
+        CMAKE_GENERATOR: Ninja
       run: sh .github/scripts/extra-build.sh
+
+  # ===========================================
+  # Other architectures, under QEMU
+  # ===========================================
+  arch:
+    name: Linux ${{ matrix.arch }} (${{ matrix.note }}, QEMU)
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'arch'
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: armv7
+            note: 32-bit arm
+          - arch: riscv64
+            note: 64-bit risc-v
+
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: "Build and test"
+      uses: uraimo/run-on-arch-action@v3.2.0
+      with:
+        arch: ${{ matrix.arch }}
+        distro: ubuntu24.04
+        githubToken: ${{ github.token }}
+        env: |
+          BUILD_TYPE: ${{ env.BUILD_TYPE }}
+          TESTING: ${{ env.TESTING }}
+          CTEST_ARGS: ${{ env.CTEST_ARGS }}
+          JOBS: ${{ env.JOBS }}
+        install: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends git build-essential cmake pkg-config \
+            libyaml-dev check bash jq ca-certificates
+        run: |
+          git config --global --add safe.directory '*'
+          sh .github/scripts/extra-build.sh
 
   # ===========================================
   # 32-bit builds
