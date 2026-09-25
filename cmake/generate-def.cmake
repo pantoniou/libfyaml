@@ -61,8 +61,10 @@ set(DEF_CONTENT "; fyaml.def - Auto-generated module definition file for fyaml.d
 ;
 ; This file exports the public API symbols marked with FY_EXPORT.
 ; Regenerate by rebuilding with CMake (add_custom_command in CMakeLists.txt).
+;
+; No LIBRARY line: the linker then records the real DLL name, which is
+; fyaml.dll for MSVC but libfyaml.dll for MinGW.
 
-LIBRARY fyaml
 EXPORTS
 ")
 
