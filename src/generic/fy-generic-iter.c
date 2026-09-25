@@ -183,7 +183,7 @@ fygi_create_token(struct fy_generic_iterator *fygi, fy_generic v,
 	return fy_document_state_generic_create_token(fygi->fyds, v, type, style);
 }
 
-struct fygi_fast_event_data {
+struct FY_GENERIC_CONTAINER_ALIGNMENT fygi_fast_event_data {
 	fy_generic_indirect gi;
 	fy_generic v;
 	const char *anchor;
@@ -194,7 +194,7 @@ struct fygi_fast_event_data {
 	int style;
 	char tag_buf_local[128];
 	char *tag_buf_alloc;
-} FY_GENERIC_CONTAINER_ALIGNMENT;
+};
 
 static void
 fygi_fast_event_get_data(struct fy_generic_iterator *fygi, struct fy_emitter *emit,
