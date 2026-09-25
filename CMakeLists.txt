@@ -1391,10 +1391,12 @@ endif()
 
 # Link libm where it exists as a separate library (Linux, FreeBSD, etc.).
 # macOS includes math in libSystem; Windows has no libm.
-find_library(LIBM m)
-if(LIBM)
-    target_link_libraries(fyaml PUBLIC ${LIBM})
-    target_link_libraries(fyaml_static PUBLIC ${LIBM})
+# Probe by linking rather than with find_library(): the 32-bit multilib
+# libm (e.g. /usr/lib32 with -m32) is not in find_library()'s search path.
+check_library_exists(m trunc "" HAVE_LIBM)
+if(HAVE_LIBM)
+    target_link_libraries(fyaml PUBLIC m)
+    target_link_libraries(fyaml_static PUBLIC m)
 endif()
 if(ATOMIC_LIBS)
     target_link_libraries(fyaml PUBLIC ${ATOMIC_LIBS})
