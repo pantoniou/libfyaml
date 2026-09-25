@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-MISC" "3" "Aug 13, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-MISC" "3" "Sep 25, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-misc \- libfyaml miscellaneous API
 .SH UTILITIES
@@ -2212,10 +2212,14 @@ Offline garbage\-collect (compact) a durable arena
 Reclaim everything in the durable arena at \fBdir\fP that is no longer reachable
 from its published refs head, rewriting the arena as a compacted copy at the
 same canonical base address.
+.sp
+The compacted arena replaces the live one with an atomic directory exchange,
+which is only available on Linux (\fBrenameat2(RENAME_EXCHANGE)\fP) and macOS
+(\fBRENAME_SWAP\fP). Elsewhere this fails with errno set to \fBENOSYS\fP\&.
 .SS Return
 .sp
 0 on success, 1 if another collector currently holds the arena’s GC lock, or
-\-1 on error
+\-1 on error (errno is \fBENOSYS\fP if the platform cannot collect)
 .SH THREADING
 .sp
 This header provides a simple, portable thread pool built on POSIX threads.
@@ -2975,9 +2979,11 @@ pointer\-rounding helpers.  It has no libfyaml dependencies.
 \fBCompile\-time attributes\fP
 .INDENT 0.0
 .IP \(bu 2
-\fBFY_ALIGNED_TO(x)\fP   — apply an alignment attribute to a variable or
-type; expands to \fB__attribute__((aligned(x)))\fP on GCC/Clang and
-\fB__declspec(align(x))\fP on MSVC
+\fBFY_ALIGNED_TO(x)\fP   — apply an alignment attribute to a variable,
+struct field or struct; expands to \fB__attribute__((aligned(x)))\fP on
+GCC/Clang and \fB__declspec(align(x))\fP on MSVC. Place it before the
+declaration (or right after \fBstruct\fP), since MSVC does not accept it
+after the declarator
 .IP \(bu 2
 \fBFY_CACHELINE_ALIGN\fP — shorthand for cache\-line (64\-byte) alignment,
 useful for preventing false sharing between fields accessed concurrently
@@ -3025,7 +3031,8 @@ Declare that a variable or type has a minimum alignment.
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBx\fP – Required alignment in bytes (must be a power of two).
+\fBx\fP – Required alignment in bytes (must be a power of two, and a literal
+for MSVC).
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -3033,8 +3040,20 @@ Declare that a variable or type has a minimum alignment.
 .sp
 Expands to the appropriate compiler\-specific alignment attribute:
 \- GCC/Clang: \fB__attribute__((aligned(x)))\fP
-\- MSVC:      should be \fB__declspec(align(x))\fP but MSVC does not support trailing alignment…
+\- MSVC:      \fB__declspec(align(x))\fP
 \- Other:     empty (no enforced alignment)
+.sp
+MSVC only accepts the attribute in leading position, so always place it
+before the declaration, or right after \fBstruct\fP for a struct type:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+FY_ALIGNED_TO(16) uint64_t mem[];
+struct FY_ALIGNED_TO(32) foo { ... };
+.EE
+.UNINDENT
+.UNINDENT
 .SS macro FY_ALIGN
 .INDENT 0.0
 .TP
@@ -3250,8 +3269,8 @@ Stack\-allocate a buffer with a specific alignment.
 .SS Description
 .sp
 Expands to a statement expression (GCC extension) that allocates \fB_sz\fP bytes
-on the stack, aligned to \fB_align\fP bytes. When \fB_align\fP <= \fBsizeof(max_align_t)\fP
-a plain \fBalloca()\fP is used; otherwise \fB_sz\fP + \fB_align\fP \- 1 bytes are allocated
+on the stack, aligned to \fB_align\fP bytes. When \fB_align\fP <= the alignment of
+\fBmax_align_t\fP a plain \fBalloca()\fP is used; otherwise \fB_sz\fP + \fB_align\fP \- 1 bytes are allocated
 and the pointer is advanced with \fBfy_ptr_align()\fP\&.
 This macro does not work on MSVC.
 .sp
@@ -3290,10 +3309,19 @@ Usage:
 .UNINDENT
 .sp
 Supported platforms:
-\- Linux / Cygwin / OpenBSD / GNU Hurd / Emscripten — via \fB<endian.h>\fP
-\- macOS / iOS — via \fB<libkern/OSByteOrder.h>\fP + \fB<machine/endian.h>\fP
-\- NetBSD / FreeBSD / DragonFly BSD — via \fB<sys/endian.h>\fP
-\- Windows (MSVC) — via \fB<winsock2.h>\fP (+ \fB<sys/param.h>\fP for MinGW)
+.INDENT 0.0
+.IP \(bu 2
+Linux / Cygwin / OpenBSD / GNU Hurd / Emscripten — via \fB<endian.h>\fP
+.IP \(bu 2
+macOS / iOS — via \fB<libkern/OSByteOrder.h>\fP + \fB<machine/endian.h>\fP
+.IP \(bu 2
+NetBSD / FreeBSD / DragonFly BSD — via \fB<sys/endian.h>\fP
+.IP \(bu 2
+Windows (MSVC) — via \fB<winsock2.h>\fP (+ \fB<sys/param.h>\fP for MinGW)
+.IP \(bu 2
+anything else (e.g. illumos / Solaris) — via the GCC/Clang predefined
+\fB__BYTE_ORDER__\fP macros
+.UNINDENT
 .sp
 The non\-standard \fBBYTE_ORDER\fP, \fBBIG_ENDIAN\fP, and \fBLITTLE_ENDIAN\fP
 spellings are aliased to the double\-underscore variants if needed.

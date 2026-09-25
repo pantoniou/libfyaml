@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-CORE" "3" "Aug 13, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-CORE" "3" "Sep 25, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-core \- libfyaml core API
 .SH CORE
@@ -2256,6 +2256,11 @@ Start iterating over the contents of a token
 Prepare an iterator for operating on the given token.
 The iterator must be created via a previous call to \fBfy_token_iter_create()\fP
 for user level API access.
+.sp
+Each start must have a matching call to \fBfy_token_iter_finish()\fP before the
+iterator is started again. The start does not release the resources of an
+earlier iteration; it cannot, because it gets no guarantee about the state
+of the iterator. An iterator that is started twice leaks.
 .SS fy_token_iter_finish
 .INDENT 0.0
 .TP
@@ -2272,7 +2277,9 @@ Stop iterating over the contents of a token
 .UNINDENT
 .SS Description
 .sp
-Stop the iteration operation.
+Stop the iteration operation and release the resources that it holds.
+Call it for each call to \fBfy_token_iter_start()\fP, before the iterator is
+started again or destroyed.
 .SS fy_token_iter_peek_chunk
 .INDENT 0.0
 .TP
@@ -3830,7 +3837,7 @@ Emit a document to file
 .SS Description
 .sp
 Emits a document from the root to the given file.
-The file will be fopen’ed using a “wa” mode.
+The file will be fopen’ed using a “w” mode.
 .SS Return
 .sp
 0 on success, \-1 on error
@@ -11344,13 +11351,16 @@ enum fy_path_parse_cfg_flags {
 .INDENT 0.0
 .TP
 .B FYPPCF_QUIET
-Quiet, do not output any information messages
+Quiet, do not output any information messages.
+It applies only when the path parser creates its own
+diagnostic object, that is, when \fBdiag\fP is NULL.
 .TP
 .B FYPPCF_DISABLE_RECYCLING
 Disable recycling optimization
 .TP
 .B FYPPCF_DISABLE_ACCELERATORS
-Disable use of access accelerators (saves memory)
+Reserved. The path parser keeps no access
+accelerators, so this flag does nothing.
 .UNINDENT
 .SS Description
 .sp
