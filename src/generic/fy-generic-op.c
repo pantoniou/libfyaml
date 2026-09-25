@@ -423,7 +423,7 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 	if (!(cod->flags & FYGBOPF_NO_CHECKS)) {
 		for (i = 1; i < iovcnt; i++) {
 			count = iov[i].iov_len / sizeof(fy_generic);
-			vp = iov[i].iov_base;
+			vp = (const void *)iov[i].iov_base;
 			for (idx = 0; idx < count; idx++) {
 				v = vp[idx];
 
@@ -465,7 +465,7 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 	/* internalize items one by one */
 	for (j = 0, i = 1; i < iovcnt; i++) {
 		count = iov[i].iov_len / sizeof(fy_generic);
-		vp = iov[i].iov_base;
+		vp = (const void *)iov[i].iov_base;
 		for (idx = 0; idx < count; idx++) {
 			v = fy_generic_op_internalize(cod->gb, cod->flags, vp[idx]);
 			if (fy_generic_is_invalid(v))
@@ -476,10 +476,10 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 	assert(j == cod->iov_item_count);
 
 	/* copy the collation header iov */
-	cod->iov_local[0].iov_base = iov[0].iov_base;
+	cod->iov_local[0].iov_base = (void *)iov[0].iov_base;
 	cod->iov_local[0].iov_len = iov[0].iov_len;
 	/* and the rest is a single span */
-	cod->iov_local[1].iov_base = items;
+	cod->iov_local[1].iov_base = (void *)items;
 	cod->iov_local[1].iov_len = MULSZ(cod->iov_item_count, sizeof(fy_generic));
 
 	/* and this is now our iov */
@@ -643,7 +643,7 @@ fy_generic_op_create_sequence(const struct fy_generic_op_desc *desc FY_UNUSED,
 	}
 
 	seqh.count = count;
-	iov[0].iov_base = &seqh;
+	iov[0].iov_base = (void *)&seqh;
 	iov[0].iov_len = sizeof(seqh);
 	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = MULSZ(seqh.count, sizeof(fy_generic));
@@ -722,7 +722,7 @@ fy_generic_op_create_mapping(const struct fy_generic_op_desc *desc FY_UNUSED,
 	}
 
 	maph.count = count;
-	iov[0].iov_base = &maph;
+	iov[0].iov_base = (void *)&maph;
 	iov[0].iov_len = sizeof(maph);
 	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = MULSZ(maph.count, (2 * sizeof(fy_generic)));
@@ -773,7 +773,7 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* sequence overlaps map counter */
 	col.count = out_count;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* before */
 	iov[1].iov_base = (void *)cod->in_items;
@@ -782,8 +782,8 @@ fy_generic_op_insert(const struct fy_generic_op_desc *desc FY_UNUSED,
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
 	/* after */
-	iov[3].iov_base = remain_count ?
-		(void *)cod->in_items + MULSZ(idx, cod->col_item_size) : NULL;
+	iov[3].iov_base = (void *)(remain_count ?
+		(void *)cod->in_items + MULSZ(idx, cod->col_item_size) : NULL);
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -841,7 +841,7 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* sequence overlaps map counter */
 	col.count = out_count;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* before */
 	iov[1].iov_base = (void *)cod->in_items;
@@ -850,8 +850,8 @@ fy_generic_op_replace(const struct fy_generic_op_desc *desc FY_UNUSED,
 	iov[2].iov_base = (void *)cod->items;
 	iov[2].iov_len = MULSZ(cod->count, cod->col_item_size);
 	/* after */
-	iov[3].iov_base = remain_count ?
-		(void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size) : NULL;
+	iov[3].iov_base = (void *)(remain_count ?
+		(void *)cod->in_items + MULSZ(remain_idx, cod->col_item_size) : NULL);
 	iov[3].iov_len = MULSZ(remain_count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -892,7 +892,7 @@ fy_generic_op_append(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* sequence overlaps map counter */
 	col.count = ADDSZ(cod->in_count, cod->count);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* before */
 	iov[1].iov_base = (void *)cod->in_items;
@@ -980,10 +980,10 @@ fy_generic_op_assoc(const struct fy_generic_op_desc *desc FY_UNUSED,
 	}
 	/* the collection header */
 	col.count = i / 2;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1067,10 +1067,10 @@ fy_generic_op_disassoc(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = k / 2;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1118,10 +1118,10 @@ fy_generic_op_keys(const struct fy_generic_op_desc *desc FY_UNUSED,
 		cod->work_in_items_div2[i] = cod->in_items[i * 2 + 0];
 
 	col.count = j;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_in_items_div2;
+	iov[1].iov_base = (void *)cod->work_in_items_div2;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1169,10 +1169,10 @@ fy_generic_op_values(const struct fy_generic_op_desc *desc FY_UNUSED,
 		cod->work_in_items_div2[i] = cod->in_items[i * 2 + 1];
 
 	col.count = j;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_in_items_div2;
+	iov[1].iov_base = (void *)cod->work_in_items_div2;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1224,10 +1224,10 @@ fy_generic_op_items(const struct fy_generic_op_desc *desc FY_UNUSED,
 	}
 
 	col.count = j;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_in_items_div2;
+	iov[1].iov_base = (void *)cod->work_in_items_div2;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1355,7 +1355,7 @@ fy_generic_op_concat(const struct fy_generic_op_desc *desc FY_UNUSED,
 	/* sequence overlaps map counter */
 	i = 0;
 	col.count = cod->type == FYGT_SEQUENCE ? total : (total / 2);
-	iov[i].iov_base = &col;
+	iov[i].iov_base = (void *)&col;
 	iov[i].iov_len = sizeof(col);
 	i++;
 
@@ -1452,10 +1452,10 @@ fy_generic_op_reverse(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1543,10 +1543,10 @@ fy_generic_op_merge(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = k / 2;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1624,10 +1624,10 @@ fy_generic_op_unique(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = k;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1680,10 +1680,10 @@ fy_generic_op_sort(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = cod->work_items_all;
+	iov[1].iov_base = (void *)cod->work_items_all;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -1819,10 +1819,10 @@ fy_generic_op_set(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? item_count : (item_count / 2);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = items;
+	iov[1].iov_base = (void *)items;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -2892,10 +2892,10 @@ fy_generic_op_filter(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = work_items;
+	iov[1].iov_base = (void *)work_items;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -2986,10 +2986,10 @@ fy_generic_op_map(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* the collection header */
 	col.count = cod->type == FYGT_SEQUENCE ? k : (k / 2);
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 	/* the content */
-	iov[1].iov_base = work_items;
+	iov[1].iov_base = (void *)work_items;
 	iov[1].iov_len = MULSZ(col.count, cod->col_item_size);
 
 	out = fy_generic_collection_op_data_out(cod, iov, ARRAY_SIZE(iov));
@@ -3159,7 +3159,7 @@ fy_generic_op_slice_internal(struct fy_generic_builder *gb, enum fy_gb_op_flags 
 
 	/* the sequence collection */
 	col.count = slice_count;
-	iov[0].iov_base = &col;
+	iov[0].iov_base = (void *)&col;
 	iov[0].iov_len = sizeof(col);
 
 	/* the content (offset to start) */
