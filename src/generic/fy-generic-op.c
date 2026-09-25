@@ -423,7 +423,7 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 	if (!(cod->flags & FYGBOPF_NO_CHECKS)) {
 		for (i = 1; i < iovcnt; i++) {
 			count = iov[i].iov_len / sizeof(fy_generic);
-			vp = iov[i].iov_base;
+			vp = (const void *)iov[i].iov_base;
 			for (idx = 0; idx < count; idx++) {
 				v = vp[idx];
 
@@ -465,7 +465,7 @@ fy_generic_collection_op_prepare_iov(struct fy_generic_collection_op_data *cod,
 	/* internalize items one by one */
 	for (j = 0, i = 1; i < iovcnt; i++) {
 		count = iov[i].iov_len / sizeof(fy_generic);
-		vp = iov[i].iov_base;
+		vp = (const void *)iov[i].iov_base;
 		for (idx = 0; idx < count; idx++) {
 			v = fy_generic_op_internalize(cod->gb, cod->flags, vp[idx]);
 			if (fy_generic_is_invalid(v))
