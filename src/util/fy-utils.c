@@ -1727,6 +1727,17 @@ void *fy_mmap(void *addr, size_t len, int prot, unsigned int flags,
 			return MAP_FAILED;
 		}
 		return fy_mach_map_fixed_noreplace(addr, len, prot);
+#elif defined(MAP_EXCL)
+		/* FreeBSD, DragonFly: with MAP_FIXED, fail if the range is in use */
+		return mmap(addr, len, prot, mflags | MAP_FIXED | MAP_EXCL,
+			    fd, offset);
+#elif defined(__MAP_NOREPLACE)
+		/* OpenBSD: with MAP_FIXED, fail if the range is in use */
+		return mmap(addr, len, prot, mflags | MAP_FIXED | __MAP_NOREPLACE,
+			    fd, offset);
+#elif defined(MAP_TRYFIXED)
+		/* NetBSD: use addr if it is free, the caller checks the result */
+		mflags |= MAP_TRYFIXED;
 #else
 		/* no platform primitive: fall back to a plain hinted map. */
 #endif
