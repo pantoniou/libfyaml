@@ -135,6 +135,30 @@ jobs:
       run: sh .github/scripts/extra-build.sh
 
   # ===========================================
+  # Nix (nixpkgs-unstable), in a container
+  # ===========================================
+  # No /usr/include or /usr/lib: everything comes from the Nix store, found
+  # through pkg-config, and the compiler is Nix's wrapped, hardened gcc.
+  nix:
+    name: Nix (nixpkgs-unstable)
+    if: (inputs.group || 'all') == 'all' || inputs.group == 'distros'
+    runs-on: ubuntu-latest
+    container: nixos/nix:latest
+
+    steps:
+    - name: "Checkout"
+      run: |
+        git config --global --add safe.directory '*'
+        git clone "${{ github.server_url }}/${{ github.repository }}" .
+        git checkout --detach "${{ github.sha }}"
+
+    - name: "Build and test"
+      run: |
+        nix-channel --update
+        nix-shell -p gcc cmake pkg-config libyaml check jq gnumake diffutils \
+          --run "sh .github/scripts/extra-build.sh"
+
+  # ===========================================
   # BSDs and illumos, in VMs
   # ===========================================
   unix:
