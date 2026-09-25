@@ -1814,11 +1814,11 @@ fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, 
 	p = fy_encode_size(lenbuf, sizeof(lenbuf), len);
 	assert(p);
 
-	iov[0].iov_base = lenbuf;
+	iov[0].iov_base = (void *)lenbuf;
 	iov[0].iov_len = (size_t)((uint8_t *)p - lenbuf) ;
 	iov[1].iov_base = (void *)str;
 	iov[1].iov_len = len;
-	iov[2].iov_base = "\x00";	/* null terminate always */
+	iov[2].iov_base = (void *)"\x00";	/* null terminate always */
 	iov[2].iov_len = 1;
 
 	/* strings are aligned at 8 always */
@@ -2001,7 +2001,7 @@ fy_gb_internalize_core(struct fy_generic_builder *gb,
 			}
 
 			if (i >= count) {
-				iov[1].iov_base = items;
+				iov[1].iov_base = (void *)items;
 				valp = fy_gb_storev(gb, iov, ARRAY_SIZE(iov),
 							FY_GENERIC_CONTAINER_ALIGN);
 			}
