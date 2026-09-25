@@ -43,11 +43,21 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 
 /*
  * Tests use a distinct high-half base and a deliberately small geometry
- * (1 MiB chunks) so grows happen quickly. If the chosen base cannot be
- * reserved in the test sandbox the test soft-skips (returns as pass) rather
- * than failing, since address availability is environmental.
+ * (1 MiB chunks) so grows happen quickly. If the arena cannot be opened the
+ * test skips, but only where that is expected: a 32-bit target (no room for
+ * the base) or a sandbox that sets FY_TEST_DURABLE_ALLOW_SKIP. Anywhere else
+ * a failure to open is a real bug, so fail instead of passing silently.
  */
 #define TEST_REGION_BASE	0x520000000000ULL
+
+static void durable_unavailable(void)
+{
+	if (sizeof(void *) < 8 || getenv("FY_TEST_DURABLE_ALLOW_SKIP")) {
+		fprintf(stderr, "SKIP: durable arena unavailable\n");
+		return;
+	}
+	ck_abort_msg("the durable arena could not be opened");
+}
 #define TEST_REGION_SIZE	(256ULL << 20)	/* 256 MiB -> 256 chunks */
 #define TEST_CHUNK_SIZE		(1ULL << 20)	/* 1 MiB */
 
@@ -173,8 +183,8 @@ START_TEST(durable_roundtrip_fixed_base)
 
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
-		/* base unavailable in sandbox: soft-skip */
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -230,6 +240,7 @@ START_TEST(durable_builder_roundtrip)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -282,6 +293,7 @@ START_TEST(durable_multi_chunk_grow)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -319,6 +331,7 @@ START_TEST(durable_concurrent_grow)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	fy_allocator_destroy(da);
@@ -381,6 +394,7 @@ START_TEST(durable_crash_recovery)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -505,6 +519,7 @@ START_TEST(durable_threaded_grow)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -911,6 +926,7 @@ START_TEST(refs_publish_basic)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -953,6 +969,7 @@ START_TEST(refs_readonly_rejected)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, 0x1234, FY_ALLOC_REFS_CHECKPOINT), 0);
@@ -983,6 +1000,7 @@ START_TEST(refs_cross_session)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1021,6 +1039,7 @@ START_TEST(refs_checkpoint_crash)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	fy_allocator_destroy(da);
@@ -1111,6 +1130,7 @@ START_TEST(refs_cas_contention)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 
@@ -1288,6 +1308,7 @@ START_TEST(durable_combined_no_index)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 
@@ -1329,6 +1350,7 @@ START_TEST(durable_separate_index_cross_session)
 				 FY_DURABLE_ARENA_DEDUP | FY_DURABLE_ARENA_SEPARATE_INDEX);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1393,6 +1415,7 @@ START_TEST(durable_separate_index_grow)
 	da = fy_allocator_create("durable", &cfg);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1478,6 +1501,7 @@ START_TEST(gc_basic_compaction)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 
@@ -1541,6 +1565,7 @@ START_TEST(gc_address_stable)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 
@@ -1585,6 +1610,7 @@ START_TEST(gc_dedup_identity)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 
@@ -1628,6 +1654,7 @@ START_TEST(gc_empty_noop)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 	fy_allocator_destroy(da);
@@ -1657,6 +1684,7 @@ START_TEST(gc_stale_staging_cleanup)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 	memset(&gb_cfg, 0, sizeof(gb_cfg));
@@ -1705,6 +1733,7 @@ START_TEST(gc_sparse_roundtrip)
 	da = open_test_arena(dir, TEST_REGION_BASE, flags);
 	if (!da) {
 		gc_cleanup(dir);
+		durable_unavailable();
 		return;
 	}
 	memset(&gb_cfg, 0, sizeof(gb_cfg));
@@ -1752,6 +1781,7 @@ START_TEST(verify_checkpoint_basic)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1788,6 +1818,7 @@ START_TEST(verify_detects_corruption)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1824,6 +1855,7 @@ START_TEST(verify_slot_rotation)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1862,6 +1894,7 @@ START_TEST(verify_multi_chunk)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1904,6 +1937,7 @@ START_TEST(verify_cross_session)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1956,6 +1990,7 @@ START_TEST(verify_checkpoint_iterate)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
@@ -1999,6 +2034,7 @@ START_TEST(verify_checkpoint_recover)
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_CHECKPOINT);
 	if (!da) {
 		rm_rf(dir);
+		durable_unavailable();
 		return;
 	}
 	a = da;
