@@ -10,7 +10,8 @@
 
 #ifdef HAVE_LINKER_WRAP_MALLOC
 
-/* Fail the nth allocation (malloc, calloc or realloc) from this point;
+/* Fail the nth allocation (malloc, calloc, realloc or posix_memalign)
+ * from this point;
  * nth of 0 disables the failure. */
 void fy_alloc_fail_arm(unsigned int nth);
 

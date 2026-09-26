@@ -9,6 +9,7 @@
 #include "config.h"
 #endif
 
+#include <errno.h>
 #include <stdlib.h>
 
 #include "libfyaml-test-alloc-fail.h"
@@ -18,6 +19,7 @@
 extern void *__real_malloc(size_t size);
 extern void *__real_calloc(size_t nmemb, size_t size);
 extern void *__real_realloc(void *ptr, size_t size);
+extern int __real_posix_memalign(void **memptr, size_t alignment, size_t size);
 
 static unsigned int alloc_seen, alloc_fail_nth;
 
@@ -40,6 +42,11 @@ void *__wrap_calloc(size_t nmemb, size_t size)
 void *__wrap_realloc(void *ptr, size_t size)
 {
 	return alloc_fails() ? NULL : __real_realloc(ptr, size);
+}
+
+int __wrap_posix_memalign(void **memptr, size_t alignment, size_t size)
+{
+	return alloc_fails() ? ENOMEM : __real_posix_memalign(memptr, alignment, size);
 }
 
 void fy_alloc_fail_arm(unsigned int nth)
