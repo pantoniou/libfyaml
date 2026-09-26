@@ -3618,6 +3618,10 @@ fy_emitter_collect_str_internal(struct fy_emitter *emit, char **bufp, size_t *si
 	if (rc != 1)
 		goto err_out;
 
+	/* a failed buffer grow lost output; do not return a partial buffer */
+	if (state->allocate_buffer && state->pos != state->need)
+		goto err_out;
+
 	/* if we are on a fixed buffer don't output */
 	if (state->maxsize > 0 && state->need > state->maxsize)
 		goto err_out;

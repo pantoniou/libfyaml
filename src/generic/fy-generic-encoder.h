@@ -63,7 +63,7 @@ char *fy_generic_emit_to_string_compact(fy_generic v, size_t *sizep);
 	({ \
 		size_t _size; \
 		char *_buf = fy_generic_emit_to_string_compact((_v), &_size); \
-		FY_ALLOCA_COPY_FREE(_buf, _size); \
+		FY_ALLOCA_COPY_FREE_NO_NULL(_buf, _size); \
 	})
 
 /* quick dumper to one line */
