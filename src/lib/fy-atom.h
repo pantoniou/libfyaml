@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include <libfyaml.h>
 
@@ -176,6 +177,9 @@ static inline void fy_atom_reset(struct fy_atom *atom)
 		return;
 	atom->fyi = NULL;
 	atom->analysis.flags = 0;
+	/* a diagnostic can report the marks of a reset atom */
+	memset(&atom->start_mark, 0, sizeof(atom->start_mark));
+	memset(&atom->end_mark, 0, sizeof(atom->end_mark));
 }
 
 static inline bool fy_atom_json_mode(struct fy_atom *handle)

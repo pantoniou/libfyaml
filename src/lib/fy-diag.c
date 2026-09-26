@@ -851,8 +851,12 @@ void fy_diag_vreport(struct fy_diag *diag,
 		column = fydrc->override_column;
 	} else {
 		name = fy_input_get_filename(fy_token_get_input(fydrc->fyt));
-		line = start_mark->line + 1;
-		column = start_mark->column + 1;
+		/* a token without an input has no position to report */
+		if (start_mark && fy_token_get_input(fydrc->fyt)) {
+			line = start_mark->line + 1;
+			column = start_mark->column + 1;
+		} else
+			line = column = 0;
 	}
 
 	/* it will strip trailing newlines */
@@ -878,6 +882,10 @@ void fy_diag_vreport(struct fy_diag *diag,
 		fy_token_unref(fydrc->fyt);
 
 	} else if ((errp = malloc(sizeof(*errp))) != NULL) {
+
+		/* a token without an input has no file name */
+		if (!name)
+			name = "";
 
 		msgsz = strlen(msg_str) + 1;
 		filesz = strlen(name) + 1;
