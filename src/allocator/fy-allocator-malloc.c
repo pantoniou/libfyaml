@@ -197,7 +197,8 @@ fy_malloc_tag_list_unlock(struct fy_malloc_tag *mt)
 static inline struct fy_malloc_tag *
 fy_malloc_tag_from_tag(struct fy_malloc_allocator *ma, int tag)
 {
-	if (!ma)
+	/* a failed setup leaves no id bitmap or no tag array */
+	if (!ma || !ma->ids || !ma->tags)
 		return NULL;
 
 	if ((unsigned int)tag >= ma->tag_count)

@@ -316,7 +316,8 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 static inline struct fy_mremap_tag *
 fy_mremap_tag_from_tag(struct fy_mremap_allocator *mra, int tag)
 {
-	if (!mra)
+	/* a failed setup leaves no id bitmap or no tag array */
+	if (!mra || !mra->ids || !mra->tags)
 		return NULL;
 
 	if ((unsigned int)tag >= mra->tag_count)

@@ -156,7 +156,8 @@ void fy_dedup_tag_data_destroy(struct fy_dedup_allocator *da, struct fy_dedup_ta
 static inline struct fy_dedup_tag *
 fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 {
-	if (!da)
+	/* a failed setup leaves no id bitmap or no tag array */
+	if (!da || !da->ids || !da->tags)
 		return NULL;
 
 	if ((unsigned int)tag >= da->tag_count)
