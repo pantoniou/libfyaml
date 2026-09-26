@@ -1606,6 +1606,51 @@ static void issue_408_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+static const char *issue_412_yaml;
+static const char *issue_412_expected;
+
+static void issue_412_scenario(unsigned int nth)
+{
+	struct fy_document *fyd;
+	char *buf;
+
+	fyd = fy_document_build_from_string(NULL, issue_412_yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_alloc_fail_arm(nth);
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
+	fy_alloc_fail_disarm();
+	/* a failed buffer grow must not return a partial buffer */
+	if (buf)
+		ck_assert_str_eq(buf, issue_412_expected);
+	free(buf);
+	fy_document_destroy(fyd);
+}
+
+static void issue_413_415_scenario(const char *name, unsigned int nth)
+{
+	struct fy_allocator *a;
+
+	fy_alloc_fail_arm(nth);
+	a = fy_allocator_create(name, NULL);
+	fy_alloc_fail_disarm();
+	fy_allocator_destroy(a);
+}
+
+static void issue_413_scenario(unsigned int nth)
+{
+	issue_413_415_scenario("malloc", nth);
+}
+
+static void issue_414_scenario(unsigned int nth)
+{
+	issue_413_415_scenario("mremap", nth);
+}
+
+static void issue_415_scenario(unsigned int nth)
+{
+	issue_413_415_scenario("auto", nth);
+}
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -2205,6 +2250,100 @@ START_TEST(fuzz_issue_409_ypath_alias_holds_itself_repro)
 	ck_assert_str_eq(fy_node_get_scalar0(fyn), "1");
 
 	fy_document_destroy(fyd);
+}
+END_TEST
+
+/* Test: gh#411 - a ypath alias error that has no input position. */
+START_TEST(fuzz_issue_411_ypath_error_marks_repro)
+{
+	struct fy_diag_cfg dcfg;
+	struct fy_diag *diag;
+	struct fy_document *fyd;
+	struct fy_diag_error *err;
+	void *iter;
+
+	fy_diag_cfg_default(&dcfg);
+	diag = fy_diag_create(&dcfg);
+	ck_assert_ptr_ne(diag, NULL);
+	fy_diag_set_collect_errors(diag, true);
+
+	fyd = fy_document_build_from_string(
+			&(struct fy_parse_cfg){
+				.flags = FYPCF_YPATH_ALIASES,
+				.diag = diag },
+			"*(", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert_int_ne(fy_document_resolve(fyd), 0);
+	fy_document_destroy(fyd);
+
+	/* an error without an input reports no position */
+	iter = NULL;
+	while ((err = fy_diag_errors_iterate(diag, &iter)) != NULL) {
+		ck_assert_ptr_ne(err->file, NULL);
+		if (!strcmp(err->msg, "No operands left on operand stack")) {
+			ck_assert_int_eq(err->line, 0);
+			ck_assert_int_eq(err->column, 0);
+		}
+	}
+
+	fy_diag_destroy(diag);
+}
+END_TEST
+
+/* Test: gh#412 - a string emit whose buffer fails to grow. */
+START_TEST(fuzz_issue_412_emit_string_grow_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	struct fy_document *fyd;
+	char *yaml, *p;
+	unsigned int i;
+
+	/* the output needs more than one page */
+	yaml = malloc(64 * 80 + 1);
+	ck_assert_ptr_ne(yaml, NULL);
+	for (i = 0, p = yaml; i < 64; i++, p += 80)
+		snprintf(p, 81, "- %077u\n", i);
+	issue_412_yaml = yaml;
+
+	fyd = fy_document_build_from_string(NULL, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+	p = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(p, NULL);
+	fy_document_destroy(fyd);
+	issue_412_expected = p;
+
+	alloc_fail_sweep(issue_412_scenario, 1024);
+
+	free(p);
+	free(yaml);
+#endif
+}
+END_TEST
+
+/* Test: gh#413 - a malloc allocator whose setup fails. */
+START_TEST(fuzz_issue_413_malloc_allocator_setup_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_413_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#414 - a mremap allocator whose setup fails. */
+START_TEST(fuzz_issue_414_mremap_allocator_setup_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_414_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: gh#415 - an auto allocator whose creation fails. */
+START_TEST(fuzz_issue_415_auto_allocator_create_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_415_scenario, 256);
+#endif
 }
 END_TEST
 
@@ -4613,6 +4752,50 @@ START_TEST(fuzz_issue_338_packed_blob_comment_past_strtab_repro)
 }
 END_TEST
 
+/* Test: gh#416 - a struct with an anonymous pointer to itself. */
+START_TEST(fuzz_issue_416_anonymous_self_pointer_repro)
+{
+	static const unsigned char blob[] = {
+		0x46, 0x59, 0x50, 0x47, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x01, 0x01, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x01, 0x9a, 0x14, 0x00, 0x01, 0x01, 0x16, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x00, 0x07, 0x01, 0x00, 0x05, 0x00, 0x00, 0x63, 0x72,
+		0x6a, 0x01, 0x75, 0x61, 0x78, 0x74, 0x00,
+	};
+	struct fy_reflection *rfl;
+
+	rfl = fy_reflection_from_packed_blob(blob, sizeof(blob), NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+	free(fy_reflection_generate_c_string(rfl, FYCGF_INDENT_TAB | FYCGF_COMMENT_NONE));
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+
+/* Test: gh#417 - a typedef that depends on itself. */
+START_TEST(fuzz_issue_417_self_dependent_typedef_repro)
+{
+	static const unsigned char blob[] = {
+		0x46, 0x59, 0x50, 0x47, 0x01, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x01, 0x3a, 0x01, 0x01,
+		0x01, 0x01, 0x01, 0x01, 0x19, 0x01, 0x00, 0x07, 0x19, 0x02, 0x01, 0x01,
+		0x05, 0x01, 0x00, 0x01, 0x00, 0x05, 0x00, 0x00, 0x05, 0x00, 0x00, 0x4f,
+		0x70, 0x75, 0x00, 0x52, 0x55, 0x6e, 0x74, 0x00,
+	};
+	struct fy_reflection *rfl;
+
+	rfl = fy_reflection_from_packed_blob(blob, sizeof(blob), NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+	free(fy_reflection_generate_c_string(rfl, FYCGF_INDENT_TAB | FYCGF_COMMENT_NONE));
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+
 #endif /* HAVE_REFLECTION */
 
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
@@ -4772,6 +4955,11 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_407_collection_method_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_408_select_clone_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_409_ypath_alias_holds_itself_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_411_ypath_error_marks_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_412_emit_string_grow_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_413_malloc_allocator_setup_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_414_mremap_allocator_setup_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_415_auto_allocator_create_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 #ifdef HAVE_GENERIC
@@ -4798,5 +4986,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_334_packed_blob_empty_function_return_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_335_packed_blob_unterminated_string_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_338_packed_blob_comment_past_strtab_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_416_anonymous_self_pointer_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_417_self_dependent_typedef_repro);
 #endif
 }
