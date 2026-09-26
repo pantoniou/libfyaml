@@ -4845,11 +4845,21 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 			fprintf(fp, "\n");
 			lines++;
 		} else {
+			/* the anonymous type must have fields and not be in generation */
+			if (!final_ti || !fy_type_kind_has_fields(final_ti->kind) ||
+			    final_ti == ti || c_in_ti_stack(cgen, final_ti))
+				goto err_out;
+
 			name = fy_field_info_generate_name(fi);
 			if (!name)
 				goto err_out;
 
+			ret = c_push_ti_stack(cgen, ti);
+			if (ret < 0)
+				goto err_out;
+
 			ret = c_generate_type_with_fields(cgen, fp, final_ti, false, level + 1, name, false);
+			(void)c_pop_ti_stack(cgen);
 			if (ret < 0)
 				goto err_out;
 			lines += ret;
