@@ -218,6 +218,8 @@ struct fy_allocator *fy_auto_create(struct fy_allocator *parent, int parent_tag,
 	int rc;
 
 	aa = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*aa), _Alignof(struct fy_auto_allocator));
+	if (!aa)
+		goto err_out;
 
 	rc = fy_auto_setup(&aa->a, parent, parent_tag, cfg);
 	if (rc)
