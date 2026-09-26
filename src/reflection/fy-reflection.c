@@ -2039,6 +2039,20 @@ err_out:
 	return -1;
 }
 
+static bool fy_type_has_dependent_cycle(const struct fy_type *ft)
+{
+	const struct fy_type *slow, *fast;
+
+	slow = fast = ft;
+	while (fast && fast->dependent_type) {
+		fast = fast->dependent_type->dependent_type;
+		slow = slow->dependent_type;
+		if (fast == slow)
+			return true;
+	}
+	return false;
+}
+
 int fy_type_update_info(struct fy_type *ft)
 {
 	struct fy_reflection *rfl;
@@ -2055,6 +2069,9 @@ int fy_type_update_info(struct fy_type *ft)
 
 	if (ft->flags & FYTF_TYPE_INFO_UPDATING)
 		return 0;
+
+	/* a dependent type chain must end; reject a malformed cycle */
+	RFL_ASSERT(!fy_type_has_dependent_cycle(ft));
 
 	ti = &ft->tiw.type_info;
 	if (!(ft->flags & FYTF_TYPE_INFO_UPDATED)) {
