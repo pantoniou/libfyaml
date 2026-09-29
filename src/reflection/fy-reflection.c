@@ -3423,19 +3423,37 @@ struct fy_decl *fy_type_get_anonymous_parent_decl(struct fy_type *ft)
 	return NULL;
 }
 
+static struct fy_type *fy_type_anonymous_parent_type(struct fy_type *ft)
+{
+	struct fy_decl *decl;
+
+	decl = fy_type_get_anonymous_parent_decl(ft);
+	return decl && decl->parent ? decl->parent->type : NULL;
+}
+
 size_t fy_type_eponymous_offset(struct fy_type *ft)
 {
 	size_t offset;
 	struct fy_decl *decl;
+	struct fy_type *slow, *fast;
 
 	if (!ft)
 		return 0;
 
 	offset = 0;
+	slow = fast = ft;
 	while ((decl = fy_type_get_anonymous_parent_decl(ft)) != NULL) {
-		assert(decl->decl_type == FYDT_FIELD);
+		if (decl->decl_type != FYDT_FIELD || !decl->parent)
+			return 0;
 		offset += decl->field_decl.byte_offset;
 		ft = decl->parent->type;
+
+		slow = fy_type_anonymous_parent_type(slow);
+		fast = fy_type_anonymous_parent_type(fast);
+		if (fast)
+			fast = fy_type_anonymous_parent_type(fast);
+		if (slow && slow == fast)
+			return 0;
 	}
 
 	return offset;
