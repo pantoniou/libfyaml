@@ -139,7 +139,9 @@ jobs:
 
             # Generator selection
             if compiler == "msvc":
-                if os_name in ("windows-latest", "windows-2025"):
+                if os_name == "windows-11-arm":
+                    row["generator"] = '-G "Visual Studio 18 2026" -A ARM64'
+                elif os_name in ("windows-latest", "windows-2025"):
                     row["generator"] = '-G "Visual Studio 18 2026" -A x64'
                 else:
                     row["generator"] = '-G "Visual Studio 17 2022" -A x64'
