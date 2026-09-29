@@ -398,6 +398,7 @@ void fy_walk_result_list_free_rl(struct fy_walk_result_list *fwrl, struct fy_wal
 struct fy_walk_result *fy_walk_result_vcreate_rl(struct fy_walk_result_list *fwrl, enum fy_walk_result_type type, va_list ap)
 {
 	struct fy_walk_result *fwr = NULL;
+	const char *str;
 
 	if ((unsigned int)type >= FWRT_COUNT)
 		goto err_out;
@@ -418,7 +419,10 @@ struct fy_walk_result *fy_walk_result_vcreate_rl(struct fy_walk_result_list *fwr
 		fwr->number = va_arg(ap, double);
 		break;
 	case fwrt_string:
-		fwr->string = strdup(va_arg(ap, const char *));
+		str = va_arg(ap, const char *);
+		if (!str)
+			goto err_out;
+		fwr->string = strdup(str);
 		if (!fwr->string)
 			goto err_out;
 		break;
@@ -1690,6 +1694,10 @@ void fy_path_expr_dump(struct fy_path_expr *expr, struct fy_diag *diag, enum fy_
 		fy_diag_diag(diag, errlevel, "%-*s%s", level*2, "", banner);
 
 	text = fy_token_get_text(expr->fyt, &len);
+	if (!text) {
+		text = "<allocation failed>";
+		len = strlen(text);
+	}
 
 	style = "";
 	if (expr->type == fpet_scalar) {
@@ -1729,6 +1737,8 @@ fy_path_expr_to_node_internal(struct fy_document *fyd, struct fy_path_expr *expr
 	int rc;
 
 	text = fy_token_get_text(expr->fyt, &len);
+	if (!text)
+		return NULL;
 
 	/* by default use double quoted style */
 	style = "\"";

@@ -942,7 +942,7 @@ static void fy_token_prepare_text(struct fy_token *fyt)
 	fyt->text0 = malloc(ret + 1);
 	if (!fyt->text0) {
 		fyt->text_len = 0;
-		fyt->text = fyt->text0 = strdup("");
+		fyt->text = NULL;
 		return;
 	}
 
@@ -1322,6 +1322,10 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	/* simple one? perfect */
 	if ((ta->flags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) == FYTTAF_CAN_BE_UNQUOTED_PATH_KEY) {
 		text = fy_token_get_text(fyt, &len);
+		if (!text) {
+			*lenp = 0;
+			return NULL;
+		}
 		str = malloc(len + 1);
 		if (!str) {
 			*lenp = 0;
@@ -1569,6 +1573,8 @@ char *fy_token_debug_text(struct fy_token *fyt)
 
 out:
 	text = fy_token_get_text(fyt, &length);
+	if (!text)
+		return NULL;
 
 	wlen = length > 8 ? 8 : (int)length;
 
@@ -1648,6 +1654,8 @@ int fy_token_cmp(struct fy_token *fyt1, struct fy_token *fyt2)
 	if (fyt1->type == FYTT_TAG || fyt1->type == FYTT_TAG_DIRECTIVE) {
 		t1 = fy_token_get_text(fyt1, &l1);
 		t2 = fy_token_get_text(fyt2, &l2);
+		if (!t1 || !t2)
+			return t1 ? 1 : t2 ? -1 : 0;
 		l = l1 > l2 ? l2 : l1;
 		ret = memcmp(t1, t2, l);
 		if (ret)
@@ -1684,8 +1692,10 @@ void fy_token_iter_start(struct fy_token *fyt, struct fy_token_iter *iter)
 		memset(&iter->atom_iter, 0, sizeof(iter->atom_iter));
 		return;
 	}
-
-	assert(fyt->type != FYTT_TAG && fyt->type != FYTT_TAG_DIRECTIVE);
+	if (fyt->type == FYTT_TAG || fyt->type == FYTT_TAG_DIRECTIVE) {
+		iter->fyt = NULL;
+		return;
+	}
 
 	/* fall back to the atom iterator */
 	fy_atom_iter_start(fy_token_atom(fyt), &iter->atom_iter);

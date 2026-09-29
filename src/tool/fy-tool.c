@@ -2311,7 +2311,7 @@ int main(int argc, char *argv[])
 	int tool_mode = OPT_TOOL;
 	struct fy_event *fyev;
 	struct fy_event *fyeev;
-	const char *eevtext;
+	const char *eevtext, *eevanchor, *eevtag;
 	size_t eevlen;
 	struct fy_tag **tags;
 	struct fy_token *fyt;
@@ -3262,33 +3262,42 @@ int main(int argc, char *argv[])
 									break;
 								case FYET_MAPPING_START:
 								case FYET_SEQUENCE_START:
+									fyt = fy_event_get_anchor_token(fyev);
+									eevanchor = fyt ? fy_token_get_text0(fyt) : NULL;
+									if (fyt && !eevanchor)
+										goto cleanup;
+									fyt = fy_event_get_tag_token(fyev);
+									eevtag = fyt ? fy_tag_token_short0(fyt) : NULL;
+									if (fyt && !eevtag)
+										goto cleanup;
 									fyeev = fy_emit_event_create(emit, fyev->type,
 												fy_event_get_node_style(fyev),
-												fy_event_get_anchor_token(fyev)
-													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
-													: NULL,
-												fy_event_get_tag_token(fyev)
-													? fy_tag_token_short0(fy_event_get_tag_token(fyev))
-													: NULL);
+												eevanchor, eevtag);
 									break;
 								case FYET_SCALAR:
 									eevlen = 0;
 									eevtext = fy_token_get_text(fy_event_get_token(fyev), &eevlen);
 									if (!eevtext)
 										goto cleanup;
+									fyt = fy_event_get_anchor_token(fyev);
+									eevanchor = fyt ? fy_token_get_text0(fyt) : NULL;
+									if (fyt && !eevanchor)
+										goto cleanup;
+									fyt = fy_event_get_tag_token(fyev);
+									eevtag = fyt ? fy_tag_token_short0(fyt) : NULL;
+									if (fyt && !eevtag)
+										goto cleanup;
 									fyeev = fy_emit_event_create(emit, FYET_SCALAR,
 											fy_scalar_token_get_style(fy_event_get_token(fyev)),
 												eevtext, eevlen,
-												fy_event_get_anchor_token(fyev)
-													? fy_token_get_text0(fy_event_get_anchor_token(fyev))
-													: NULL,
-												fy_event_get_tag_token(fyev)
-													? fy_tag_token_short0(fy_event_get_tag_token(fyev))
-													: NULL);
+												eevanchor, eevtag);
 									break;
 								case FYET_ALIAS:
+									eevtext = fy_token_get_text0(fy_event_get_token(fyev));
+									if (!eevtext)
+										goto cleanup;
 									fyeev = fy_emit_event_create(emit, FYET_ALIAS,
-												fy_token_get_text0(fy_event_get_token(fyev)));
+												eevtext);
 									break;
 								default:
 									goto cleanup;

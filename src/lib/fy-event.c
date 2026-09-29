@@ -1341,7 +1341,10 @@ char *fy_event_to_string(struct fy_event *fye)
 		break;
 	case FYET_ALIAS:
 		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
-		fprintf(fp, " %s%.*s", "*", (int)alias_len, alias);
+		if (alias)
+			fprintf(fp, " *%.*s", (int)alias_len, alias);
+		else
+			fprintf(fp, " <text allocation failed>");
 		break;
 	}
 

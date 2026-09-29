@@ -390,7 +390,10 @@ void dump_testsuite_event(struct fy_event *fye, enum dump_testsuite_event_flags 
 		break;
 	case FYET_ALIAS:
 		alias = fy_token_get_text(fye->alias.anchor, &alias_len);
-		printf("%c%s%.*s", separator, !tsv_format ? "*" : "", (int)alias_len, alias);
+		if (alias)
+			printf("%c%s%.*s", separator, !tsv_format ? "*" : "", (int)alias_len, alias);
+		else
+			printf("%c<text allocation failed>", separator);
 		break;
 	}
 
@@ -415,13 +418,19 @@ void dump_parse_event(struct fy_event *fye, bool colorize)
 	fyt_anchor = fy_event_get_anchor_token(fye);
 	if (fyt_anchor) {
 		anchor = fy_token_get_text(fyt_anchor, &anchor_len);
-		assert(anchor);
+		if (!anchor) {
+			fprintf(stderr, "failed to format anchor text\n");
+			return;
+		}
 	}
 
 	fyt_tag = fy_event_get_tag_token(fye);
 	if (fyt_tag) {
 		tag = fy_token_get_text(fyt_tag, &tag_len);
-		assert(tag);
+		if (!tag) {
+			fprintf(stderr, "failed to format tag text\n");
+			return;
+		}
 		tagp = fy_tag_token_tag(fyt_tag);
 		assert(tagp);
 	}
@@ -580,6 +589,10 @@ void dump_parse_event(struct fy_event *fye, bool colorize)
 		break;
 	case FYET_ALIAS:
 		anchor = fy_token_get_text(fye->alias.anchor, &anchor_len);
+		if (!anchor) {
+			fprintf(stderr, "failed to format alias text\n");
+			return;
+		}
 		if (colorize)
 			fputs(A_GREEN, stdout);
 		printf("ALIAS *%.*s", (int)anchor_len, anchor);
@@ -699,21 +712,30 @@ void dump_scan_token(struct fy_token *fyt, bool colorize)
 		break;
 	case FYTT_ALIAS:
 		anchor = fy_token_get_text(fyt, &anchor_len);
-		assert(anchor);
+		if (!anchor) {
+			fprintf(stderr, "failed to format alias text\n");
+			return;
+		}
 		if (colorize)
 			fputs(A_GREEN, stdout);
 		printf("ALIAS *%.*s", (int)anchor_len, anchor);
 		break;
 	case FYTT_ANCHOR:
 		anchor = fy_token_get_text(fyt, &anchor_len);
-		assert(anchor);
+		if (!anchor) {
+			fprintf(stderr, "failed to format anchor text\n");
+			return;
+		}
 		if (colorize)
 			fputs(A_GREEN, stdout);
 		printf("ANCHOR &%.*s", (int)anchor_len, anchor);
 		break;
 	case FYTT_TAG:
 		tag = fy_tag_token_tag(fyt);
-		assert(tag);
+		if (!tag) {
+			fprintf(stderr, "failed to format tag text\n");
+			return;
+		}
 		if (colorize)
 			fputs(A_GREEN, stdout);
 		/* prefix is a suffix for tag */
@@ -725,7 +747,10 @@ void dump_scan_token(struct fy_token *fyt, bool colorize)
 
 		printf("SCALAR ");
 		value = fy_token_get_text(fyt, &len);
-		assert(value);
+		if (!value) {
+			fprintf(stderr, "failed to format scalar text\n");
+			return;
+		}
 		style = fy_token_scalar_style(fyt);
 		switch (style) {
 		case FYSS_PLAIN:
