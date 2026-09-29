@@ -617,7 +617,8 @@ void fy_emit_write_comment(struct fy_emitter *emit,
 
 	if (!fy_emit_whitespace(emit))
 		fy_emit_write_ws(emit);
-	indent = emit->column;
+	if (indent < 0)
+		indent = 0;
 
 	s = str;
 	e = str + len;
