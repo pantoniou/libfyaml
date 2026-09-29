@@ -28,6 +28,61 @@
 #include "fy-check.h"
 #include "libfyaml-test-alloc-fail.h"
 
+#ifdef HAVE_LINKER_WRAP_MALLOC
+/* Test: gh#418 - an empty token fallback stays valid if strdup fails. */
+START_TEST(fuzz_issue_418_empty_text_strdup_failure_repro)
+{
+	static const char input[] = "*/select(-081()==\"\")[\n{{!\ng[";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_YPATH_ALIASES | FYPCF_RELAXED_FLOW_DOC,
+	};
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, input, sizeof(input) - 1);
+	if (fyd) {
+		fy_alloc_fail_empty_strdup_arm();
+		fy_document_resolve(fyd);
+		fy_document_destroy(fyd);
+	}
+	ck_assert_int_ne(fy_alloc_fail_empty_strdup_seen(), 0);
+	fy_alloc_fail_disarm();
+}
+END_TEST
+#endif
+
+/* Test: gh#420 - comment line breaks must not repeat a stale long column. */
+START_TEST(fuzz_issue_420_comment_stale_column_repro)
+{
+	char input[514];
+	char comment[256];
+	struct fy_document *fyd;
+	struct fy_node *seq, *scalar;
+	struct fy_token *token;
+	char *out;
+	void *prev = NULL;
+
+	memset(input, 'a', sizeof(input) - 1);
+	input[0] = '[';
+	input[sizeof(input) - 2] = ']';
+	input[sizeof(input) - 1] = '\0';
+	fyd = fy_document_build_from_string(NULL, input, sizeof(input) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	seq = fy_document_root(fyd);
+	scalar = fy_node_sequence_iterate(seq, &prev);
+	ck_assert_ptr_ne(scalar, NULL);
+	token = fy_node_get_scalar_token(scalar);
+	memset(comment, '\n', sizeof(comment));
+	ck_assert_int_eq(fy_token_set_comment(token, fycp_right,
+			comment, sizeof(comment)), 0);
+	out = fy_emit_document_to_string(fyd,
+			FYECF_MODE_FLOW | FYECF_OUTPUT_COMMENTS | FYECF_DEFAULT);
+	ck_assert_ptr_ne(out, NULL);
+	ck_assert_uint_lt(strlen(out), 4096);
+	free(out);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 #if defined(__linux__) && defined(HAVE_GENERIC)
 /* Test: gh#344 - dump a deep collection with source markers. */
 START_TEST(fuzz_issue_344_deep_primitive_dump_repro)
@@ -115,6 +170,33 @@ END_TEST
 #endif
 
 #ifdef HAVE_REFLECTION
+/* Test: gh#419 - anonymous parent lookup must stop on a packed type cycle. */
+START_TEST(fuzz_issue_419_anonymous_type_cycle_repro)
+{
+	static const unsigned char blob[] = {
+		0x46, 0x59, 0x50, 0x47, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x19,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x16, 0x01, 0x96, 0x11, 0x03, 0x16, 0x03, 0x01,
+		0x01, 0x00, 0x01, 0x00, 0x07, 0x00, 0x07, 0x05, 0x00, 0x01, 0x01, 0x02,
+		0x07, 0x00, 0x07, 0x01, 0x00, 0x0b, 0x00, 0x07, 0x01, 0x01, 0x0d, 0x00,
+		0x00, 0x62, 0x61, 0x72, 0x00, 0x78, 0x00, 0x66, 0x6f, 0x6f, 0x00, 0x61,
+		0x00, 0x62, 0x00,
+	};
+	struct fy_reflection *rfl;
+	const struct fy_type_info *ti;
+	void *prev = NULL;
+
+	rfl = fy_reflection_from_packed_blob(blob, sizeof(blob), NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL)
+		(void)fy_type_info_eponymous_offset(ti);
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+
 /* Test: gh#341 - a dependent type cycle must not loop forever. */
 START_TEST(fuzz_issue_341_dependent_type_cycle_repro)
 {
@@ -4960,6 +5042,10 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_413_malloc_allocator_setup_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_414_mremap_allocator_setup_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_415_auto_allocator_create_repro);
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_check_testcase_add_test(ctc, fuzz_issue_418_empty_text_strdup_failure_repro);
+#endif
+	fy_check_testcase_add_test(ctc, fuzz_issue_420_comment_stale_column_repro);
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
 #ifdef HAVE_GENERIC
@@ -4967,6 +5053,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 #endif
 #endif
 #ifdef HAVE_REFLECTION
+	fy_check_testcase_add_test(ctc, fuzz_issue_419_anonymous_type_cycle_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_341_dependent_type_cycle_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_342_null_type_name_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_348_enum_int64_max_repro);

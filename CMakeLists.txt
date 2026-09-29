@@ -1516,7 +1516,7 @@ if(CAN_TEST)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src)
 
     # Probe for linker malloc wrapping, used by allocation failure tests.
-    # The tests wrap malloc, calloc, realloc and posix_memalign.
+    # The tests wrap malloc, calloc, realloc, posix_memalign and strdup.
     # GNU ld and lld support --wrap; the macOS and MSVC linkers do not.
     if(NOT DEFINED HAVE_LINKER_WRAP_MALLOC)
         if(CMAKE_CROSSCOMPILING AND NOT CMAKE_CROSSCOMPILING_EMULATOR)
@@ -1524,25 +1524,29 @@ if(CAN_TEST)
             message(STATUS "Linker malloc wrapping: skipped (cross compiling)")
         else()
             include(CheckCSourceRuns)
-            set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign")
+            set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign,--wrap=strdup")
             check_c_source_runs("
                 #include <stdlib.h>
+                #include <string.h>
                 extern void *__real_malloc(size_t size);
                 extern void *__real_calloc(size_t nmemb, size_t size);
                 extern void *__real_realloc(void *ptr, size_t size);
                 extern int __real_posix_memalign(void **memptr, size_t alignment, size_t size);
+                extern char *__real_strdup(const char *s);
                 static int wrapped;
                 void *__wrap_malloc(size_t size) { wrapped |= 1; return __real_malloc(size); }
                 void *__wrap_calloc(size_t nmemb, size_t size) { wrapped |= 2; return __real_calloc(nmemb, size); }
                 void *__wrap_realloc(void *ptr, size_t size) { wrapped |= 4; return __real_realloc(ptr, size); }
                 int __wrap_posix_memalign(void **memptr, size_t alignment, size_t size) { wrapped |= 8; return __real_posix_memalign(memptr, alignment, size); }
+                char *__wrap_strdup(const char *s) { wrapped |= 16; return __real_strdup(s); }
                 int main(void) {
                     void *p = malloc(16), *q = calloc(1, 16), *r = NULL;
+                    char *s = strdup((char[]){0});
                     p = realloc(p, 32);
                     if (posix_memalign(&r, 64, 64))
                         r = NULL;
-                    free(p); free(q); free(r);
-                    return (p && q && r && wrapped == 15) ? 0 : 1;
+                    free(p); free(q); free(r); free(s);
+                    return (p && q && r && s && wrapped == 31) ? 0 : 1;
                 }
             " LINKER_WRAPS_MALLOC)
             unset(CMAKE_REQUIRED_LINK_OPTIONS)
@@ -1582,7 +1586,7 @@ if(CAN_TEST)
             $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:HAVE_LINKER_WRAP_MALLOC>
         )
         if(HAVE_LINKER_WRAP_MALLOC)
-            target_link_options(libfyaml-test PRIVATE "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign")
+            target_link_options(libfyaml-test PRIVATE "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign,--wrap=strdup")
         endif()
 
         target_include_directories(libfyaml-test PRIVATE

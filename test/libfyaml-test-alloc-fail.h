@@ -18,6 +18,12 @@ void fy_alloc_fail_arm(unsigned int nth);
 /* Stop failing allocations. */
 void fy_alloc_fail_disarm(void);
 
+/* Fail the next strdup of an empty string. */
+void fy_alloc_fail_empty_strdup_arm(void);
+
+/* Return whether the empty-string failure was injected. */
+int fy_alloc_fail_empty_strdup_seen(void);
+
 /* The number of allocations that were seen since the last arm. */
 unsigned int fy_alloc_fail_seen(void);
 
