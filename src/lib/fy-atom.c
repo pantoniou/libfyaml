@@ -2504,9 +2504,14 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 			FYTTAF_CAN_BE_PLAIN |
 			FYTTAF_CAN_BE_SINGLE_QUOTED |
 			FYTTAF_CAN_BE_DOUBLE_QUOTED |
-			FYTTAF_CAN_BE_LITERAL |
-			FYTTAF_CAN_BE_PLAIN_FLOW |
-			FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+			FYTTAF_CAN_BE_LITERAL;
+
+		/* the state that the scanner recorded decides the rest */
+		if (!handle->has_flow_indicator)
+			analysis->flags |= FYTTAF_CAN_BE_PLAIN_FLOW;
+		if (!handle->invalid_path_key)
+			analysis->flags |= FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
 		analysis->maxcol = (int)handle->storage_hint;
 		analysis->maxspan = analysis->maxcol - 1;
 		analysis->lbs = 0;
