@@ -992,6 +992,7 @@ struct fy_token *fy_node_non_synthesized_token(struct fy_node *fyn)
 	handle.trailing_lb = !!(aflags & FYTTAF_HAS_TRAILING_LB);
 	handle.size0 = !!(aflags & FYTTAF_SIZE0);
 	handle.valid_anchor = !!(aflags & FYTTAF_VALID_ANCHOR);
+	handle.valid_path_key = !!(aflags & FYTTAF_CAN_BE_UNQUOTED_PATH_KEY);
 	handle.json_mode = false;		/* always false */
 	handle.lb_mode = fylb_cr_nl;		/* always \r\n */
 	handle.fws_mode = fyfws_space_tab;	/* always space + tab */

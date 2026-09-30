@@ -2110,8 +2110,14 @@ const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
  * - otherwise double quoted as the safe fallback
  */
 static void
-fy_atom_text_analyze_final(struct fy_text_analysis *analysis)
+fy_atom_text_analyze_final(const struct fy_atom *handle, struct fy_text_analysis *analysis)
 {
+	/* the fast path flags come from the state the scanner recorded */
+	if (handle->has_flow_indicator)
+		analysis->flags &= ~FYTTAF_CAN_BE_PLAIN_FLOW;
+	if (!handle->valid_path_key)
+		analysis->flags &= ~FYTTAF_CAN_BE_UNQUOTED_PATH_KEY;
+
 	/* if it's got nothing, it can be anything */
 	if (analysis->flags & FYTTAF_SIZE0)
 		analysis->flags |= FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW |
@@ -2511,7 +2517,7 @@ fy_atom_text_analyze(struct fy_atom *handle, enum fy_atom_style style,
 		analysis->maxspan = analysis->maxcol - 1;
 		analysis->lbs = 0;
 
-		fy_atom_text_analyze_final(analysis);
+		fy_atom_text_analyze_final(handle, analysis);
 		return;
 	}
 
