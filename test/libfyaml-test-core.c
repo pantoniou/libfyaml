@@ -336,6 +336,32 @@ START_TEST(doc_path_node)
 }
 END_TEST
 
+START_TEST(doc_path_node_plain_key_quoted)
+{
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	char *path;
+
+	fyd = fy_document_build_from_string(NULL, "a/b: 1\n1x: 2\n", FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fyd), "a/b", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+	path = fy_node_get_path(fyn);
+	ck_assert_str_eq(path, "/\"a/b\"");
+	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), path, FY_NT, FYNWF_DONT_FOLLOW), fyn);
+	free(path);
+
+	fyn = fy_node_mapping_lookup_by_string(fy_document_root(fyd), "1x", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+	path = fy_node_get_path(fyn);
+	ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), path, FY_NT, FYNWF_DONT_FOLLOW), fyn);
+	free(path);
+
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 START_TEST(doc_path_parent)
 {
 	struct fy_document *fyd;
@@ -2639,6 +2665,7 @@ void libfyaml_case_core(struct fy_check_suite *cs)
 
 	fy_check_testcase_add_test(ctc, doc_path_access);
 	fy_check_testcase_add_test(ctc, doc_path_node);
+	fy_check_testcase_add_test(ctc, doc_path_node_plain_key_quoted);
 	fy_check_testcase_add_test(ctc, doc_path_parent);
 	fy_check_testcase_add_test(ctc, doc_short_path);
 	fy_check_testcase_add_test(ctc, doc_scalar_path);

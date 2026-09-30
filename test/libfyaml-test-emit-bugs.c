@@ -723,6 +723,26 @@ START_TEST(emit_bug_unquoted_flow_comma)
 }
 END_TEST
 
+START_TEST(emit_bug_unquoted_flow_indicator_no_space)
+{
+	const char input[] = "- foo,bar\n- a]b\n- x{y}: z\n- a.b-c\n";
+	struct fy_document *fyd = NULL;
+	struct fy_parse_cfg cfg = {0};
+	char *buf;
+
+	cfg.flags = FYPCF_DEFAULT_PARSE;
+	fyd = fy_document_build_from_string(&cfg, input, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF | FYECF_STRIP_LABELS | FYECF_STRIP_TAGS | FYECF_STRIP_DOC | FYECF_DOC_START_MARK_OFF);
+
+	ck_assert_str_eq(buf, "['foo,bar', 'a]b', {'x{y}': z}, a.b-c]\n");
+
+	free(buf);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* ── Bug 14: comment indent loss on block sequence in mapping ────── */
 
 struct emit_bugs_collect_data {
@@ -1678,6 +1698,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* other kind of emit bugs */
 	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_comma);
+	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_indicator_no_space);
 
 	/* Bug 15: folded block scalar line breaks lost on re-emit */
 	fy_check_testcase_add_test(ctc, emit_bug_folded_clip_roundtrip);
