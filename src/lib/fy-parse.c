@@ -4646,6 +4646,8 @@ struct fy_fetch_plain_state {
 	bool has_ws;
 	bool has_json_esc;
 	bool has_high_ascii;
+	bool has_flow_indicator;
+	bool invalid_path_key;
 	bool simple_key_allowed;
 	bool last_was_lb;
 	bool has_weird_nl;
@@ -4678,6 +4680,8 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 			bool flow_level_le_0_indent_ge_0 : 1;
 			bool check_tab : 1;
 			bool last_was_lb : 1;
+			bool has_flow_indicator : 1;
+			bool invalid_path_key : 1;
 		};
 		unsigned short flags;
 	} u;
@@ -4689,6 +4693,7 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 	u.flow_level_gt_0 = flow_level > 0;
 	u.flow_level_le_0_indent_ge_0 = flow_level <= 0 && indent >= 0;
 	u.check_tab = fy_reader_tabsize(fyr) || indent < 0;
+	u.invalid_path_key = !fy_is_first_alpha(c);
 
 	length = 0;
 	length_advance = 0;
@@ -4744,6 +4749,10 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 				/* check whether we have a JSON unescaped character */
 				u.has_json_esc |= !fy_is_json_unescaped(c);
 				u.has_high_ascii |= c >= 0x80;
+
+				/* only flow indicators found in block context get here */
+				u.has_flow_indicator |= fy_is_flow_indicator(c);
+				u.invalid_path_key |= c != '-';
 
 				fyr->column++;
 
@@ -4823,6 +4832,8 @@ fy_reader_fetch_plain_scalar_handle_inline(struct fy_reader *fyr, int c,
 	state->has_ws = u.has_ws;
 	state->has_json_esc = u.has_json_esc;
 	state->has_high_ascii = u.has_high_ascii;
+	state->has_flow_indicator = u.has_flow_indicator;
+	state->invalid_path_key = u.invalid_path_key;
 	state->last_was_lb = u.last_was_lb;
 	state->has_weird_nl = u.has_weird_nl;
 
@@ -4981,6 +4992,8 @@ int fy_reader_fetch_plain_scalar_handle(struct fy_reader *fyr, int c,
 	handle->is_merge_key = is_merge_key && state->length == 2;
 	handle->simple_key_allowed = state->simple_key_allowed;
 	handle->high_ascii = state->has_high_ascii;
+	handle->has_flow_indicator = state->has_flow_indicator;
+	handle->valid_path_key = !state->invalid_path_key;
 
 	if (state->has_weird_nl || FORCE_ATOM_SIZE_CHECK_DEFAULT) {
 		tlength = fy_atom_format_text_length(handle);
