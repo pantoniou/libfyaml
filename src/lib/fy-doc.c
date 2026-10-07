@@ -2432,6 +2432,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 	/* if types of `from` and `to` differ (or it's a scalar), it's a replace */
 	if (fyn_from->type != fyn_to->type || fyn_from->type == FYNT_SCALAR) {
 
+		/* a mapping key is not a value, reject it before the copy */
+		fyd_error_check(fyd, !fyn_parent || fyn_parent->type != FYNT_MAPPING || fynp,
+				err_out, "Illegal mapping node found");
+
 		fyn_cpy = fy_node_copy(fyd, fyn_from);
 		fyd_error_check(fyd, fyn_cpy, err_out,
 				"fy_node_copy() failed");
