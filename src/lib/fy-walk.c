@@ -4732,6 +4732,69 @@ err_out:
 	goto out;
 }
 
+struct fy_walk_unique_ref {
+	struct fy_walk_result *fwr;
+	size_t order;
+};
+
+static int fy_walk_unique_ref_cmp(const void *a, const void *b)
+{
+	const struct fy_walk_unique_ref *ura = a, *urb = b;
+	uintptr_t pa = (uintptr_t)ura->fwr->fyn, pb = (uintptr_t)urb->fwr->fyn;
+
+	if (pa != pb)
+		return pa < pb ? -1 : 1;
+	return ura->order < urb->order ? -1 : ura->order > urb->order;
+}
+
+/*
+ * Remove the results that refer to a node that an earlier result refers to.
+ * This takes O(n log n), and it makes the pairwise filter work on fewer results.
+ * Return without any change when there is no memory for the work array.
+ */
+static void fy_walk_result_unique_same_node(struct fy_walk_result_list *refs)
+{
+	struct fy_walk_unique_ref *urs;
+	struct fy_walk_result *fwr;
+	size_t i, count;
+
+	count = 0;
+	for (fwr = fy_walk_result_list_head(refs); fwr; fwr = fy_walk_result_next(refs, fwr)) {
+		if (fwr->type == fwrt_node_ref)
+			count++;
+	}
+	if (count < 2)
+		return;
+
+	urs = malloc(count * sizeof(*urs));
+	if (!urs)
+		return;
+
+	i = 0;
+	for (fwr = fy_walk_result_list_head(refs); fwr; fwr = fy_walk_result_next(refs, fwr)) {
+		if (fwr->type != fwrt_node_ref)
+			continue;
+		urs[i].fwr = fwr;
+		urs[i].order = i;
+		i++;
+	}
+
+	qsort(urs, count, sizeof(*urs), fy_walk_unique_ref_cmp);
+
+	/* the first of each group is the earliest, remove the rest */
+	for (i = 1; i < count; i++) {
+		if (urs[i].fwr->fyn != urs[i - 1].fwr->fyn) {
+			continue;
+		}
+		fy_walk_result_list_del(refs, urs[i].fwr);
+		fy_walk_result_free(urs[i].fwr);
+		/* keep comparing against the surviving first one */
+		urs[i] = urs[i - 1];
+	}
+
+	free(urs);
+}
+
 struct fy_walk_result *
 fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *expr,
 		     struct fy_walk_result *input, enum fy_path_expr_type ptype,
@@ -5126,6 +5189,9 @@ fy_path_expr_execute(struct fy_path_exec *fypx, int level, struct fy_path_expr *
 			output = NULL;
 			break;
 		}
+
+		/* drop the results of the same node first, it is cheap */
+		fy_walk_result_unique_same_node(&input->refs);
 
 		/* remove duplicates filter */
 		for (fwr = fy_walk_result_list_head(&input->refs); fwr;
