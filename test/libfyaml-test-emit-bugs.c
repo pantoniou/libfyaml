@@ -743,6 +743,77 @@ START_TEST(emit_bug_unquoted_flow_indicator_no_space)
 }
 END_TEST
 
+/* flow indicators and path keys of scalars that did not come from a parser */
+START_TEST(emit_bug_manual_scalar_flow_indicator_and_path_key)
+{
+	static const struct {
+		const char *text;
+		const char *flow;	/* the scalar as a flow sequence item */
+		bool unquoted_path;
+	} cases[] = {
+		{ "foo",	"[foo]\n",		true },
+		{ "a-b_1",	"[a-b_1]\n",		true },
+		{ "foo,bar",	"[\"foo,bar\"]\n",	false },
+		{ "a]b",	"[\"a]b\"]\n",		false },
+		{ "x{y}",	"[\"x{y}\"]\n",		false },
+		{ "a/b",	"[a/b]\n",		false },
+		{ "a.b",	"[a.b]\n",		false },
+		{ "1x",		"[1x]\n",		false },
+	};
+	struct fy_document *fyd;
+	struct fy_node *fyn_seq, *fyn_map, *fyn_key, *fyn_val;
+	char *buf, *path, *expect;
+	size_t i;
+	int rc;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+
+		/* as an item of a flow sequence */
+		fyd = fy_document_create(NULL);
+		ck_assert_ptr_ne(fyd, NULL);
+		fyn_seq = fy_node_create_sequence(fyd);
+		ck_assert_ptr_ne(fyn_seq, NULL);
+		fy_document_set_root(fyd, fyn_seq);
+		rc = fy_node_sequence_append(fyn_seq,
+				fy_node_create_scalar_copy(fyd, cases[i].text, FY_NT));
+		ck_assert_int_eq(rc, 0);
+
+		buf = fy_emit_document_to_string(fyd, FYECF_MODE_FLOW_ONELINE | FYECF_WIDTH_INF |
+				FYECF_STRIP_LABELS | FYECF_STRIP_TAGS | FYECF_STRIP_DOC |
+				FYECF_DOC_START_MARK_OFF);
+		ck_assert_ptr_ne(buf, NULL);
+		ck_assert_str_eq(buf, cases[i].flow);
+		free(buf);
+		fy_document_destroy(fyd);
+
+		/* as a mapping key, in a node path */
+		fyd = fy_document_create(NULL);
+		ck_assert_ptr_ne(fyd, NULL);
+		fyn_map = fy_node_create_mapping(fyd);
+		ck_assert_ptr_ne(fyn_map, NULL);
+		fy_document_set_root(fyd, fyn_map);
+		fyn_key = fy_node_create_scalar_copy(fyd, cases[i].text, FY_NT);
+		fyn_val = fy_node_create_scalar(fyd, "v", FY_NT);
+		ck_assert_ptr_ne(fyn_key, NULL);
+		ck_assert_ptr_ne(fyn_val, NULL);
+		rc = fy_node_mapping_append(fyn_map, fyn_key, fyn_val);
+		ck_assert_int_eq(rc, 0);
+
+		path = fy_node_get_path(fyn_val);
+		ck_assert_ptr_ne(path, NULL);
+		ck_assert_ptr_eq(fy_node_by_path(fy_document_root(fyd), path, FY_NT,
+				FYNWF_DONT_FOLLOW), fyn_val);
+		if (asprintf(&expect, cases[i].unquoted_path ? "/%s" : "/\"%s\"",
+			     cases[i].text) < 0)
+			ck_abort_msg("asprintf failed");
+		ck_assert_str_eq(path, expect);
+		free(expect);
+		free(path);
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 /* ── Bug 14: comment indent loss on block sequence in mapping ────── */
 
 struct emit_bugs_collect_data {
@@ -1698,6 +1769,7 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 
 	/* other kind of emit bugs */
 	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_comma);
+	fy_check_testcase_add_test(ctc, emit_bug_manual_scalar_flow_indicator_and_path_key);
 	fy_check_testcase_add_test(ctc, emit_bug_unquoted_flow_indicator_no_space);
 
 	/* Bug 15: folded block scalar line breaks lost on re-emit */
