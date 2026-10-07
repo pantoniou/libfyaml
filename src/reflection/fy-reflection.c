@@ -2158,6 +2158,8 @@ int fy_type_fixup(struct fy_type *ft)
 	enum fy_type_kind type_kind;
 	struct fy_decl *declc, *decl;
 	size_t bit_offset, bit_size, bit_align, max_align, max_size, max_bit_offset, bit_width;
+	size_t elem_size;
+	uintmax_t max_count;
 	bool is_bitfield, last_was_bitfield, is_first_field;
 	int rc;
 
@@ -2232,6 +2234,13 @@ int fy_type_fixup(struct fy_type *ft)
 
 		rc = fy_type_fixup(ft->dependent_type);
 		RFL_ASSERT(!rc);
+
+		/* the array must fit in the address space, even if its elements are empty */
+		elem_size = ft->dependent_type->size;
+		if (!elem_size)
+			elem_size = 1;
+		max_count = (uintmax_t)PTRDIFF_MAX / elem_size;
+		RFL_ASSERT(ft->element_count <= max_count);
 
 		/* size is the multiple of the element count */
 		ft->size = ft->dependent_type->size * ft->element_count;
