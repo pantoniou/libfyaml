@@ -2721,7 +2721,7 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	struct fy_anchor *fya;
 	const char *anchor_text, *s, *e, *p, *path;
 	size_t anchor_len, path_len;
-	struct fy_node *fyn_path_root;
+	struct fy_node *fyn_path_root, *fyn_target;
 	unsigned int marker;
 
 	if (!fyn || !fy_node_is_alias(fyn))
@@ -2786,7 +2786,15 @@ fy_node_follow_alias(struct fy_node *fyn, enum fy_node_walk_flags flags)
 	flags &= ~FYNWF_MARKER(FYNWF_MARKER_MASK);
 	flags |= FYNWF_MARKER(marker + 1);
 
-	return fy_node_by_path_internal(fyn_path_root, path, path_len, flags);
+	/* an alias that is being followed cannot be followed again, it is a cycle */
+	if (fyn->marks & FY_BIT(FYNWF_ALIAS_MARKER))
+		return fyn;
+
+	fyn->marks |= FY_BIT(FYNWF_ALIAS_MARKER);
+	fyn_target = fy_node_by_path_internal(fyn_path_root, path, path_len, flags);
+	fyn->marks &= ~FY_BIT(FYNWF_ALIAS_MARKER);
+
+	return fyn_target;
 }
 
 static bool fy_node_pair_is_merge_key(struct fy_node_pair *fynp)

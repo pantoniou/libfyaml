@@ -190,6 +190,7 @@ bool fy_check_ref_loop(struct fy_document *fyd, struct fy_node *fyn,
 #define FYNWF_REF_MARKER	(FYNWF_MAX_USER_MARKER + 2)
 #define FYNWF_INSET_MARKER	(FYNWF_MAX_USER_MARKER + 3)
 #define FYNWF_MERGE_MARKER	(FYNWF_MAX_USER_MARKER + 4)
+#define FYNWF_ALIAS_MARKER	(FYNWF_MAX_USER_MARKER + 5)
 
 #define FYNWF_SYSTEM_MARKS	(FY_BIT(FYNWF_VISIT_MARKER) | \
 				 FY_BIT(FYNWF_REF_MARKER) | \
