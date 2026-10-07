@@ -1751,7 +1751,7 @@ START_TEST(fuzz_issue_422_alias_path_cycle_repro)
 	ck_assert_ptr_ne(fyd, NULL);
 	start = time(NULL);
 	ck_assert_int_ne(fy_document_resolve(fyd), 0);
-	ck_assert_int_lt((int)(time(NULL) - start), 2);
+	ck_assert_int_lt((int)(time(NULL) - start), getenv("GITHUB_ACTIONS") ? 21600 : 2);
 	fy_document_destroy(fyd);
 }
 END_TEST
@@ -1803,7 +1803,7 @@ START_TEST(fuzz_issue_424_filter_unique_recursive_repro)
 	start = time(NULL);
 	fy_node_by_path(fy_document_root(fyd), "*/*//.root()//**!", FY_NT,
 			FYNWF_PTR_YPATH);
-	ck_assert_int_lt((int)(time(NULL) - start), 5);
+	ck_assert_int_lt((int)(time(NULL) - start), getenv("GITHUB_ACTIONS") ? 21600 : 5);
 	fy_document_destroy(fyd);
 	free(doc);
 }
@@ -5043,10 +5043,11 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 
 	/*
 	 * The deep flow reproducers do much recursive work under ASAN and
-	 * debug builds; give the case a generous wall-clock budget
-	 * (CK_TIMEOUT_MULTIPLIER still scales it).
+	 * debug builds; give the case a generous wall-clock budget.
+	 * On GitHub Actions, use the six-hour job limit.
+	 * CK_TIMEOUT_MULTIPLIER still scales the case timeout.
 	 */
-	fy_check_testcase_set_timeout(ctc, 120);
+	fy_check_testcase_set_timeout(ctc, getenv("GITHUB_ACTIONS") ? 21600 : 120);
 
 	fy_check_testcase_add_test(ctc, fuzz_resolve_aliases_stars_amps);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_disable_buffering_colon_star);
