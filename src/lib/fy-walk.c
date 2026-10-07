@@ -2949,10 +2949,15 @@ int evaluate_method(struct fy_path_parser *fypp, struct fy_path_expr *exprm,
 
 	exprm->fym = fym;
 
-	if (exprl)
+	/* the operands are released, do not release them again on error */
+	if (exprl) {
 		fy_path_expr_free_recycle(fypp, exprl);
-	if (exprr)
+		exprl = NULL;
+	}
+	if (exprr) {
 		fy_path_expr_free_recycle(fypp, exprr);
+		exprr = NULL;
+	}
 
 	/* and push as an operand */
 	ret = push_operand(fypp, exprm);
