@@ -67,6 +67,8 @@ struct fy_indent {
 	struct list_head node;
 	int indent;
 	int indent_line;
+	int pending_complex_key_column;
+	struct fy_mark pending_complex_key_mark;
 	bool generated_block_map : 1;
 };
 FY_PARSE_TYPE_DECL(indent);
