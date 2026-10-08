@@ -28,6 +28,10 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#ifdef __linux__
+#include <sched.h>
+#include <sys/syscall.h>
+#endif
 
 #include <check.h>
 
@@ -1499,6 +1503,111 @@ START_TEST(durable_separate_index_grow)
 }
 END_TEST
 
+#if defined(__linux__) && defined(SYS_open_tree)
+
+#ifndef OPEN_TREE_CLONE
+#define OPEN_TREE_CLONE		1
+#endif
+
+#define DETACHED_SKIP		77
+
+static int write_text(const char *path, const char *text)
+{
+	ssize_t len = (ssize_t)strlen(text);
+	int fd, rc;
+
+	fd = open(path, O_WRONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -1;
+	rc = write(fd, text, len) == len ? 0 : -1;
+	close(fd);
+	return rc;
+}
+
+/*
+ * Open the arena in @dir through /proc/self/fd and the root of a detached
+ * mount of @dir, which has no canonical path, and grow both file series. The
+ * mount needs user and mount namespaces of its own; return DETACHED_SKIP where
+ * the host refuses them.
+ */
+static int detached_arena_child(const char *dir)
+{
+	static char big[512 << 10];
+	struct fy_durable_allocator_cfg cfg;
+	char path[64], map[64], pl[80];
+	struct fy_allocator *da;
+	size_t len;
+	int tree, i;
+
+	snprintf(map, sizeof(map), "%u %u 1", (unsigned int)getuid(), (unsigned int)getuid());
+	if (unshare(CLONE_NEWUSER | CLONE_NEWNS) || write_text("/proc/self/uid_map", map))
+		return DETACHED_SKIP;
+	tree = (int)syscall(SYS_open_tree, AT_FDCWD, dir, OPEN_TREE_CLONE | O_CLOEXEC);
+	if (tree < 0)
+		return DETACHED_SKIP;
+	snprintf(path, sizeof(path), "/proc/self/fd/%d", tree);
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.dir = path;
+	cfg.region_base = TEST_REGION_BASE;
+	cfg.region_size = TEST_REGION_SIZE;
+	cfg.chunk_size = TEST_CHUNK_SIZE;
+	cfg.index_region_base = TEST_INDEX_REGION_BASE;
+	cfg.index_region_size = TEST_INDEX_REGION_SIZE;
+	cfg.index_chunk_size = 0x100000;	/* 1 MiB */
+	cfg.flags = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_DEDUP |
+		    FY_DURABLE_ARENA_SEPARATE_INDEX;
+	da = fy_allocator_create("durable", &cfg);
+	if (!da)
+		return 1;
+	/* enough entries to grow the index series past its first chunk */
+	for (i = 0; i < 20000; i++) {
+		len = dd_payload(pl, sizeof(pl), i);
+		if (!fy_allocator_store(da, FY_ALLOC_TAG_DEFAULT, pl, len, 16))
+			return 2;
+	}
+	/* distinct large payloads to grow the content series */
+	for (i = 0; i < 4; i++) {
+		memset(big, 'a' + i, sizeof(big));
+		if (!fy_allocator_store(da, FY_ALLOC_TAG_DEFAULT, big, sizeof(big), 16))
+			return 3;
+	}
+	if (fy_allocator_sync(da))
+		return 4;
+	fy_allocator_destroy(da);
+	return 0;
+}
+
+START_TEST(durable_open_detached_mount)
+{
+	char dir[256];
+	int status;
+	pid_t pid;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+	pid = fork();
+	ck_assert_int_ge(pid, 0);
+	if (!pid)
+		_exit(detached_arena_child(dir));
+	ck_assert_int_eq(waitpid(pid, &status, 0), pid);
+	ck_assert(WIFEXITED(status));
+	if (WEXITSTATUS(status) == DETACHED_SKIP) {
+		fprintf(stderr, "SKIP: no detached mount in a user namespace here\n");
+		rm_rf(dir);
+		return;
+	}
+	ck_assert_int_eq(WEXITSTATUS(status), 0);
+	/* the chunks are in the directory that the descriptor named */
+	ck_assert(durable_chunk_file_exists(dir, "arena", 0));
+	ck_assert(durable_chunk_file_exists(dir, "arena", 1));
+	ck_assert(durable_chunk_file_exists(dir, "index", 0));
+	ck_assert(durable_chunk_file_exists(dir, "index", 1));
+	rm_rf(dir);
+}
+END_TEST
+
+#endif
+
 #ifdef HAVE_GENERIC
 
 /* remove the arena dir plus the GC sibling dirs/lock file it may leave behind */
@@ -2202,6 +2311,9 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, dedup_resize_under_load);
 	fy_check_testcase_add_test(ctc, durable_default_base);
 	fy_check_testcase_add_test(ctc, durable_roundtrip_fixed_base);
+#if defined(__linux__) && defined(SYS_open_tree)
+	fy_check_testcase_add_test(ctc, durable_open_detached_mount);
+#endif
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, durable_builder_roundtrip);
 	fy_check_testcase_add_test(ctc, dedup_builder_cross_process);
