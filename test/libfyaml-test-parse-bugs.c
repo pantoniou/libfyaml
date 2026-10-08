@@ -411,6 +411,34 @@ START_TEST(parse_bug_single_quoted_single_quotes)
 }
 END_TEST
 
+START_TEST(parse_bug_nested_explicit_key)
+{
+	/* the inner explicit key must not end the outer one */
+	static const char * const inputs[] = {
+		"? ? b\n  : d\n: 23\n",
+		"? - ? b\n    : d\n: 23\n",
+	};
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	struct fy_node_pair *fynp;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
+		fyd = fy_document_build_from_string(NULL, inputs[i], FY_NT);
+		ck_assert_ptr_ne(fyd, NULL);
+
+		fyn = fy_document_root(fyd);
+		ck_assert(fy_node_is_mapping(fyn));
+		ck_assert_int_eq(fy_node_mapping_item_count(fyn), 1);
+		fynp = fy_node_mapping_get_by_index(fyn, 0);
+		ck_assert_ptr_ne(fynp, NULL);
+		ck_assert_str_eq(fy_node_get_scalar0(fy_node_pair_value(fynp)), "23");
+
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 /* ═══════════════════════════════════════════════════════════════════
  * Bug 16: escaped space (\ ) followed by newline in double-quoted scalar
  *
@@ -532,6 +560,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 
 	/* extra parse bugs */
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
+	fy_check_testcase_add_test(ctc, parse_bug_nested_explicit_key);
 
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);

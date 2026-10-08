@@ -1691,6 +1691,8 @@ int fy_push_indent(struct fy_parser *fyp, int indent, bool generated_block_map, 
 	fyit->indent = fyp->indent;
 	fyit->indent_line = fyp->indent_line;
 	fyit->generated_block_map = fyp->generated_block_map;
+	fyit->pending_complex_key_column = fyp->pending_complex_key_column;
+	fyit->pending_complex_key_mark = fyp->pending_complex_key_mark;
 
 	/* push */
 	fy_indent_list_push(&fyp->indent_stack, fyit);
@@ -1728,6 +1730,8 @@ int fy_pop_indent(struct fy_parser *fyp)
 	fyp->indent = fyit->indent;
 	fyp->generated_block_map = fyit->generated_block_map;
 	fyp->indent_line = fyit->indent_line;
+	fyp->pending_complex_key_column = fyit->pending_complex_key_column;
+	fyp->pending_complex_key_mark = fyit->pending_complex_key_mark;
 
 	/* pop and recycle */
 	fy_parse_indent_recycle(fyp, fyit);
