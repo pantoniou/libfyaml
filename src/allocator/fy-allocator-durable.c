@@ -809,16 +809,22 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 			goto err_out;
 	}
 
-	/* store the canonical path (resolves symlinks, strips trailing slashes,
-	 * makes it absolute) so it never leaks into derived paths */
+	/*
+	 * Open the directory by the path that the caller gave: every later
+	 * operation goes through this descriptor. A path through /proc/self/fd
+	 * can name a directory that has no canonical path, such as the root of
+	 * a detached mount.
+	 */
+	da->dirfd = open(cfg->dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (da->dirfd < 0)
+		goto err_out;
+
+	/* the canonical path (resolves symlinks, strips trailing slashes,
+	 * makes it absolute) is only the name of the arena */
 	if (!fy_realpath(cfg->dir, rpbuf, sizeof(rpbuf)))
 		goto err_out;
 	da->dir = strdup(rpbuf);
 	if (!da->dir)
-		goto err_out;
-
-	da->dirfd = open(da->dir, O_RDONLY | O_DIRECTORY);
-	if (da->dirfd < 0)
 		goto err_out;
 
 	if (!fy_fd_fs_is_local(da->dirfd))
