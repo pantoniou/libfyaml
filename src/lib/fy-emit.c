@@ -5721,6 +5721,7 @@ static void fy_emit_generic_mapping_key_prolog(struct fy_emitter *emit, struct f
 			key_over = true;
 		else {
 			if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+				ta_local.flags = 0;
 				fy_analyze_generic_scalar_content(vkey, &ta_local);
 				ta = &ta_local;
 			}
@@ -5791,6 +5792,7 @@ static void fy_emit_generic_mapping_value_prolog(struct fy_emitter *emit, struct
 	/* don't do anything for those cases */
 	if (fy_generic_is_scalar(vvalue) && !fy_emit_is_width_infinite(emit)) {
 		if (!ta || !(ta->flags & FYTTAF_ANALYZED)) {
+			ta_local.flags = 0;
 			fy_analyze_generic_scalar_content(vvalue, &ta_local);
 			ta = &ta_local;
 		}
