@@ -3547,7 +3547,11 @@ out:
 
 		if (count > 0) {
 			vp = malloc(sizeof(*vp) * count);
-			assert(vp);
+			if (!vp) {
+				/* the diagnostics are lost, the parse failed */
+				out = fy_invalid;
+				goto cleanup;
+			}
 
 			i = 0;
 			iter = NULL;
@@ -3615,6 +3619,7 @@ out:
 		}
 		out = fy_gb_indirect_create(gb, &gi);
 	}
+cleanup:
 	if (vp)
 		free(vp);
 	if (cache_entry)
