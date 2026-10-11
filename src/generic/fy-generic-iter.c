@@ -648,11 +648,17 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start,
 			cstyle = fy_cast(gi.style, FYCS_ANY);
 	}
 
-	if (fy_generic_is_string(gi.anchor))
+	if (fy_generic_is_string(gi.anchor)) {
 		anchor = fygi_create_token(fygi, gi.anchor, FYTT_ANCHOR, FYSS_ANY);
+		if (!anchor)
+			goto err_out;
+	}
 
-	if (fy_generic_is_string(gi.tag))
+	if (fy_generic_is_string(gi.tag)) {
 		tag = fygi_create_token(fygi, gi.tag, FYTT_TAG, FYSS_ANY);
+		if (!tag)
+			goto err_out;
+	}
 
 	fyt = NULL;
 	if (fy_generic_type_is_scalar(type) || type == FYGT_ALIAS) {
@@ -746,7 +752,7 @@ fygi_event_create(struct fy_generic_iterator *fygi, fy_generic v, bool start,
 		break;
 
 	default:
-		return NULL;
+		goto err_out;
 	}
 
 	fy_token_unref(anchor);
@@ -757,6 +763,9 @@ err_out:
 	fy_token_unref(fyt);
 	fy_token_unref(tag);
 	fy_token_unref(anchor);
+	/* the type of the event is still none, so it recycles clean */
+	fy_generic_iterator_eventp_recycle(fygi, fyep);
+	fygi->state = FYGIS_ERROR;
 	return NULL;
 }
 
