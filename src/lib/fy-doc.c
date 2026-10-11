@@ -7335,7 +7335,9 @@ fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct
 			"fy_node_create_mapping() failed");
 
 		value = fye->mapping_start.mapping_start;
-		fyn->style = value->type == FYTT_FLOW_MAPPING_START ? FYNS_FLOW : FYNS_BLOCK;
+		/* the start token is NULL in a synthesized event */
+		fyn->style = value && value->type == FYTT_FLOW_MAPPING_START ?
+				FYNS_FLOW : FYNS_BLOCK;
 
 		fyn->tag = fy_token_ref(fye->mapping_start.tag);
 		fyn->mapping_start = fy_token_ref(value);
@@ -7350,7 +7352,9 @@ fy_node_create_from_event(struct fy_document *fyd, struct fy_parser *fyp, struct
 
 		value = fye->sequence_start.sequence_start;
 
-		fyn->style = value->type == FYTT_FLOW_SEQUENCE_START ? FYNS_FLOW : FYNS_BLOCK;
+		/* the start token is NULL in a synthesized event */
+		fyn->style = value && value->type == FYTT_FLOW_SEQUENCE_START ?
+				FYNS_FLOW : FYNS_BLOCK;
 
 		fyn->tag = fy_token_ref(fye->sequence_start.tag);
 		fyn->sequence_start = fy_token_ref(value);
