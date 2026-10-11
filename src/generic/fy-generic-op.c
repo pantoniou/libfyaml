@@ -3968,6 +3968,8 @@ fy_generic_op_join(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	/* convert separator */
 	sep_v = fy_convert(in, FYGT_STRING);
+	if (fy_generic_is_invalid(sep_v))
+		return fy_invalid;
 	sep_szstr = fy_castp(&sep_v, fy_szstr_empty);
 
 	bufsz = 0;
