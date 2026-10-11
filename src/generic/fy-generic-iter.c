@@ -850,10 +850,8 @@ fy_generic_iterator_document_start_internal(struct fy_generic_iterator *fygi)
 
 	/* auto-anchor: (re)build the duplicate set for this document */
 	if (fygi->auto_anchor &&
-	    fygi_anchor_build(fygi, fygi->iterate_root) < 0) {
-		fy_generic_iterator_event_free(fygi, fye);
+	    fygi_anchor_build(fygi, fygi->iterate_root) < 0)
 		goto err_out;
-	}
 
 	return fye;
 
