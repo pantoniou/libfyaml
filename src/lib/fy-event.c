@@ -243,6 +243,8 @@ fy_eventp_vcreate_internal(struct fy_eventp_list *recycled_list, struct fy_diag 
 
 	fye = &fyep->e;
 
+	/* the error path cleans the event, so no token may be left undefined */
+	memset(fye, 0, sizeof(*fye));
 	fye->type = type;
 
 	switch (type) {
