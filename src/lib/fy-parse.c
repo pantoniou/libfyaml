@@ -9367,6 +9367,8 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	struct fy_parse_state_log *fypsl, *fypslc;
 	struct fy_input *fyi, *fyic;
 	struct fy_token *fyt;
+	const void *start;
+	size_t size;
 	int i;
 
 	if (!fypchk)
@@ -9391,6 +9393,20 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	fyr->current_ptr = fyrc->current_ptr;
 	fyr->current_ptr_start =fyrc->current_ptr_start;
 	fyr->current_ptr_end =fyrc->current_ptr_end;
+	/*
+	 * a stream or callback input may have grown or moved its buffer since
+	 * the checkpoint, so rebase the pointers on the current buffer
+	 */
+	if (fyr->current_input && fyrc->current_ptr_start) {
+		start = fy_input_start_size(fyr->current_input, &size);
+		if (start) {
+			fyr->current_ptr = (const char *)start +
+				((const char *)fyrc->current_ptr -
+				 (const char *)fyrc->current_ptr_start);
+			fyr->current_ptr_start = start;
+			fyr->current_ptr_end = (const char *)start + size;
+		}
+	}
 	fyr->line = fyrc->line;
 	fyr->column = fyrc->column;
 	fyr->tabsize = fyrc->tabsize;
