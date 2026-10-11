@@ -9442,7 +9442,8 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	     fyitc = fy_indent_next(&fypc->indent_stack, fyitc)) {
 
 		fyit = fy_parse_indent_alloc(fyp);
-		assert(fyit);
+		fyp_error_check(fyp, fyit, err_out,
+				"fy_parse_indent_alloc() failed!");
 
 		*fyit = *fyitc;
 
@@ -9461,7 +9462,8 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	     fypslc = fy_parse_state_log_next(&fypc->state_stack, fypslc)) {
 
 		fypsl = fy_parse_parse_state_log_alloc(fyp);
-		assert(fypsl);
+		fyp_error_check(fyp, fypsl, err_out,
+				"fy_parse_parse_state_log_alloc() failed!");
 
 		fypsl->state = fypslc->state;
 
@@ -9503,7 +9505,8 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	     fyfc = fy_flow_next(&fypc->flow_stack, fyfc)) {
 
 		fyf = fy_parse_flow_alloc(fyp);
-		assert(fyf);
+		fyp_error_check(fyp, fyf, err_out,
+				"fy_parse_flow_alloc() failed!");
 
 		*fyf = *fyfc;
 
@@ -9531,12 +9534,17 @@ int fy_parser_rollback(struct fy_parser *fyp, struct fy_parser_checkpoint *fypch
 	fyp->fyep_peek = NULL;
 	if (fypc->fyep_peek) {
 		fyp->fyep_peek = fy_parse_eventp_clone(fyp, fypc->fyep_peek, false);
-		assert(fypc->fyep_peek);
+		fyp_error_check(fyp, fyp->fyep_peek, err_out,
+				"fy_parse_eventp_clone() failed!");
 	}
 
 	assert(fyp->sas.top == 0);
 
 	return 0;
+
+err_out:
+	/* the parser is left in a partially restored state */
+	return -1;
 }
 
 enum fy_parser_mode
