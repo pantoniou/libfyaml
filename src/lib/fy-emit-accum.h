@@ -184,6 +184,10 @@ fy_emit_accum_utf8_write_raw(struct fy_emit_accum *ea, const void *data, size_t 
 	size_t avail;
 	int ret;
 
+	/* the buffer may not exist yet, and the data may be NULL */
+	if (!len)
+		return 0;
+
 	/* grow if needed */
 	if (len > (avail = (ea->alloc - ea->next))) {
 		ret = fy_emit_accum_grow(ea, len - avail);
