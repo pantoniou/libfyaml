@@ -2528,10 +2528,20 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 				if (fyn_to->xl)
 					fy_accel_insert(fyn_to->xl, fynpj->key, fynpj);
 
-				if (fynpj->key)
+				/*
+				 * link the new pair now, a later duplicate key of
+				 * `from` merges into it and needs the parent
+				 */
+				fynpj->parent = fyn_to;
+				if (fynpj->key) {
 					fynpj->key->attached = true;
-				if (fynpj->value)
+					fynpj->key->parent = fyn_to;
+					fynpj->key->key_root = true;
+				}
+				if (fynpj->value) {
 					fynpj->value->attached = true;
+					fynpj->value->parent = fyn_to;
+				}
 
 			} else {
 				fyd_doc_debug(fyd, "Updating mapping node value (deep merge)");
