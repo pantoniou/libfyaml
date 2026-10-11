@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <limits.h>
 
 #include <stdio.h>
 
@@ -2609,6 +2610,9 @@ fy_generic fy_gb_to_int(struct fy_generic_builder *gb, fy_generic v)
 		dv = fy_cast(v, (double)0.0);
 		/* Check for NaN/Infinity - error */
 		if (isnan(dv) || isinf(dv))
+			return fy_invalid;
+		/* the cast is undefined outside of [LLONG_MIN, -LLONG_MIN) */
+		if (dv < (double)LLONG_MIN || dv >= -(double)LLONG_MIN)
 			return fy_invalid;
 		lv = (long long)dv;
 		return fy_gb_to_generic(gb, lv);
