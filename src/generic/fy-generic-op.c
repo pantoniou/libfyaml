@@ -2167,12 +2167,13 @@ fy_generic_op_get_at(const struct fy_generic_op_desc *desc FY_UNUSED,
 
 	if (fy_generic_is_sequence(in)) {
 		const fy_generic_sequence *seqp = fy_generic_sequence_resolve(in);
-		if (idx >= seqp->count)
+		/* an empty collection resolves to NULL */
+		if (!seqp || idx >= seqp->count)
 			goto err_out;
 		out = seqp->items[idx];
 	} else if (fy_generic_is_mapping(in)) {
 		const fy_generic_mapping *mapp = fy_generic_mapping_resolve(in);
-		if (idx >= mapp->count)
+		if (!mapp || idx >= mapp->count)
 			goto err_out;
 		out = mapp->pairs[idx].value;
 	} else
