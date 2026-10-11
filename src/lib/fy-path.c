@@ -294,6 +294,8 @@ static int fy_path_component_get_text_internal(struct fy_emit_accum *ea, struct 
 			doctxt = fy_emit_document_to_string(fypc->map.complex_key,
 				FYECF_WIDTH_INF | FYECF_INDENT_DEFAULT |
 				FYECF_MODE_FLOW_ONELINE | FYECF_NO_ENDING_NEWLINE);
+			if (!doctxt)
+				return -1;
 			fy_emit_accum_utf8_write_raw(ea, doctxt, strlen(doctxt));
 			free(doctxt);
 		}
