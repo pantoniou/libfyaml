@@ -21,6 +21,7 @@
 
 #include <libfyaml.h>
 #include <libfyaml/libfyaml-generic.h>
+#include <libfyaml/libfyaml-composer.h>
 #ifdef HAVE_REFLECTION
 #include <libfyaml/libfyaml-reflection.h>
 #include "fy-reflection-private.h"
@@ -5035,6 +5036,605 @@ END_TEST
 
 #endif /* HAVE_REFLECTION */
 
+#ifdef HAVE_GENERIC
+
+/* Test: gh#430 - a collection end that carries a bottom comment. */
+START_TEST(fuzz_issue_430_collection_end_comment_repro)
+{
+	static const char yaml[] =
+		"---\n"
+		"[\n"
+		"  [ foo, bar ],  # comment\n"
+		"  baz\n"
+		"]\n";
+	struct fy_generic_builder *gb;
+	fy_generic parsed, emitted;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	parsed = fy_gb_parse(gb, yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_KEEP_COMMENTS, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+
+	emitted = fy_gb_emit(gb, parsed, FYOPEF_OUTPUT_TYPE_STRING |
+			     FYOPEF_MODE_YAML_1_2 | FYOPEF_EMIT_EVENTS, NULL);
+	ck_assert(fy_generic_is_valid(emitted));
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* Test: gh#432 - get an item of an empty collection by its index. */
+START_TEST(fuzz_issue_432_get_at_empty_repro)
+{
+	static const char *const yamls[] = { "--- { }\n", "--- [ ]\n" };
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args args;
+	fy_generic parsed, v;
+	unsigned int i;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	for (i = 0; i < sizeof(yamls) / sizeof(yamls[0]); i++) {
+		parsed = fy_gb_parse(gb, yamls[i], FYOPPF_INPUT_TYPE_STRING |
+				     FYOPPF_DISABLE_DIRECTORY, NULL);
+		ck_assert(fy_generic_is_valid(parsed));
+
+		memset(&args, 0, sizeof(args));
+		args.insert_replace_get_set_at.idx = 0;
+		v = fy_generic_op_args(gb, FYGBOPF_GET_AT, parsed, &args);
+		ck_assert(fy_generic_is_invalid(v));
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* Test: gh#433 - a float outside of the integer range does not convert. */
+START_TEST(fuzz_issue_433_float_to_int_range_repro)
+{
+	static const char yaml[] =
+		"[100, 12.5, 7130, 1.3e+99, -1.3e+99, 9223372036854775808.0]\n";
+	static const long long expected[] = { 100, 12, 7130 };
+	struct fy_generic_builder *gb;
+	fy_generic parsed, v;
+	size_t i, count;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	parsed = fy_gb_parse(gb, yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_DISABLE_DIRECTORY, NULL);
+	ck_assert(fy_generic_is_sequence(parsed));
+
+	count = fy_generic_sequence_get_item_count(parsed);
+	ck_assert_uint_eq(count, 6);
+	for (i = 0; i < count; i++) {
+		v = fy_gb_to_int(gb, fy_generic_sequence_get_item_generic(parsed, i));
+		if (i < sizeof(expected) / sizeof(expected[0])) {
+			ck_assert(fy_generic_is_valid(v));
+			ck_assert(fy_cast(v, (long long)-1) == expected[i]);
+		} else
+			ck_assert(fy_generic_is_invalid(v));
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* Fill a part of the stack that a later call reuses. */
+#ifdef __GNUC__
+__attribute__((noinline))
+#endif
+static void fill_stack(int c)
+{
+	volatile char buf[16384];
+	size_t i;
+
+	for (i = 0; i < sizeof(buf); i++)
+		buf[i] = (char)c;
+}
+
+static fy_generic emit_flow_with_stack(struct fy_generic_builder *gb,
+				       fy_generic parsed, int c)
+{
+	fill_stack(c);
+	return fy_gb_emit(gb, parsed, FYOPEF_OUTPUT_TYPE_STRING |
+			  FYOPEF_MODE_YAML_1_2 | FYOPEF_STYLE_FLOW |
+			  FYOPEF_INDENT_1 | FYOPEF_WIDTH_80 |
+			  FYOPEF_NO_ENDING_NEWLINE, NULL);
+}
+
+/* Test: gh#437 - the text analysis of an emitted flow value is initialized. */
+START_TEST(fuzz_issue_437_emit_analysis_init_repro)
+{
+	static const char yaml[] = "{ ? : a }\n";
+	struct fy_generic_builder *gb;
+	fy_generic parsed, e0, e1;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	parsed = fy_gb_parse(gb, yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_MODE_YAML_1_2 | FYOPPF_KEEP_STYLE |
+			     FYOPPF_RELAXED_FLOW_DOC, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+
+	/* the result must not depend on what the stack held before */
+	e0 = emit_flow_with_stack(gb, parsed, 0x00);
+	e1 = emit_flow_with_stack(gb, parsed, 0xff);
+	ck_assert(fy_generic_is_valid(e0));
+	ck_assert(fy_generic_is_valid(e1));
+	ck_assert_str_eq(fy_cast(e0, ""), fy_cast(e1, ""));
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* Test: gh#438 - an emit that fails frees the document state of its document. */
+START_TEST(fuzz_issue_438_emit_document_state_leak_repro)
+{
+	static const char yaml[] = "!,&**";
+	struct fy_generic_builder *gb;
+	fy_generic parsed;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	parsed = fy_gb_parse(gb, yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_MODE_AUTO | FYOPPF_KEEP_STYLE |
+			     FYOPPF_KEEP_FAILSAFE_STR |
+			     FYOPPF_SLOPPY_FLOW_INDENTATION |
+			     FYOPPF_RELAXED_FLOW_DOC |
+			     FYOPPF_DISABLE_DIRECTORY, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+
+	/* the result does not matter, a leak is reported at exit */
+	(void)fy_gb_emit(gb, parsed, FYOPEF_OUTPUT_TYPE_STRING |
+			 FYOPEF_MODE_AUTO | FYOPEF_STYLE_PRETTY |
+			 FYOPEF_INDENT_4 | FYOPEF_WIDTH_INF |
+			 FYOPEF_COLOR_FORCE | FYOPEF_NO_ENDING_NEWLINE |
+			 FYOPEF_AUTO_ANCHOR | FYOPEF_DISABLE_DIRECTORY, NULL);
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+#endif /* HAVE_GENERIC */
+
+/* Test: gh#431 - the text of a path component with an empty key. */
+static enum fy_composer_return
+issue_431_cb(struct fy_parser *fyp FY_UNUSED, struct fy_event *fye FY_UNUSED,
+	     struct fy_path *path, void *userdata)
+{
+	struct fy_path_component *last;
+	char *text;
+
+	last = fy_path_last_not_collection_root_component(path);
+	if (last) {
+		/* a component that is not complete has no text */
+		text = fy_path_component_get_text(last);
+		if (text)
+			(*(unsigned int *)userdata)++;
+		free(text);
+	}
+	return FYCR_OK_CONTINUE;
+}
+
+START_TEST(fuzz_issue_431_path_component_empty_key_repro)
+{
+	static const char yaml[] = "? : a\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parser *fyp;
+	unsigned int seen = 0;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+	fy_parse_compose(fyp, issue_431_cb, &seen);
+	ck_assert_uint_gt(seen, 0);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+/* Test: gh#434 - a node from a merge key event that has no start token. */
+START_TEST(fuzz_issue_434_node_from_event_no_token_repro)
+{
+	static const char yaml[] =
+		"base: &b\n"
+		"  name: [a, b]\n"
+		"  n: 1\n"
+		"derived:\n"
+		"  <<: *b\n"
+		"  n: 2\n"
+		"alias: *b\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_RESOLVE_DOCUMENT | FYPCF_DISABLE_MMAP_OPT |
+			 FYPCF_DISABLE_RECYCLING | FYPCF_KEEP_COMMENTS |
+			 FYPCF_DISABLE_ACCELERATORS | FYPCF_PREFER_RECURSIVE |
+			 FYPCF_ALLOW_DUPLICATE_KEYS | FYPCF_CREATE_MARKERS |
+			 FYPCF_KEEP_STYLE | FYPCF_RELAXED_FLOW_DOC |
+			 FYPCF_DEFAULT_VERSION_1_1 | FYPCF_JSON_NONE,
+	};
+	struct fy_parser *fyp;
+	struct fy_document *fyd;
+	struct fy_event *fye;
+
+	fyp = fy_parser_create(&cfg);
+	fyd = fy_document_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		if (fye->type == FYET_MAPPING_START || fye->type == FYET_SEQUENCE_START)
+			fy_node_free(fy_node_create_from_event(fyd, fyp, fye));
+		fy_parser_event_free(fyp, fye);
+	}
+
+	fy_document_destroy(fyd);
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+/* Test: gh#435 - a merge of a mapping with duplicate keys into a mapping. */
+START_TEST(fuzz_issue_435_insert_duplicate_keys_repro)
+{
+	static const char yaml[] =
+		"eell:\n"
+		" /:\n"
+		"::\n"
+		"lleell:\n"
+		" /:\n"
+		"::";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_ALLOW_DUPLICATE_KEYS |
+			 FYPCF_DISABLE_ACCELERATORS,
+	};
+	struct fy_document *fyd_src, *fyd_dst;
+	struct fy_node *target, *from;
+
+	fyd_src = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	fyd_dst = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd_src, NULL);
+	ck_assert_ptr_ne(fyd_dst, NULL);
+
+	target = fy_node_pair_value(fy_node_mapping_get_by_index(fy_document_root(fyd_dst), 0));
+	from = fy_node_copy(fyd_dst, fy_document_root(fyd_src));
+	ck_assert_ptr_ne(target, NULL);
+	ck_assert_ptr_ne(from, NULL);
+
+	ck_assert_int_eq(fy_node_insert(target, from), 0);
+	/* the root is still the same mapping */
+	ck_assert(fy_node_is_mapping(fy_document_root(fyd_dst)));
+
+	fy_node_free(from);
+	fy_document_destroy(fyd_dst);
+	fy_document_destroy(fyd_src);
+}
+END_TEST
+
+struct issue_436_input {
+	const char *data;
+	size_t size;
+	size_t pos;
+};
+
+/* hand the parser one byte per call */
+static ssize_t issue_436_read(void *user, void *buf, size_t count)
+{
+	struct issue_436_input *in = user;
+
+	if (in->pos >= in->size || !count)
+		return 0;
+	memcpy(buf, in->data + in->pos, 1);
+	in->pos++;
+	return 1;
+}
+
+/* Test: gh#436 - count the mapping items of a callback input. */
+START_TEST(fuzz_issue_436_count_items_callback_repro)
+{
+	static const char yaml[] =
+		"a: foo\n"
+		"b: bar\n";
+	struct issue_436_input in = { yaml, sizeof(yaml) - 1, 0 };
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	enum fy_event_type type;
+	unsigned int events = 0;
+	int count = -1;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_input_callback(fyp, &in, issue_436_read), 0);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		type = fye->type;
+		fy_parser_event_free(fyp, fye);
+		events++;
+		if (type == FYET_MAPPING_START && count < 0)
+			count = fy_parser_count_mapping_items(fyp);
+	}
+	ck_assert_int_eq(count, 2);
+	/* stream, document and mapping, 4 scalars, and the ends */
+	ck_assert_uint_eq(events, 10);
+
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
+#ifdef HAVE_LINKER_WRAP_MALLOC
+
+/* the text may fail to be created, only free it */
+static enum fy_composer_return
+issue_441_cb(struct fy_parser *fyp FY_UNUSED, struct fy_event *fye FY_UNUSED,
+	     struct fy_path *path, void *userdata FY_UNUSED)
+{
+	struct fy_path_component *last;
+
+	last = fy_path_last_not_collection_root_component(path);
+	if (last)
+		free(fy_path_component_get_text(last));
+	return FYCR_OK_CONTINUE;
+}
+
+static void issue_441_scenario(unsigned int nth)
+{
+	static const char yaml[] =
+		"{\"a\":[1,2,{{\"d\":true},\"e\":\"\xc3\xa9\\t\"}\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parser *fyp;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+	fy_alloc_fail_arm(nth);
+	fy_parse_compose(fyp, issue_441_cb, NULL);
+	fy_alloc_fail_disarm();
+	fy_parser_destroy(fyp);
+}
+
+static void issue_444_scenario(unsigned int nth)
+{
+	static const char yaml[] = "a: b\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_document *fyd;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fy_alloc_fail_arm(nth);
+	(void)fy_node_set_tag(fy_document_root(fyd), "!!str", FY_NT);
+	fy_alloc_fail_disarm();
+	fy_document_destroy(fyd);
+}
+
+static void issue_447_scenario(unsigned int nth)
+{
+	static const char yaml[] =
+		"base: &b\n"
+		"  name: anchor\n"
+		"  n: 1\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_DISABLE_RECYCLING,
+	};
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	enum fy_event_type type;
+	bool counted = false;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		type = fye->type;
+		fy_parser_event_free(fyp, fye);
+		/* count the items of the first mapping, then roll back */
+		if (type == FYET_MAPPING_START && !counted) {
+			counted = true;
+			fy_alloc_fail_arm(nth);
+			(void)fy_parser_count_mapping_items(fyp);
+			fy_alloc_fail_disarm();
+			/* a failed rollback leaves the parser unusable */
+			break;
+		}
+	}
+	fy_parser_destroy(fyp);
+}
+
+/* Test: gh#441 - the text of a path component when a key fails to emit. */
+START_TEST(fuzz_issue_441_path_component_text_alloc_repro)
+{
+	alloc_fail_sweep(issue_441_scenario, 1024);
+}
+END_TEST
+
+/* Test: gh#444 - a tag that fails to be set does not leak its input. */
+START_TEST(fuzz_issue_444_set_tag_alloc_repro)
+{
+	alloc_fail_sweep(issue_444_scenario, 256);
+}
+END_TEST
+
+/* Test: gh#447 - a rollback that fails to allocate returns an error. */
+START_TEST(fuzz_issue_447_rollback_alloc_repro)
+{
+	alloc_fail_sweep(issue_447_scenario, 1024);
+}
+END_TEST
+
+#ifdef HAVE_GENERIC
+
+static const char issue_442_yaml[] =
+	"base: &b\n"
+	"  name: anchor\n"
+	"  n: 1\n"
+	"derived:\n"
+	"  <<: *b\n"
+	"  n: 2\n"
+	"alias: *b\n";
+
+static void issue_439_scenario(unsigned int nth)
+{
+	struct fy_generic_builder *gb;
+	fy_generic parsed;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	fy_alloc_fail_arm(nth);
+	parsed = fy_gb_parse(gb, "a: &anchor [ b, bb, b3, b4 ]\nc: *anchor\nd: e\n",
+			     FYOPPF_INPUT_TYPE_STRING | FYOPPF_MODE_YAML_1_2 |
+			     FYOPPF_COLLECT_DIAG | FYOPPF_DISABLE_DIRECTORY, NULL);
+	fy_alloc_fail_disarm();
+	(void)parsed;
+	fy_generic_builder_destroy(gb);
+}
+
+static void issue_440_scenario(unsigned int nth)
+{
+	/* the input starts with a NUL, so it goes in as a sized string */
+	static const char yaml[] =
+		"\x00{\"a\":[1,2,{\"b\":null}],\"c\":{\"d\":true},\"e\":\"\xc3\xa9\\t\"}\n";
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args args;
+	fy_generic in;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	in = fy_gb_string_size_create(gb, yaml, sizeof(yaml) - 1);
+	memset(&args, 0, sizeof(args));
+	args.parse.flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_COLLECT_DIAG |
+			   FYOPPF_DISABLE_DIRECTORY;
+	fy_alloc_fail_arm(nth);
+	(void)fy_generic_op_args(gb, FYGBOPF_PARSE, in, &args);
+	fy_alloc_fail_disarm();
+	fy_generic_builder_destroy(gb);
+}
+
+static void issue_442_scenario(unsigned int nth)
+{
+	struct fy_generic_builder *gb;
+	fy_generic parsed;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	parsed = fy_gb_parse(gb, issue_442_yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_MODE_YAML_1_3 | FYOPPF_MULTI_DOCUMENT |
+			     FYOPPF_CREATE_MARKERS | FYOPPF_KEEP_STYLE |
+			     FYOPPF_RELAXED_FLOW_DOC | FYOPPF_DISABLE_DIRECTORY, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+	fy_alloc_fail_arm(nth);
+	(void)fy_gb_emit(gb, parsed, FYOPEF_OUTPUT_TYPE_STRING |
+			 FYOPEF_MODE_YAML_1_1 | FYOPEF_STYLE_BLOCK |
+			 FYOPEF_INDENT_1 | FYOPEF_WIDTH_132 |
+			 FYOPEF_MULTI_DOCUMENT | FYOPEF_NO_ENDING_NEWLINE |
+			 FYOPEF_OUTPUT_COMMENTS | FYOPEF_EMIT_EVENTS |
+			 FYOPEF_AUTO_ANCHOR | FYOPEF_DISABLE_DIRECTORY, NULL);
+	fy_alloc_fail_disarm();
+	fy_generic_builder_destroy(gb);
+}
+
+static void issue_445_scenario(unsigned int nth)
+{
+	struct fy_generic_builder *gb;
+	struct fy_generic_iterator_cfg icfg = { 0 };
+	struct fy_generic_iterator *fygi;
+	struct fy_event *fye;
+	fy_generic vdir;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	/* keep the directory: the iterator generates events from it */
+	vdir = fy_gb_parse(gb, issue_442_yaml, FYOPPF_INPUT_TYPE_STRING |
+			   FYOPPF_MODE_YAML_1_1_PYYAML | FYOPPF_KEEP_FAILSAFE_STR |
+			   FYOPPF_SLOPPY_FLOW_INDENTATION | FYOPPF_RELAXED_FLOW_DOC |
+			   FYOPPF_KEEP_ANCHORS, NULL);
+	ck_assert(fy_generic_is_valid(vdir));
+
+	icfg.flags = FYGICF_WANT_STREAM_DOCUMENT_BODY_EVENTS |
+		     FYGICF_STRIP_STYLE | FYGICF_STRIP_FAILSAFE_STR;
+	icfg.vdir = vdir;
+	icfg.schema = FYGS_AUTO;
+
+	fy_alloc_fail_arm(nth);
+	fygi = fy_generic_iterator_create_cfg(&icfg);
+	if (fygi) {
+		while ((fye = fy_generic_iterator_generate_next(fygi)) != NULL)
+			fy_generic_iterator_event_free(fygi, fye);
+		(void)fy_generic_iterator_get_error(fygi);
+		fy_generic_iterator_destroy(fygi);
+	}
+	fy_alloc_fail_disarm();
+	fy_generic_builder_destroy(gb);
+}
+
+static void issue_446_scenario(unsigned int nth)
+{
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args args;
+	fy_generic parsed, items[2];
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	parsed = fy_gb_parse(gb, issue_442_yaml, FYOPPF_INPUT_TYPE_STRING |
+			     FYOPPF_DISABLE_DIRECTORY, NULL);
+	ck_assert(fy_generic_is_valid(parsed));
+	items[0] = fy_gb_string_create(gb, "k");
+	items[1] = fy_gb_string_create(gb, "v");
+
+	/* join two strings, the parsed document converted to a string as the separator */
+	memset(&args, 0, sizeof(args));
+	args.common.count = 2;
+	args.common.items = items;
+
+	fy_alloc_fail_arm(nth);
+	(void)fy_generic_op_args(gb, FYGBOPF_JOIN, parsed, &args);
+	fy_alloc_fail_disarm();
+	fy_generic_builder_destroy(gb);
+}
+
+/* Test: gh#439 - a diagnostic collector that is released once. */
+START_TEST(fuzz_issue_439_collect_diag_double_unref_repro)
+{
+	alloc_fail_sweep(issue_439_scenario, 1024);
+}
+END_TEST
+
+/* Test: gh#440 - the collected diagnostics fail to be stored. */
+START_TEST(fuzz_issue_440_collect_diag_array_alloc_repro)
+{
+	alloc_fail_sweep(issue_440_scenario, 1024);
+}
+END_TEST
+
+/* Test: gh#442 and gh#443 - an emit from events that fails to allocate. */
+START_TEST(fuzz_issue_442_emit_events_alloc_repro)
+{
+	alloc_fail_sweep(issue_442_scenario, 2048);
+}
+END_TEST
+
+/* Test: gh#445 - a generic iterator that fails to allocate. */
+START_TEST(fuzz_issue_445_iterator_alloc_repro)
+{
+	alloc_fail_sweep(issue_445_scenario, 2048);
+}
+END_TEST
+
+/* Test: gh#446 - a join whose separator fails to convert. */
+START_TEST(fuzz_issue_446_join_separator_alloc_repro)
+{
+	alloc_fail_sweep(issue_446_scenario, 1024);
+}
+END_TEST
+
+#endif /* HAVE_GENERIC */
+
+#endif /* HAVE_LINKER_WRAP_MALLOC */
+
 void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -5210,6 +5810,29 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 #endif
 #ifdef HAVE_REFLECTION
 	fy_check_testcase_add_test(ctc, fuzz_issue_428_packed_array_count_repro);
+#endif
+	fy_check_testcase_add_test(ctc, fuzz_issue_431_path_component_empty_key_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_434_node_from_event_no_token_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_435_insert_duplicate_keys_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_436_count_items_callback_repro);
+#ifdef HAVE_GENERIC
+	fy_check_testcase_add_test(ctc, fuzz_issue_430_collection_end_comment_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_432_get_at_empty_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_433_float_to_int_range_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_437_emit_analysis_init_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_438_emit_document_state_leak_repro);
+#endif
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_check_testcase_add_test(ctc, fuzz_issue_441_path_component_text_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_444_set_tag_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_447_rollback_alloc_repro);
+#ifdef HAVE_GENERIC
+	fy_check_testcase_add_test(ctc, fuzz_issue_439_collect_diag_double_unref_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_440_collect_diag_array_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_442_emit_events_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_445_iterator_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_446_join_separator_alloc_repro);
+#endif
 #endif
 #if defined(__linux__)
 	fy_check_testcase_add_test(ctc, fuzz_issue_340_alias_path_end_repro);
