@@ -894,6 +894,8 @@ void fy_diag_vreport(struct fy_diag *diag,
 		errp->space = malloc(spacesz);
 		if (!errp->space) {
 			free(errp);
+			/* the report owns the token reference */
+			fy_token_unref(fydrc->fyt);
 			goto out;
 		}
 		s = errp->space;
@@ -913,6 +915,9 @@ void fy_diag_vreport(struct fy_diag *diag,
 		err->column = column;
 
 		fy_diag_errorp_list_add_tail(&diag->errors, errp);
+	} else {
+		/* the report owns the token reference */
+		fy_token_unref(fydrc->fyt);
 	}
 out:
 	if (!diag->on_error && fydrc->type == FYET_ERROR)
