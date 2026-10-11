@@ -6121,7 +6121,7 @@ err_out:
 int
 fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 {
-	struct fy_document_state *fyds;
+	struct fy_document_state *fyds = NULL;
 	fy_generic vds, vroot;
 	int i, count, rc;
 
@@ -6186,6 +6186,7 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 		emit->flags |= FYEF_HAD_DOCUMENT_END_OUTPUT;
 
 		fy_document_state_unref(fyds);
+		fyds = NULL;
 	}
 
 	/* FYET_STREAM_END */
@@ -6194,6 +6195,8 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 	return 0;
 
 err_out:
+	/* NULL OK */
+	fy_document_state_unref(fyds);
 	return -1;
 }
 
