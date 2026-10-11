@@ -307,6 +307,7 @@ fygi_fast_event_attach_collection_end_comment(struct fygi_fast_event_data *gd,
 	enum fy_token_type ttype;
 	enum fy_node_style ns;
 	enum fy_collection_style cs;
+	bool created = false;
 	int rc;
 
 	/* attach the bottom comment as top comment of the end sequence */
@@ -335,10 +336,13 @@ fygi_fast_event_attach_collection_end_comment(struct fygi_fast_event_data *gd,
 		fyt = fy_token_create(ttype, NULL);
 		if (!fyt)
 			return -1;
+		created = true;
 	}
 	rc = fy_token_set_comment(fyt, fycp_top, fy_castp(&vcomm, (const char *)NULL), FY_NT);
 	if (rc) {
-		fy_token_unref(fyt);
+		/* the event owns a token that it already had */
+		if (created)
+			fy_token_unref(fyt);
 		return -1;
 	}
 
@@ -506,8 +510,10 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 		if (!fye)
 			return NULL;
 
-		/* attach any comments */
+		/* attach any comments, the style comes from the collection */
+		fygi_fast_event_get_data(fygi, emit, v, gd);
 		(void)fygi_fast_event_attach_collection_end_comment(gd, fye, v);
+		fygi_fast_event_cleanup_data(gd);
 
 		return fye;
 	}
