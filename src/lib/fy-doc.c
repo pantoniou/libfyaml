@@ -5803,6 +5803,8 @@ int fy_node_set_tag(struct fy_node *fyn, const char *data, size_t len)
 
 	return 0;
 err_out:
+	/* NULL OK */
+	fy_input_unref(fyi);
 	fyd->diag->on_error = false;
 	return -1;
 }
