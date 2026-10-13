@@ -434,8 +434,10 @@ struct fy_token *fy_token_vcreate_rl(struct fy_token_list *fytl, enum fy_token_t
 	if (handle) {
 		fyt->handle = *handle;
 		fy_input_ref(fyt->handle.fyi);
-	} else
-		fy_atom_reset(&fyt->handle);
+	} else {
+		/* fy_atom_reset() leaves the mode bits alone */
+		memset(&fyt->handle, 0, sizeof(fyt->handle));
+	}
 	fyt->handle.token_atom = true;
 
 	switch (fyt->type) {
