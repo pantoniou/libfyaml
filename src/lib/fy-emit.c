@@ -1306,6 +1306,19 @@ void fy_emit_write_double_quoted_with_state(struct fy_emitter *emit, int flags, 
 			for (k = 0; k < non_utf8_len; k++) {
 				c = (int)non_utf8[k] & 0xff;
 				fy_emit_accum_utf8_put(&emit->ea, '\\');
+				/*
+				 * JSON has no escape of a byte: a byte that is
+				 * not UTF-8 is the replacement character.
+				 */
+				if (fy_emit_is_json_mode(emit)) {
+					fy_emit_accum_utf8_put(&emit->ea, 'u');
+					for (i = 12; i >= 0; i -= 4) {
+						digit = c ? (0xfffd >> i) & 15 : 0;
+						fy_emit_accum_utf8_put(&emit->ea,
+								digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
+					}
+					continue;
+				}
 				if (c != 0) {
 					fy_emit_accum_utf8_put(&emit->ea, 'x');
 					digit = ((unsigned int)c >> 4) & 15;
