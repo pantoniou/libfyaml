@@ -114,6 +114,52 @@ START_TEST(emit_simple)
 }
 END_TEST
 
+/* Emit one double-quoted scalar of @len bytes with the emitter flags @mode. */
+static void emit_dq_scalar(struct test_emitter_data *data, enum fy_emitter_cfg_flags mode,
+			   const char *text, size_t len)
+{
+	struct fy_emitter *emit;
+	int rc;
+
+	memset(data, 0, sizeof(*data));
+	data->cfg.output = collect_output;
+	data->cfg.userdata = data;
+	data->cfg.flags = mode;
+	emit = fy_emitter_create(&data->cfg);
+	ck_assert_ptr_ne(emit, NULL);
+	data->emit = emit;
+
+	rc = fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_START));
+	ck_assert_int_eq(rc, 0);
+	rc = fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_START, true, NULL, NULL));
+	ck_assert_int_eq(rc, 0);
+	rc = fy_emit_event(emit, fy_emit_event_create(emit, FYET_SCALAR, FYSS_DOUBLE_QUOTED,
+						      text, len, NULL, NULL));
+	ck_assert_int_eq(rc, 0);
+	rc = fy_emit_event(emit, fy_emit_event_create(emit, FYET_DOCUMENT_END, true, NULL, NULL));
+	ck_assert_int_eq(rc, 0);
+	rc = fy_emit_event(emit, fy_emit_event_create(emit, FYET_STREAM_END));
+	ck_assert_int_eq(rc, 0);
+	ck_assert_ptr_ne(data->buf, NULL);
+}
+
+START_TEST(emit_json_non_utf8)
+{
+	struct test_emitter_data data;
+
+	/* JSON has no escape of a byte: a byte that is not UTF-8 is U+FFFD */
+	emit_dq_scalar(&data, FYECF_MODE_JSON, "a\xff" "b", 3);
+	ck_assert_ptr_ne(strstr(data.buf, "\"a\\uFFFDb\""), NULL);
+	ck_assert_ptr_eq(strstr(data.buf, "\\x"), NULL);
+	cleanup_test_emitter(&data);
+
+	/* YAML keeps the byte as it was */
+	emit_dq_scalar(&data, FYECF_DEFAULT, "a\xff" "b", 3);
+	ck_assert_ptr_ne(strstr(data.buf, "\"a\\xFFb\""), NULL);
+	cleanup_test_emitter(&data);
+}
+END_TEST
+
 START_TEST(emit_interstitial_comment_single)
 {
 	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
@@ -1277,4 +1323,5 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_comment_idempotent_roundtrip);
 	fy_check_testcase_add_test(ctc, emit_nested_mapping_first_key_comment_sort);
 	fy_check_testcase_add_test(ctc, emit_constructed_comment_indent);
+	fy_check_testcase_add_test(ctc, emit_json_non_utf8);
 }
