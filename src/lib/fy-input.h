@@ -166,6 +166,10 @@ fy_input_start_size(const struct fy_input *fyi, size_t *sizep)
 		switch (fyi->cfg.type) {
 		case fyit_file:
 		case fyit_fd:
+			/* a mapped input has no buffer to clamp to */
+			if (fyi->addr)
+				break;
+			/* fall-through */
 		case fyit_stream:
 		case fyit_callback:
 			if (fyi->allocated < size)
