@@ -5601,6 +5601,36 @@ START_TEST(fuzz_issue_450_rollback_mapped_input_repro)
 }
 END_TEST
 
+/* Test: an alias in a replayed collection refers to the closest anchor. */
+START_TEST(fuzz_resolve_redefined_anchor_repro)
+{
+	static const char yaml[] =
+		"&a {\n"
+		"  k: &b {\n"
+		"    &a x : *a\n"
+		"  },\n"
+		"  j: *b }\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET | FYPCF_RESOLVE_DOCUMENT };
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	unsigned int events = 0;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+
+	/* the stream, the document, 2 mappings, 6 scalars and the ends */
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		fy_parser_event_free(fyp, fye);
+		/* an endless expansion must fail the test, not hang it */
+		ck_assert_uint_lt(++events, 1000);
+	}
+	ck_assert_uint_eq(events, 16);
+
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
 /* Test: gh#453 - a rollback restores the implicit flags of the events. */
 START_TEST(fuzz_issue_453_rollback_implicit_repro)
 {
@@ -6122,6 +6152,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_449_checkpoint_cts_stack_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_450_rollback_mapped_input_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_453_rollback_implicit_repro);
+	fy_check_testcase_add_test(ctc, fuzz_resolve_redefined_anchor_repro);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_430_collection_end_comment_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_432_get_at_empty_repro);
