@@ -2461,6 +2461,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 				fy_node_list_add(&fyn_parent->sequence, fyn_cpy);
 			else
 				fy_node_list_insert_after(&fyn_parent->sequence, fyn_prev, fyn_cpy);
+
+			/* a later merge into the copy needs its parent */
+			fyn_cpy->attached = true;
+			fyn_cpy->parent = fyn_parent;
 		} else {
 			fyd_doc_debug(fyd, "Replacing mapping node value");
 			/* should never happen, it's checked right above, but play safe */
@@ -2470,6 +2474,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 			fy_node_detach_and_free(fynp->value);
 			fynp->value = fyn_cpy;
+
+			/* a later merge into the copy needs its parent */
+			fyn_cpy->attached = true;
+			fyn_cpy->parent = fyn_parent;
 		}
 
 		return 0;
