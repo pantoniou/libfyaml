@@ -8227,9 +8227,39 @@ fy_parser_streaming_alias_lookup(struct fy_parser *fyp, struct fy_token *fyt_anc
 struct fy_streaming_alias *
 fy_parser_streaming_alias_lookup_pivot(struct fy_parser *fyp, struct fy_streaming_alias *fysa_pivot, struct fy_token *fyt_anchor)
 {
-	struct fy_streaming_alias *fysa;
+	struct fy_streaming_alias *fysa, *fysa_best;
+	const struct fy_mark *alias_mark, *anchor_mark, *best_mark;
 
 	assert(fysa_pivot);
+
+	/*
+	 * the alias refers to the closest anchor of that name before it in the
+	 * input, and an anchor defined inside the replayed collection can be
+	 * younger than the pivot
+	 */
+	fysa_best = NULL;
+	best_mark = NULL;
+	alias_mark = fy_token_start_mark(fyt_anchor);
+	if (alias_mark) {
+		for (fysa = fy_streaming_alias_list_head(&fyp->streaming_aliases); fysa != NULL;
+		     fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
+
+			if (!fysa->anchor || fy_token_cmp(fyt_anchor, fysa->anchor) != 0)
+				continue;
+
+			anchor_mark = fy_token_start_mark(fysa->anchor);
+			if (!anchor_mark || anchor_mark->input_pos >= alias_mark->input_pos)
+				continue;
+
+			if (!best_mark || anchor_mark->input_pos > best_mark->input_pos) {
+				fysa_best = fysa;
+				best_mark = anchor_mark;
+			}
+		}
+		if (fysa_best)
+			return fysa_best;
+	}
+
 	/* at first do forwards starting at the pivot */
 	for (fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa_pivot); fysa != NULL; fysa = fy_streaming_alias_next(&fyp->streaming_aliases, fysa)) {
 		if (fysa->anchor && fy_token_cmp(fyt_anchor, fysa->anchor) == 0)
