@@ -9217,14 +9217,15 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	if (fyp->cts.stack) {
 		fyp_parse_debug(fyp, "checkpoint has a cts stack");
 		fypc->cts = fyp->cts;
-		if (fyp->cts.alloc <= (int)ARRAY_SIZE(fyp->cts.local))
+		/* the size of the collection state stack is in bits */
+		if (fyp->cts.alloc <= (int)(sizeof(fyp->cts.local) * 8))
 			fypc->cts.stack = fypc->cts.local;
 		else {
-			fypc->cts.stack = malloc(sizeof(*fyp->cts.stack) * fyp->cts.alloc);
+			fypc->cts.stack = malloc(fyp->cts.alloc / 8);
 			fyp_error_check(fyp, fypc->cts.stack, err_out_chk,
 					"malloc() failed!");
-			memcpy(fypc->cts.stack, fyp->cts.stack, sizeof(*fyp->cts.stack) * fyp->cts.top);
 		}
+		memcpy(fypc->cts.stack, fyp->cts.stack, fyp->cts.alloc / 8);
 	}
 
 	/* copy all remaining lists */
