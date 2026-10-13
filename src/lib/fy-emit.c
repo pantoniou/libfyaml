@@ -5838,6 +5838,8 @@ void fy_emit_generic_mapping(struct fy_emitter *emit, fy_generic v, int flags, i
 
 	maph = fy_cast(v, fy_map_handle_null);
 
+	memset(&tak, 0, sizeof(tak));
+	memset(&tav, 0, sizeof(tav));
 	memset(sc, 0, sizeof(*sc));
 
 	sc->flags = flags;
