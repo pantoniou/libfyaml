@@ -1067,9 +1067,11 @@ struct fy_eventp *fy_parse_eventp_clone(struct fy_parser *fyp, struct fy_eventp 
 	case FYET_DOCUMENT_START:
 		fye->document_start.document_start = fy_token_ref(fye_src->document_start.document_start);
 		fye->document_start.document_state = fy_document_state_ref(fye_src->document_start.document_state);
+		fye->document_start.implicit = fye_src->document_start.implicit;
 		break;
 	case FYET_DOCUMENT_END:
 		fye->document_end.document_end = fy_token_ref(fye_src->document_end.document_end);
+		fye->document_end.implicit = fye_src->document_end.implicit;
 		break;
 	case FYET_MAPPING_START:
 		if (!strip_anchors)
