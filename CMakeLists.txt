@@ -797,6 +797,17 @@ if(NOT MSVC)
         list(APPEND COMMON_C_FLAGS -Wextra)
     endif()
 
+    # Returning the address of a local is always a bug; make it fatal.
+    # GCC spells it -Wreturn-local-addr, clang -Wreturn-stack-address.
+    check_c_compiler_flag(-Werror=return-local-addr COMPILER_SUPPORTS_WERROR_RETURN_LOCAL_ADDR)
+    if(COMPILER_SUPPORTS_WERROR_RETURN_LOCAL_ADDR)
+        list(APPEND COMMON_C_FLAGS -Werror=return-local-addr)
+    endif()
+    check_c_compiler_flag(-Werror=return-stack-address COMPILER_SUPPORTS_WERROR_RETURN_STACK_ADDRESS)
+    if(COMPILER_SUPPORTS_WERROR_RETURN_STACK_ADDRESS)
+        list(APPEND COMMON_C_FLAGS -Werror=return-stack-address)
+    endif()
+
     set(USE_STD 0)
 
     # C standard to build with; "auto" picks the newest supported one.
