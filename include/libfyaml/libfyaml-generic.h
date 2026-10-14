@@ -8953,6 +8953,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
  * @FYGBOPF_PRUNE:            With DELETE_AT_PATH, drop parent mappings that become empty
  * @FYGBOPF_SORT_CREATE:      On create, sort items (sequences) / pairs by key (mappings)
+ * @FYGBOPF_DIGIT_KEYS:       With *_AT_PATH, if key 1 is missing try key "1"
  */
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
@@ -9004,6 +9005,7 @@ enum fy_gb_op_flags {
 	FYGBOPF_NO_CLOBBER	= FY_BIT(24),			// with CREATE_PATH, do not overwrite non-collection intermediates
 	FYGBOPF_PRUNE		= FY_BIT(25),			// with DELETE_AT_PATH, remove parent mappings that become empty
 	FYGBOPF_SORT_CREATE	= FY_BIT(26),			// on create, sort items (seq) / pairs by key (map)
+	FYGBOPF_DIGIT_KEYS	= FY_BIT(27),			// with *_AT_PATH, if key 1 is missing try key "1"
 };
 
 /*
@@ -9096,6 +9098,8 @@ fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
  * generics (usable as sequence indices); everything else becomes a
  * string generic. "" and "/" yield an empty sequence.
  *
+ * Segments use JSON Pointer escapes: "~1" is '/' and "~0" is '~'.
+ *
  * @gb:   Builder that owns the result
  * @path: Unix-style path string, e.g. "a/b/2/c"
  *
@@ -9104,6 +9108,21 @@ fy_generic_op(struct fy_generic_builder *gb, enum fy_gb_op_flags flags, ...)
  */
 fy_generic
 fy_gb_path_split(struct fy_generic_builder *gb, const char *path)
+	FY_EXPORT;
+
+/**
+ * fy_gb_path_segment_escape() - Escape one path segment.
+ *
+ * Writes '~' as "~0" and '/' as "~1" (JSON Pointer).
+ *
+ * @gb:      Builder that owns the result
+ * @segment: The segment to escape
+ *
+ * Returns:
+ * The escaped segment as a string generic, or fy_invalid on error.
+ */
+fy_generic
+fy_gb_path_segment_escape(struct fy_generic_builder *gb, const char *segment)
 	FY_EXPORT;
 
 /* fy_gb_get_at_pathseq() - Like fy_gb_get_at_path() with the path given as a sequence generic */
