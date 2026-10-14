@@ -4900,6 +4900,17 @@ START_TEST(pathstr_escape)
 	ck_assert_str_eq(fy_cast(fy_get_at_path(v, "keys", 7), ""), "n");
 	printf("> digit segments as keys OK\n");
 
+	/* "007" is a string, not 7 */
+	ps = fy_gb_path_split(gb, "0/007/10");
+	ck_assert(fy_generic_is_int_type(fy_get(ps, 0, fy_invalid)));
+	ck_assert_str_eq(fy_get(ps, 1, ""), "007");
+	ck_assert(fy_generic_is_int_type(fy_get(ps, 2, fy_invalid)));
+	map = fy_mapping("keys", fy_mapping("007", "x", 7, "y"));
+	v = fy_get_at_pathstr(gb, map, "keys/007");
+	ck_assert_str_eq(fy_cast(v, ""), "x");
+	v = fy_get_at_pathstr(gb, map, "keys/7");
+	ck_assert_str_eq(fy_cast(v, ""), "y");
+
 	/* "/" is the whole document */
 	v = fy_get_at_pathstr(gb, map, "/");
 	ck_assert(fy_compare(v, map) == 0);
