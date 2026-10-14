@@ -15,7 +15,9 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <assert.h>
 
 #include <check.h>
@@ -5538,6 +5540,7 @@ START_TEST(fuzz_issue_449_checkpoint_cts_stack_repro)
 }
 END_TEST
 
+#ifndef _WIN32
 /* Count the events of a file, counting the items of the first collections. */
 static int issue_450_parse_file(const char *path, bool count)
 {
@@ -5578,10 +5581,13 @@ static int issue_450_parse_file(const char *path, bool count)
 	fy_parser_destroy(fyp);
 	return events;
 }
+#endif
 
 /* Test: gh#450 - a rollback keeps the size of a mapped file input. */
 START_TEST(fuzz_issue_450_rollback_mapped_input_repro)
 {
+	/* no mkstemp() on Windows */
+#ifndef _WIN32
 	static const char yaml[] = "[*-,*+-,\n ::\n e";
 	char path[] = "/tmp/fy-gh450-XXXXXX";
 	int fd, plain, counted;
@@ -5598,6 +5604,7 @@ START_TEST(fuzz_issue_450_rollback_mapped_input_repro)
 	ck_assert_int_gt(plain, 0);
 	/* the count must not change what the parser returns */
 	ck_assert_int_eq(counted, plain);
+#endif
 }
 END_TEST
 
