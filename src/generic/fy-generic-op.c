@@ -1859,7 +1859,7 @@ fy_generic_op_set_at(const struct fy_generic_op_desc *desc FY_UNUSED,
 	return fy_generic_op_args(gb, FYGBOPF_REPLACE, in, args);
 }
 
-/* GET; with FYGBOPF_DIGIT_KEYS, if key 1 is missing try key "1" */
+/* GET; with FYGBOPF_DIGIT_KEYS, if key 1 is missing try key "1" and set *keyp to "1" if found */
 static fy_generic
 fy_generic_op_get_path_key(struct fy_generic_builder *gb,
 			   enum fy_gb_op_flags flags,
@@ -4565,8 +4565,11 @@ fy_generic fy_gb_path_split(struct fy_generic_builder *gb, const char *path)
 			items = items_alloc;
 		}
 
-		/* an all-digits segment becomes an integer (sequence index) */
+		/* an all-digits segment becomes an integer (sequence index);
+		 * "007" stays a string, as JSON Pointer has no leading zeros */
 		digits = (e - s) <= 19;	/* fits an unsigned long long */
+		if (e - s > 1 && *s == '0')
+			digits = false;
 		escaped = false;
 		idx = 0;
 		for (p = s; p < e; p++) {
