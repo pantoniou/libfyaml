@@ -4823,6 +4823,93 @@ START_TEST(pathseq_pathstr_ops)
 }
 END_TEST
 
+START_TEST(pathstr_escape)
+{
+	char buf[16384];
+	char seg[300];
+	struct fy_generic_builder *gb;
+	fy_generic map, ps, v;
+
+	gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER, NULL,
+			buf, sizeof(buf));
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* "~1" is '/' and "~0" is '~' */
+	ps = fy_gb_path_split(gb, "a~1b/c~0d/~01");
+	ck_assert(fy_generic_is_sequence(ps) && fy_len(ps) == 3);
+	ck_assert_str_eq(fy_get(ps, 0, ""), "a/b");
+	ck_assert_str_eq(fy_get(ps, 1, ""), "c~d");
+	ck_assert_str_eq(fy_get(ps, 2, ""), "~1");
+	printf("> escaped path split: ");
+	fy_generic_emit_default(ps);
+
+	/* any other '~' is invalid */
+	ck_assert(fy_generic_is_invalid(fy_gb_path_split(gb, "a~2")));
+	ck_assert(fy_generic_is_invalid(fy_gb_path_split(gb, "a/b~")));
+
+	/* escape and split round-trip */
+	v = fy_gb_path_segment_escape(gb, "accounts/x~y");
+	ck_assert_str_eq(fy_cast(v, ""), "accounts~1x~0y");
+	ps = fy_gb_path_split(gb, fy_cast(v, ""));
+	ck_assert(fy_len(ps) == 1);
+	ck_assert_str_eq(fy_get(ps, 0, ""), "accounts/x~y");
+	v = fy_gb_path_segment_escape(gb, "plain");
+	ck_assert_str_eq(fy_cast(v, ""), "plain");
+
+	/* a long segment round-trips too */
+	memset(seg, 'x', sizeof(seg) - 1);
+	seg[sizeof(seg) - 1] = '\0';
+	seg[0] = '/';
+	seg[150] = '~';
+	seg[sizeof(seg) - 2] = '/';
+	v = fy_gb_path_segment_escape(gb, seg);
+	ck_assert(fy_len(v) == sizeof(seg) - 1 + 3);
+	ps = fy_gb_path_split(gb, fy_cast(v, ""));
+	ck_assert(fy_len(ps) == 1);
+	ck_assert_str_eq(fy_get(ps, 0, ""), seg);
+
+	/* get/set/delete a key with a '/' */
+	map = fy_mapping("servers", fy_mapping("a/b", fy_mapping("port", 1)));
+	v = fy_get_at_pathstr(gb, map, "servers/a~1b/port");
+	ck_assert(fy_cast(v, -1) == 1);
+	v = fy_set_at_pathstr(gb, map, "servers/a~1b/port", 2);
+	ck_assert(fy_cast(fy_get_at_path(v, "servers", "a/b", "port"), -1) == 2);
+	v = fy_delete_at_pathstr(gb, map, "servers/a~1b");
+	ck_assert(fy_len(fy_get_at_path(v, "servers")) == 0);
+	printf("> get/set/delete with an escaped key OK\n");
+
+	/* "keys/1" finds key "1" */
+	map = fy_mapping("keys", fy_mapping("1", "x"));
+	v = fy_get_at_pathstr(gb, map, "keys/1");
+	ck_assert_str_eq(fy_cast(v, ""), "x");
+	v = fy_set_at_pathstr(gb, map, "keys/1", "y");
+	ck_assert(fy_len(fy_get_at_path(v, "keys")) == 1);
+	ck_assert_str_eq(fy_cast(fy_get_at_path(v, "keys", "1"), ""), "y");
+	v = fy_delete_at_pathstr(gb, map, "keys/1");
+	ck_assert(fy_len(fy_get_at_path(v, "keys")) == 0);
+
+	/* key 1 and sequence index 1 still work */
+	map = fy_mapping("keys", fy_mapping(1, "z"),
+			 "list", fy_sequence("p", "q"));
+	v = fy_get_at_pathstr(gb, map, "keys/1");
+	ck_assert_str_eq(fy_cast(v, ""), "z");
+	v = fy_get_at_pathstr(gb, map, "list/1");
+	ck_assert_str_eq(fy_cast(v, ""), "q");
+	/* a new key 7 is an integer */
+	v = fy_set_at_pathstr(gb, map, "keys/7", "n");
+	ck_assert_str_eq(fy_cast(fy_get_at_path(v, "keys", 7), ""), "n");
+	printf("> digit segments as keys OK\n");
+
+	/* "/" is the whole document */
+	v = fy_get_at_pathstr(gb, map, "/");
+	ck_assert(fy_compare(v, map) == 0);
+	v = fy_set_at_pathstr(gb, map, "/", "all");
+	ck_assert_str_eq(fy_cast(v, ""), "all");
+	v = fy_delete_at_pathstr(gb, map, "/");
+	ck_assert(fy_compare(v, map) == 0);
+}
+END_TEST
+
 START_TEST(parse_emit_ops)
 {
 	char buf[65536];
@@ -7942,6 +8029,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, equal_ops);
 	fy_check_testcase_add_test(ctc, get_two_arg);
 	fy_check_testcase_add_test(ctc, pathseq_pathstr_ops);
+	fy_check_testcase_add_test(ctc, pathstr_escape);
 
 	/* parse and emit operations */
 	fy_check_testcase_add_test(ctc, parse_emit_ops);
