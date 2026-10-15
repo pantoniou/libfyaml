@@ -4006,7 +4006,13 @@ fy_type_lookup_or_create(struct fy_reflection *rfl, const char *name, size_t nam
 				s++;
 			if (s >= e)
 				break;
+			/* strtoumax() accepts a sign, an array size is a plain number */
+			RFL_ERROR_CHECK(isdigit((unsigned char)*s),
+					"bad array size in '%.*s'", (int)name_len, name);
+			errno = 0;
 			arrsz = strtoumax(s, &nexts, 0);
+			RFL_ERROR_CHECK(errno != ERANGE,
+					"array size too large in '%.*s'", (int)name_len, name);
 			s = nexts;
 			while (s < e && isspace((unsigned char)*s))
 				s++;
