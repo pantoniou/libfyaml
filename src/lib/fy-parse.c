@@ -9185,6 +9185,10 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	memset(&fypc->sas, 0, sizeof(fypc->sas));
 	memset(&fypc->cts, 0, sizeof(fypc->cts));
 
+	/* the reader is copied below, until then there is nothing for the cleanup to release */
+	memset(&fypc->builtin_reader, 0, sizeof(fypc->builtin_reader));
+	fypc->reader = &fypc->builtin_reader;
+
 	fy_input_list_init(&fypc->queued_inputs);
 	fypc->stream_end_token = fy_token_ref(fyp->stream_end_token);
 
