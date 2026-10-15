@@ -5690,6 +5690,22 @@ err_out:
 	return -1;
 }
 
+/* check if a type in progress is reached without going through a pointer */
+static bool
+reflection_setup_type_in_progress_by_value(struct reflection_type_data_stack *rtds,
+					   const struct fy_type_info *ti)
+{
+	int i;
+
+	for (i = rtds->top - 1; i >= 0; i--) {
+		if (rtds->rtds[i]->ti == ti)
+			return true;
+		if (rtds->rtds[i]->ti->kind == FYTK_PTR)
+			return false;
+	}
+	return false;
+}
+
 int
 reflection_setup_type(struct reflection_type_system *rts,
 		      const struct fy_type_info *ti,
@@ -5781,6 +5797,12 @@ reflection_setup_type(struct reflection_type_system *rts,
 	for (i = 0; i < rtd->fields_count; i++) {
 
 		rfd = rtd->fields[i];
+
+		/* a type that contains itself by value has no finite size */
+		RTS_ERROR_CHECK(!reflection_setup_type_in_progress_by_value(&rstc->rtds,
+									     rfd->fi->type_info),
+				"type '%s' contains itself in field '%s'",
+				ti->name, rfd->field_name);
 
 		rc = reflection_field_data_stack_push(&rstc->rfds, rfd);
 		RTS_ASSERT(!rc);
