@@ -41,6 +41,8 @@
 #include <libfyaml.h>
 #include <libfyaml/libfyaml-reflection.h>
 
+#include "fy-utils.h"
+
 #include "fy-reflection-private.h"
 #include "fy-reflection-util.h"
 
@@ -5254,10 +5256,39 @@ err_out:
 #define reflection_walker_get_path_alloca(_rw) \
 	FY_ALLOCA_COPY_FREE(reflection_walker_get_path((_rw)), FY_NT)
 
+/* the stack used by one nested walker, with room for the sanitizer */
+#define REFLECTION_PARSE_STACK_PER_DEPTH	4096
+#define REFLECTION_PARSE_DEPTH_MIN		64
+#define REFLECTION_PARSE_DEPTH_MAX		512
+
+/* the depth of the walkers that a parse may nest, a type can recurse without input */
+static int reflection_parse_depth_limit(void)
+{
+	size_t stack_size, per_depth, depth;
+
+	stack_size = fy_stack_size();
+	if (!stack_size)
+		stack_size = 1U << 20;	/* assume a small 1MB stack */
+
+	per_depth = REFLECTION_PARSE_STACK_PER_DEPTH;
+	if (fy_is_asan_enabled())
+		per_depth *= 4;
+
+	/* keep half of the stack for everything else */
+	depth = (stack_size / 2) / per_depth;
+	if (depth < REFLECTION_PARSE_DEPTH_MIN)
+		depth = REFLECTION_PARSE_DEPTH_MIN;
+	if (depth > REFLECTION_PARSE_DEPTH_MAX)
+		depth = REFLECTION_PARSE_DEPTH_MAX;
+	return (int)depth;
+}
+
 int
 reflection_parse_rw(struct fy_parser *fyp, struct reflection_walker *rw, enum reflection_parse_flags flags)
 {
-	int rc;
+	struct reflection_walker *rw_parent;
+	struct fy_event *fye = NULL;
+	int rc, depth, depth_max;
 
 	assert(fyp);
 	assert(rw);
@@ -5268,10 +5299,21 @@ reflection_parse_rw(struct fy_parser *fyp, struct reflection_walker *rw, enum re
 	/* does the type have a parse method? if not it's unsupported */
 	RW_ASSERT(rw->rtd->ops->parse != NULL);
 
+	/* an auto-select of a type that holds itself can recurse without end */
+	depth = 0;
+	depth_max = rw->parent ? reflection_parse_depth_limit() : 0;
+	for (rw_parent = rw->parent; rw_parent; rw_parent = rw_parent->parent)
+		RP_INPUT_CHECK(++depth <= depth_max,
+			       "nesting of '%s' is too deep\n", rw->rtd->ti->name);
+
 	rc = rw->rtd->ops->parse(fyp, rw, flags);
 
 out:
 	return rc;
+
+err_input:
+	rc = -EINVAL;
+	goto out;
 
 err_out:
 	rc = -EINVAL;
