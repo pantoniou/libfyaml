@@ -953,7 +953,7 @@ common_scalar_copy(struct reflection_walker *rw_dst, struct reflection_walker *r
 
 	type_kind = rw_dst->rtd->ti->kind;
 	/* non-bitfields always simple */
-	if (!(rw_dst->flags & rw_src->flags & RWF_BITFIELD_DATA))
+	if (!((rw_dst->flags | rw_src->flags) & RWF_BITFIELD_DATA))
 		return scalar_copy(type_kind, rw_dst->data, rw_src->data);
 
 	/* only integers may be bitfield */
@@ -976,7 +976,7 @@ common_scalar_cmp(struct reflection_walker *rw_a, struct reflection_walker *rw_b
 
 	type_kind = rw_a->rtd->ti->kind;
 	/* non-bitfields always simple */
-	if (!(rw_a->flags & rw_b->flags & RWF_BITFIELD_DATA))
+	if (!((rw_a->flags | rw_b->flags) & RWF_BITFIELD_DATA))
 		return scalar_cmp(rw_a->rtd->ti->kind, rw_a->data, rw_b->data);
 
 	/* only integers may be bitfield */
@@ -1005,7 +1005,7 @@ common_scalar_eq(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
 	assert(rw_a->rtd == rw_b->rtd);
 
 	type_kind = rw_a->rtd->ti->kind;
-	if (!(rw_a->flags & rw_b->flags & RWF_BITFIELD_DATA))
+	if (!((rw_a->flags | rw_b->flags) & RWF_BITFIELD_DATA))
 		return scalar_eq(type_kind, rw_a->data, rw_b->data);
 
 	/* only integers may be bitfield */
@@ -5309,9 +5309,9 @@ int reflection_copy_rw(struct reflection_walker *rw_dst, struct reflection_walke
 
 	rtd = rw_src->rtd;
 
-	/* pure, can just copy */
+	/* pure, can just copy, unless a bitfield is on either side */
 	if ((rtd->flags & RTDF_PURITY_MASK) == 0 &&
-	    !(rw_src->flags & rw_dst->flags & RWF_BITFIELD_DATA)) {
+	    !((rw_src->flags | rw_dst->flags) & RWF_BITFIELD_DATA)) {
 		memcpy(rw_dst->data, rw_src->data, rtd->ti->size);
 		rc = 0;
 	} else {
@@ -5363,7 +5363,7 @@ int reflection_eq_rw(struct reflection_walker *rw_a, struct reflection_walker *r
 
 	/* pure? memcmp it */
 	if ((rtd->flags & RTDF_PURITY_MASK) == 0 &&
-	    !(rw_a->flags & rw_b->flags & RWF_BITFIELD_DATA)) {
+	    !((rw_a->flags | rw_b->flags) & RWF_BITFIELD_DATA)) {
 		rc = !memcmp(rw_a->data, rw_b->data, rtd->ti->size);
 		assert(rc == 0 || rc == 1);
 	} else {
