@@ -5274,7 +5274,10 @@ reflection_emit_rw(struct fy_emitter *emit, struct reflection_walker *rw, enum r
 	assert(rw);
 	assert(rw->rtd);
 	assert(rw->rtd->ops);
-	assert(rw->rtd->ops->emit);
+
+	/* a type without an emit method is unsupported */
+	if (!rw->rtd->ops->emit)
+		return -EINVAL;
 
 	rc = rw->rtd->ops->emit(emit, rw, flags);
 
