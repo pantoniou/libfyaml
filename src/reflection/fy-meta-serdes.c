@@ -4593,11 +4593,103 @@ ptr_doc_dtor(struct reflection_walker *rw)
 	fy_document_destroy(fyd);
 }
 
+static int
+ptr_doc_copy(struct reflection_walker *rw_dst, struct reflection_walker *rw_src)
+{
+	struct fy_document *fyd_src, *fyd_dst;
+	struct reflection_walker *rw;
+
+	assert(rw_dst);
+	assert(rw_src);
+
+	rw = rw_dst;
+
+	RW_ASSERT(rw_dst->data);
+	RW_ASSERT(rw_src->data);
+
+	fyd_src = *(struct fy_document **)rw_src->data;
+	if (fyd_src) {
+		fyd_dst = fy_document_clone(fyd_src);
+		RW_ASSERT(fyd_dst);
+	} else
+		fyd_dst = NULL;
+
+	*(struct fy_document **)rw_dst->data = fyd_dst;
+
+	return 0;
+
+err_out:
+	return -1;
+}
+
+/* -1 a < b, 1 a > b, 0 a == b, a missing document sorts first */
+static int
+ptr_doc_cmp(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
+{
+	struct fy_document *fyd_a, *fyd_b;
+	struct reflection_walker *rw;
+	char *str_a = NULL, *str_b = NULL;
+	int rc;
+
+	assert(rw_a);
+	assert(rw_b);
+
+	rw = rw_a;
+
+	RW_ASSERT(rw_a->data);
+	RW_ASSERT(rw_b->data);
+
+	fyd_a = *(struct fy_document **)rw_a->data;
+	fyd_b = *(struct fy_document **)rw_b->data;
+
+	if (!fyd_a || !fyd_b) {
+		rc = (!!fyd_a) - (!!fyd_b);
+		goto out;
+	}
+
+	/* equal documents compare equal, the text order is arbitrary but stable */
+	if (fy_node_compare(fy_document_root(fyd_a), fy_document_root(fyd_b))) {
+		rc = 0;
+		goto out;
+	}
+
+	str_a = fy_emit_node_to_string(fy_document_root(fyd_a), FYECF_MODE_FLOW_ONELINE);
+	str_b = fy_emit_node_to_string(fy_document_root(fyd_b), FYECF_MODE_FLOW_ONELINE);
+	RW_ASSERT(str_a && str_b);
+
+	rc = strcmp(str_a, str_b);
+	rc = rc < 0 ? -1 : rc > 0 ? 1 : 0;
+
+out:
+	free(str_a);
+	free(str_b);
+	return rc;
+
+err_out:
+	free(str_a);
+	free(str_b);
+	return -2;
+}
+
+static int
+ptr_doc_eq(struct reflection_walker *rw_a, struct reflection_walker *rw_b)
+{
+	int rc;
+
+	rc = ptr_doc_cmp(rw_a, rw_b);
+	if (rc <= -2)
+		return rc;
+	return !rc;
+}
+
 static const struct reflection_type_ops ptr_doc_ops = {
 	.name = "ptr_doc",
 	.parse = ptr_doc_parse,
 	.emit = ptr_doc_emit,
 	.dtor = ptr_doc_dtor,
+	.copy = ptr_doc_copy,
+	.cmp = ptr_doc_cmp,
+	.eq = ptr_doc_eq,
 };
 
 const struct reflection_type_ops reflection_ops_table[FYTK_COUNT] = {
