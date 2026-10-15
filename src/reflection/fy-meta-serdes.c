@@ -5795,6 +5795,17 @@ err_out:
 	return -1;
 }
 
+/* the type that a typedef or an array holds by value */
+static const struct fy_type_info *
+reflection_setup_type_by_value(const struct fy_type_info *ti)
+{
+	while (ti->dependent_type &&
+	       (ti->kind == FYTK_TYPEDEF || ti->kind == FYTK_CONSTARRAY ||
+		ti->kind == FYTK_INCOMPLETEARRAY))
+		ti = ti->dependent_type;
+	return ti;
+}
+
 /* check if a type in progress is reached without going through a pointer */
 static bool
 reflection_setup_type_in_progress_by_value(struct reflection_type_data_stack *rtds,
@@ -5802,8 +5813,9 @@ reflection_setup_type_in_progress_by_value(struct reflection_type_data_stack *rt
 {
 	int i;
 
+	ti = reflection_setup_type_by_value(ti);
 	for (i = rtds->top - 1; i >= 0; i--) {
-		if (rtds->rtds[i]->ti == ti)
+		if (reflection_setup_type_by_value(rtds->rtds[i]->ti) == ti)
 			return true;
 		if (rtds->rtds[i]->ti->kind == FYTK_PTR)
 			return false;
