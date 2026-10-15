@@ -1843,7 +1843,7 @@ array_parse(struct array_info *info,
 	size_t item_size;
 	uintmax_t item_count = 0, idx = 0, data_count = 0, new_item_count, new_data_count;
 	struct struct_instance_data id_struct_local, *id_struct = &id_struct_local;
-	struct array_mapping_info minfo_local, *minfo = &minfo_local;
+	struct array_mapping_info minfo_local = { 0 }, *minfo = &minfo_local;
 	bool have_map_prolog = false, have_map_key = false, have_map_value = false;
 	int rc = 0;
 
