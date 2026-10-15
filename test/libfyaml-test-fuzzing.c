@@ -1951,8 +1951,9 @@ END_TEST
 #ifdef HAVE_REFLECTION
 
 /* parse a YAML document with a blob; -2 no reflection, -1 no context, else parse result */
-static int fuzz_blob_parse(const unsigned char *blob, size_t size,
-			   const char *entry, const char *yaml, size_t yaml_size)
+static int fuzz_blob_parse_meta(const unsigned char *blob, size_t size,
+				const char *entry, const char *meta,
+				const char *yaml, size_t yaml_size)
 {
 	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
 	struct fy_reflection *rfl;
@@ -1967,7 +1968,8 @@ static int fuzz_blob_parse(const unsigned char *blob, size_t size,
 
 	ctx = fy_type_context_create(&(struct fy_type_context_cfg){
 		.rfl = rfl,
-		.entry_type = entry });
+		.entry_type = entry,
+		.entry_meta = meta });
 	if (!ctx) {
 		fy_reflection_destroy(rfl);
 		return -1;
@@ -1984,6 +1986,12 @@ static int fuzz_blob_parse(const unsigned char *blob, size_t size,
 	fy_type_context_destroy(ctx);
 	fy_reflection_destroy(rfl);
 	return rc;
+}
+
+static int fuzz_blob_parse(const unsigned char *blob, size_t size,
+			   const char *entry, const char *yaml, size_t yaml_size)
+{
+	return fuzz_blob_parse_meta(blob, size, entry, NULL, yaml, yaml_size);
 }
 
 /* Test: gh#457 - a union select value that cannot be generated. */
@@ -2328,6 +2336,35 @@ START_TEST(fuzz_issue_467_array_size_negative_repro)
 
 	/* the entry type is rejected */
 	ck_assert_int_eq(fuzz_blob_parse(blob, sizeof(blob), entry, yaml, sizeof(yaml) - 1), -1);
+}
+END_TEST
+
+/* Test: gh#468 - the default value of a bitfield. */
+START_TEST(fuzz_issue_468_bitfield_default_repro)
+{
+	static const unsigned char blob[] = {
+	0x46, 0x59, 0x50, 0x47, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x16, 0x01, 0x1a, 0x00, 0x01, 0x00, 0x01, 0x01,
+	0x00, 0x01, 0x00, 0x07, 0x00, 0x07, 0x05, 0x08, 0x07, 0x00, 0x67, 0x17,
+	0x00, 0x07, 0x00, 0x07, 0x19, 0x1b, 0x07, 0x00, 0x07, 0x2a, 0x1b, 0x08,
+	0x00, 0xe9, 0x2d, 0x08, 0x2f, 0x00, 0x66, 0x6f, 0x6f, 0x00, 0x81, 0x30,
+	0xff, 0x7b, 0x64, 0x65, 0x66, 0x61, 0x75, 0x6c, 0x74, 0x3a, 0x20, 0x32,
+	0x30, 0x30, 0x7d, 0x00, 0x61, 0x00, 0x62, 0x00, 0x7b, 0x64, 0x65, 0x66,
+	0x61, 0x75, 0x6c, 0x74, 0x3a, 0x20, 0x31, 0x30, 0x31, 0x7d, 0x00, 0x62,
+	0x00, 0x04, 0x00, 0x00, 0x7b, 0x64, 0x65, 0x66, 0x61, 0x75, 0x6c, 0x74,
+	0x3a, 0x20, 0x2d, 0x31, 0x7d, 0x00,
+	};
+	static const char entry[] = "struct foo";
+	static const char meta[] = "c: 10";
+	static const char yaml[] = "---\n"
+	"a: 10";
+
+	/* the default is stored in the bitfield, not copied as an integer */
+	ck_assert_int_eq(fuzz_blob_parse_meta(blob, sizeof(blob), entry, meta, yaml, sizeof(yaml) - 1), 0);
 }
 END_TEST
 
@@ -6675,6 +6712,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_463_anonymous_struct_pointer_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_464_void_pointer_default_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_467_array_size_negative_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_468_bitfield_default_repro);
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	fy_check_testcase_add_test(ctc, fuzz_issue_462_pointer_type_alloc_repro);
 #endif
