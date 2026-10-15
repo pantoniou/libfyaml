@@ -548,6 +548,7 @@ struct reflection_type_data {
 
 	struct reflection_type_data *rtd_dep;			/* the dependent type */
 	bool rtd_dep_recursive;
+	bool generating_value;					/* a value of the type is being generated */
 	int fields_count;
 	struct reflection_field_data **fields;
 

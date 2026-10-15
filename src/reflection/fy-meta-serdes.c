@@ -4978,6 +4978,13 @@ reflection_type_data_generate_value(struct reflection_type_data *rtd, struct fy_
 
 	RTS_ASSERT(fyn);
 
+	/* generating a value of a type must not need a value of the same type */
+	if (rtd->generating_value) {
+		rts_error(rts, "recursive value generation for '%s'\n", rtd->ti->name);
+		return NULL;
+	}
+	rtd->generating_value = true;
+
 	fyp_i = fy_parser_create(&cfg_i);
 	RTS_ASSERT(fyp_i);
 
@@ -4991,6 +4998,7 @@ reflection_type_data_generate_value(struct reflection_type_data *rtd, struct fy_
 	RTS_ASSERT(!rc);
 
 out:
+	rtd->generating_value = false;
 	fy_document_iterator_destroy(fydi);
 	fy_parser_destroy(fyp_i);
 	return value;
