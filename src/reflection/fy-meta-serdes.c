@@ -5484,6 +5484,10 @@ reflection_field_data_specialize(struct reflection_field_data *rfd)
 		RTS_ERROR_CHECK(fy_type_kind_is_integer(rfd_ref->fi->type_info->kind),
 				"dyn_array counter field (%s) must be integer\n", counter);
 
+		/* the counter is accessed with the widest integer type */
+		RTS_ERROR_CHECK(rfd_ref->fi->type_info->size <= sizeof(uintmax_t),
+				"dyn_array counter field (%s) is too wide\n", counter);
+
 		RTS_ERROR_CHECK(!rfd_ref->is_counter,
 				"dyn_array counter field (%s) must be a single counter\n", counter);
 
