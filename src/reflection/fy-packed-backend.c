@@ -41,6 +41,16 @@ static void packed_reflection_cleanup(struct fy_reflection *rfl);
 static int packed_import_setup(struct fy_import *imp, const void *user);
 static void packed_import_cleanup(struct fy_import *imp);
 
+/* a bitfield is an integer, a boolean or an enumeration */
+static bool packed_bitfield_type_is_valid(struct fy_type *ft)
+{
+	while (ft && ft->type_kind == FYTK_TYPEDEF)
+		ft = ft->dependent_type;
+
+	return ft && (fy_type_kind_is_integer(ft->type_kind) ||
+		      ft->type_kind == FYTK_BOOL || ft->type_kind == FYTK_ENUM);
+}
+
 static int packed_decl_setup(struct fy_decl *decl, void *user);
 static void packed_decl_cleanup(struct fy_decl *decl);
 
@@ -437,6 +447,40 @@ static int packed_do_import(struct fy_import *imp)
 		/* fixup type; a corrupt blob makes it fail */
 		ret = fy_type_fixup(ft);
 		RFL_ASSERT(!ret);
+	}
+
+	/* the fixup keeps the stored layout, make sure every field is inside its struct */
+	for (typep = ti->types, i = 0; i < ti->types_count; i++, typep++) {
+
+		ft = packed_lookup_type_by_typep(rfl, typep);
+		RFL_ASSERT(ft);
+
+		if (ft->type_kind != FYTK_STRUCT && ft->type_kind != FYTK_UNION)
+			continue;
+
+		decl = fy_type_decl(ft);
+		if (!decl)
+			continue;
+
+		for (declc = fy_decl_list_head(&decl->children); declc != NULL; declc = fy_decl_next(&decl->children, declc)) {
+
+			RFL_ASSERT(declc->type);
+
+			if (declc->decl_type == FYDT_BITFIELD) {
+				RFL_ASSERT(packed_bitfield_type_is_valid(declc->type));
+				/* only an unnamed bitfield can have zero width */
+				RFL_ASSERT(declc->bitfield_decl.bit_width ||
+					   !declc->name || !declc->name[0]);
+				RFL_ASSERT(declc->bitfield_decl.bit_width <= declc->type->size * 8);
+				RFL_ASSERT(declc->bitfield_decl.bit_width <= ft->size * 8 &&
+					   declc->bitfield_decl.bit_offset <=
+						ft->size * 8 - declc->bitfield_decl.bit_width);
+			} else {
+				RFL_ASSERT(declc->type->size <= ft->size &&
+					   declc->field_decl.byte_offset <=
+						ft->size - declc->type->size);
+			}
+		}
 	}
 
 	return 0;
