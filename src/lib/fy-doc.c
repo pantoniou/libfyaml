@@ -2526,10 +2526,10 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 						"fy_node_pair_alloc() failed");
 
 				fynpj->key = fy_node_copy(fyd, fynpi->key);
-				fyd_error_check(fyd, !fynpi->key || fynpj->key, err_out,
+				fyd_error_check(fyd, !fynpi->key || fynpj->key, err_out_free_pair,
 						"fy_node_copy() failed");
 				fynpj->value = fy_node_copy(fyd, fynpi->value);
-				fyd_error_check(fyd, !fynpi->value || fynpj->value, err_out,
+				fyd_error_check(fyd, !fynpi->value || fynpj->value, err_out_free_pair,
 						"fy_node_copy() failed");
 
 				fy_node_pair_list_add_tail(&fyn_to->mapping, fynpj);
@@ -2603,6 +2603,8 @@ int fy_node_insert(struct fy_node *fyn_to, struct fy_node *fyn_from)
 
 	return 0;
 
+err_out_free_pair:
+	fy_node_pair_free(fynpj);
 err_out:
 	rc = -1;
 err_out_rc:
