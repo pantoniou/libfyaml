@@ -7046,6 +7046,33 @@ static void issue_447_scenario(unsigned int nth)
 	fy_parser_destroy(fyp);
 }
 
+static void issue_465_scenario(unsigned int nth)
+{
+	static const char yaml[] = "a: b\nc: d\n";
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parser *fyp;
+	struct fy_parser_checkpoint *fypchk;
+	struct fy_event *fye;
+
+	fyp = fy_parser_create(&cfg);
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, sizeof(yaml) - 1), 0);
+
+	/* the checkpoint clones the event that is peeked at */
+	fye = fy_parser_parse(fyp);
+	ck_assert_ptr_ne(fye, NULL);
+	fy_parser_event_free(fyp, fye);
+	ck_assert_ptr_ne(fy_parser_parse_peek(fyp), NULL);
+
+	fy_alloc_fail_arm(nth);
+	fypchk = fy_parser_checkpoint_create(fyp);
+	fy_alloc_fail_disarm();
+
+	/* a failed checkpoint must not release what the parser owns */
+	fy_parser_checkpoint_destroy(fypchk);
+	fy_parser_destroy(fyp);
+}
+
 /* Test: gh#441 - the text of a path component when a key fails to emit. */
 START_TEST(fuzz_issue_441_path_component_text_alloc_repro)
 {
@@ -7064,6 +7091,13 @@ END_TEST
 START_TEST(fuzz_issue_447_rollback_alloc_repro)
 {
 	alloc_fail_sweep(issue_447_scenario, 1024);
+}
+END_TEST
+
+/* Test: gh#465 - a checkpoint that fails to allocate keeps the reader input. */
+START_TEST(fuzz_issue_465_checkpoint_alloc_repro)
+{
+	alloc_fail_sweep(issue_465_scenario, 1024);
 }
 END_TEST
 
@@ -7461,6 +7495,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_441_path_component_text_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_444_set_tag_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_447_rollback_alloc_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_465_checkpoint_alloc_repro);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_439_collect_diag_double_unref_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_440_collect_diag_array_alloc_repro);
