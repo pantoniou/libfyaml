@@ -1563,6 +1563,8 @@ array_mapping_info_parse_item_prolog(struct array_mapping_info *minfo, struct re
 			rw_dep->data = last_data;
 			if (!(flags & RPF_NO_STORE))
 				*(void **)rw_dep->data = ptr;
+			/* remember it, the data does not hold it when nothing is stored */
+			rw_dep->user = ptr;
 			last_data = ptr;
 			break;
 		case FYTK_TYPEDEF:
@@ -1584,8 +1586,8 @@ err_out:
 		rw_dep = i == 0 ? rw : &rw_deps[i - 1];
 		switch (rw_dep->rtd->ti->kind) {
 		case FYTK_PTR:
-			ptr = *(void **)rw_dep->data;
-			reflection_type_data_free(rw_dep->rtd->rtd_dep, ptr);
+			reflection_type_data_free(rw_dep->rtd->rtd_dep, rw_dep->user);
+			rw_dep->user = NULL;
 			break;
 		default:
 			break;
@@ -1599,7 +1601,6 @@ array_mapping_info_parse_item_epilog(struct array_mapping_info *minfo, struct re
 				     enum reflection_parse_flags flags, bool force_release)
 {
 	struct reflection_walker *rw_deps, *rw_dep;
-	void *ptr;
 	int i, depth;
 
 	depth = minfo->depth;
@@ -1613,8 +1614,7 @@ array_mapping_info_parse_item_epilog(struct array_mapping_info *minfo, struct re
 
 			switch (rw_dep->rtd->ti->kind) {
 			case FYTK_PTR:
-				ptr = *(void **)rw_dep->data;
-				reflection_type_data_free(rw_dep->rtd->rtd_dep, ptr);
+				reflection_type_data_free(rw_dep->rtd->rtd_dep, rw_dep->user);
 				break;
 			default:
 				break;
@@ -1626,6 +1626,9 @@ array_mapping_info_parse_item_epilog(struct array_mapping_info *minfo, struct re
 	for (i = 0; i < depth + 1; i++) {
 		rw_dep = i == 0 ? rw : &rw_deps[i - 1];
 		rw_dep->data = NULL;
+		/* the user of the last dependent is the struct instance data */
+		if (rw_dep->rtd->ti->kind == FYTK_PTR)
+			rw_dep->user = NULL;
 	}
 
 	return 0;
