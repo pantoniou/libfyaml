@@ -3535,6 +3535,8 @@ enum_parse_single_scalar(struct fy_parser *fyp, struct reflection_walker *rw,
 		valp->uval = rfd->fi->uval;
 
 	rc = store_integer_scalar_check_rw(rw, *valp, &mini, &maxi);
+	RP_INPUT_CHECK(rc != -EINVAL, "%s has an unsupported integer size",
+			rtd_enum->ti->name);
 	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_signed(rw->rtd)),
 			"%s value %s (%jd) cannot fit (min=%jd, max=%jd)",
 			rtd_enum->ti->name, rfd->field_name, valp->sval, mini.sval, maxi.sval);
@@ -3610,6 +3612,8 @@ enum_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	}
 
 	rc = store_integer_scalar_check_rw(rw, val, &mini, &maxi);
+	RP_INPUT_CHECK(rc != -EINVAL, "%s has an unsupported integer size",
+			rw->rtd->ti->name);
 	RP_INPUT_CHECK(!(rc == -ERANGE && rtd_is_signed(rw->rtd)),
 			"%s (%jd) cannot fit (min=%jd, max=%jd)",
 			rw->rtd->ti->name, val.sval, mini.sval, maxi.sval);

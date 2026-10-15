@@ -764,6 +764,10 @@ store_integer_scalar_check_rw(struct reflection_walker *rw,
 	else
 		bit_width = rw->data_size.bit_width;
 
+	/* the limits are computed with the widest integer type */
+	if (!bit_width || bit_width > sizeof(uintmax_t) * 8)
+		return -EINVAL;
+
 	rc = 0;
 	if (rtd_is_signed(rw->rtd)) {
 
