@@ -40,6 +40,10 @@ void *reflection_malloc(struct reflection_type_system *rts, size_t size)
 	if (!rts)
 		return NULL;
 
+	/* a zero size may return NULL, and a realloc to zero frees the pointer */
+	if (!size)
+		size = 1;
+
 	if (!rts->cfg.ops || !rts->cfg.ops->malloc)
 		p = malloc(size);
 	else
@@ -54,6 +58,10 @@ void *reflection_realloc(struct reflection_type_system *rts, void *ptr, size_t s
 
 	if (!rts)
 		return NULL;
+
+	/* a zero size may return NULL, and a realloc to zero frees the pointer */
+	if (!size)
+		size = 1;
 
 	if (!rts->cfg.ops || !rts->cfg.ops->realloc)
 		p = realloc(ptr, size);
