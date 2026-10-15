@@ -5490,6 +5490,54 @@ START_TEST(fuzz_issue_448_insert_replaced_value_repro)
 }
 END_TEST
 
+/* Test: gh#455 - a merge into a resolved clone keeps the document. */
+START_TEST(fuzz_issue_455_insert_resolved_clone_repro)
+{
+	static const char yaml[] =
+		"b}ed:\n"
+		"  <<: *b\n"
+		"\n\n"
+		"n: 2\n"
+		"alise: &b\n"
+		"  name: anchor\n"
+		"  n: 1\n"
+		"derived:\n"
+		"  <<: *b\n"
+		"  n: 2\n"
+		"alias: *b\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_PREFER_RECURSIVE |
+			 FYPCF_ALLOW_DUPLICATE_KEYS | FYPCF_KEEP_STYLE |
+			 FYPCF_KEEP_ANCHORS | FYPCF_DEFAULT_VERSION_1_2,
+	};
+	struct fy_document *fyd, *fyd_src, *fyd_dst;
+	struct fy_node *target, *from;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fyd_src = fy_document_clone(fyd);
+	fyd_dst = fy_document_clone(fyd);
+	ck_assert_ptr_ne(fyd_src, NULL);
+	ck_assert_ptr_ne(fyd_dst, NULL);
+	/* the resolve reports an error, the tree remains */
+	(void)fy_document_resolve(fyd_dst);
+
+	/* the value of the first pair holds the keys of a merge key */
+	target = fy_node_pair_value(fy_node_mapping_get_by_index(fy_document_root(fyd_dst), 0));
+	from = fy_node_copy(fyd_dst, fy_document_root(fyd_src));
+	ck_assert_ptr_ne(target, NULL);
+	ck_assert_ptr_ne(from, NULL);
+
+	fy_node_insert(target, from);
+	ck_assert(fy_node_is_mapping(fy_document_root(fyd_dst)));
+
+	fy_node_free(from);
+	fy_document_destroy(fyd_src);
+	fy_document_destroy(fyd_dst);
+	fy_document_destroy(fyd);
+}
+END_TEST
+
 /* Test: gh#449 - a checkpoint copies the collection state stack in bytes. */
 START_TEST(fuzz_issue_449_checkpoint_cts_stack_repro)
 {
@@ -6159,6 +6207,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_449_checkpoint_cts_stack_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_450_rollback_mapped_input_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_453_rollback_implicit_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_455_insert_resolved_clone_repro);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_redefined_anchor_repro);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_430_collection_end_comment_repro);
