@@ -3965,7 +3965,7 @@ fy_type_lookup_or_create(struct fy_reflection *rfl, const char *name, size_t nam
 		ft_base = fy_base_type_lookup_by_kind(rfl, type_kind, type_name, type_name_len, 0);
 		if (ft_base) {
 			ft = fy_type_create_with_qualifiers(ft_base, quals, NULL);
-			assert(ft);
+			RFL_ASSERT(ft);
 			fy_type_list_add_tail(&rfl->types, ft);
 			ft_base = ft;
 			ft = NULL;
@@ -3996,7 +3996,7 @@ fy_type_lookup_or_create(struct fy_reflection *rfl, const char *name, size_t nam
 			ft = fy_type_lookup_pointer(ft_base, quals);
 			if (!ft)
 				ft = fy_type_create_pointer(ft_base, quals);
-			assert(ft);
+			RFL_ASSERT(ft);
 
 			rfl_debug(rfl, "%s: > created pointer %s\n", __func__, ft->fullname);
 
