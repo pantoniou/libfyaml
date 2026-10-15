@@ -5839,6 +5839,34 @@ reflection_setup_type_in_progress_by_value(struct reflection_type_data_stack *rt
 	return false;
 }
 
+/* the fields of a struct are in order and do not overlap */
+static bool
+reflection_setup_struct_fields_are_ordered(const struct reflection_type_data *rtd)
+{
+	const struct reflection_field_data *rfd;
+	size_t start_bit, end_bit, prev_end_bit;
+	int i;
+
+	if (rtd->ti->kind != FYTK_STRUCT)
+		return true;
+
+	prev_end_bit = 0;
+	for (i = 0; i < rtd->fields_count; i++) {
+		rfd = rtd->fields[i];
+		if (rfd_is_bitfield(rfd)) {
+			start_bit = rfd->fi->bit_offset;
+			end_bit = start_bit + rfd->fi->bit_width;
+		} else {
+			start_bit = rfd->fi->offset * 8;
+			end_bit = start_bit + rfd->fi->type_info->size * 8;
+		}
+		if (start_bit < prev_end_bit)
+			return false;
+		prev_end_bit = end_bit;
+	}
+	return true;
+}
+
 int
 reflection_setup_type(struct reflection_type_system *rts,
 		      const struct fy_type_info *ti,
@@ -5926,6 +5954,10 @@ reflection_setup_type(struct reflection_type_system *rts,
 			RTS_ASSERT(!rc);
 		}
 	}
+
+	/* fields that overlap would be read and written as one */
+	RTS_ERROR_CHECK(reflection_setup_struct_fields_are_ordered(rtd),
+			"fields of '%s' are not in order or overlap\n", ti->name);
 
 	for (i = 0; i < rtd->fields_count; i++) {
 
