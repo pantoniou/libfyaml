@@ -546,6 +546,19 @@ START_TEST(parse_bug_flow_verbatim_tag_keeps_indicators)
 }
 END_TEST
 
+/* a long number in a %YAML directive must not overflow (gh#466) */
+START_TEST(parse_bug_yaml_version_long_number)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_document *fyd;
+
+	/* the version is rejected, the digits must not overflow an int */
+	fyd = fy_document_build_from_string(&cfg,
+			"%YAML 11111111111.22222222222\n---\na\n", FY_NT);
+	ck_assert_ptr_eq(fyd, NULL);
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
@@ -579,6 +592,9 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_with_content);
+
+	/* Issue #466: a long number in a %YAML directive */
+	fy_check_testcase_add_test(ctc, parse_bug_yaml_version_long_number);
 
 	/* Issue #454: a shorthand tag in a flow collection */
 	fy_check_testcase_add_test(ctc, parse_bug_flow_tag_before_flow_end);
