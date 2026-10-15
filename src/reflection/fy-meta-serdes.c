@@ -3238,6 +3238,9 @@ struct_get_union_selection_index(struct reflection_walker *rw)
 		rfd = rtd->fields[i];
 		rtdf = rfd_rtd(rfd);
 		value = reflection_meta_generate_any_value(rtdf->meta, rmvid_select, rfd_rtd(rfd_selector));
+		/* a select value that cannot be generated never matches */
+		if (!value)
+			continue;
 		if (reflection_eq_rw(&rw_field, reflection_rw_value(&rw_tmp, rfd_selector->rtd, value)) > 0)
 			return i;
 	}
@@ -3376,7 +3379,9 @@ struct_dtor(struct reflection_walker *rw)
 		field_end_idx = rtd->fields_count;
 	} else {
 		field_start_idx = struct_get_union_selection_index(rw);
-		assert(field_start_idx >= 0);
+		/* no selected field, nothing to destroy */
+		if (field_start_idx < 0)
+			return;
 
 		field_end_idx = field_start_idx + 1;
 	}
