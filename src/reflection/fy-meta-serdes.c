@@ -1276,7 +1276,7 @@ struct struct_instance_data *
 struct_get_parent_struct_id(struct reflection_walker *rw)
 {
 	if (!rw || !rw->parent ||
-	    (rw->parent->rtd->ti->kind != FYTK_STRUCT && rw->parent->rtd->ti->kind == FYTK_UNION))
+	    (rw->parent->rtd->ti->kind != FYTK_STRUCT && rw->parent->rtd->ti->kind != FYTK_UNION))
 		return NULL;
 
 	return rw->parent->user;
@@ -3186,6 +3186,8 @@ struct_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 out:
 	fy_parser_event_free(fyp, fye);
 	struct_instance_data_cleanup(id);
+	/* the instance data is on the stack, do not leave it behind */
+	rw->user = NULL;
 	return rc;
 
 err_out:
