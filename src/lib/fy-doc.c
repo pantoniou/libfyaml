@@ -2906,15 +2906,33 @@ static int fy_resolve_merge_key_populate(struct fy_document *fyd, struct fy_node
 				"fy_node_pair_alloc() failed");
 
 		fynpn->key = fy_node_copy(fyd, fynpi->key);
+		fyd_error_check(fyd, !fynpi->key || fynpn->key, err_out_free,
+				"fy_node_copy() failed");
 		fynpn->value = fy_node_copy(fyd, fynpi->value);
+		fyd_error_check(fyd, !fynpi->value || fynpn->value, err_out_free,
+				"fy_node_copy() failed");
 
 		fy_node_pair_list_insert_after(&fyn->mapping, fynp, fynpn);
 		if (fyn->xl)
 			fy_accel_insert(fyn->xl, fynpn->key, fynpn);
+
+		/* a later merge into the copy needs its parent */
+		fynpn->parent = fyn;
+		if (fynpn->key) {
+			fynpn->key->attached = true;
+			fynpn->key->parent = fyn;
+			fynpn->key->key_root = true;
+		}
+		if (fynpn->value) {
+			fynpn->value->attached = true;
+			fynpn->value->parent = fyn;
+		}
 	}
 
 	return 0;
 
+err_out_free:
+	fy_node_pair_free(fynpn);
 err_out:
 	return -1;
 }
