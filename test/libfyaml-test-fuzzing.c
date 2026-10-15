@@ -980,6 +980,38 @@ static void issue_363_scenario(unsigned int nth)
 	fy_parser_destroy(fyp);
 }
 
+static void issue_456_scenario(unsigned int nth)
+{
+	static const char yaml[] = "a: &b {x: 1}\nm:\n  <<: *b\n  k: 2\n";
+	struct fy_parse_cfg cfg = {
+		.flags = FYPCF_QUIET | FYPCF_ALLOW_DUPLICATE_KEYS |
+			 FYPCF_DISABLE_RECYCLING,
+	};
+	struct fy_document *fyd, *fyd_src, *fyd_dst;
+	struct fy_node *target, *from;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, sizeof(yaml) - 1);
+	ck_assert_ptr_ne(fyd, NULL);
+	fyd_src = fy_document_clone(fyd);
+	fyd_dst = fy_document_clone(fyd);
+	ck_assert_ptr_ne(fyd_src, NULL);
+	ck_assert_ptr_ne(fyd_dst, NULL);
+	ck_assert_int_eq(fy_document_resolve(fyd_dst), 0);
+
+	target = fy_document_root(fyd_dst);
+	from = fy_node_copy(fyd_dst, fy_document_root(fyd_src));
+	ck_assert_ptr_ne(from, NULL);
+
+	fy_alloc_fail_arm(nth);
+	fy_node_insert(target, from);
+	fy_alloc_fail_disarm();
+
+	fy_node_free(from);
+	fy_document_destroy(fyd_src);
+	fy_document_destroy(fyd_dst);
+	fy_document_destroy(fyd);
+}
+
 static void issue_364_scenario(unsigned int nth)
 {
 	struct fy_parser *fyp;
@@ -5538,6 +5570,15 @@ START_TEST(fuzz_issue_455_insert_resolved_clone_repro)
 }
 END_TEST
 
+/* Test: gh#456 - a failed key copy of a merge frees the new pair. */
+START_TEST(fuzz_issue_456_insert_key_copy_leak_repro)
+{
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	alloc_fail_sweep(issue_456_scenario, 512);
+#endif
+}
+END_TEST
+
 /* Test: gh#449 - a checkpoint copies the collection state stack in bytes. */
 START_TEST(fuzz_issue_449_checkpoint_cts_stack_repro)
 {
@@ -6208,6 +6249,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_450_rollback_mapped_input_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_453_rollback_implicit_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_455_insert_resolved_clone_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_456_insert_key_copy_leak_repro);
 	fy_check_testcase_add_test(ctc, fuzz_resolve_redefined_anchor_repro);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_430_collection_end_comment_repro);
