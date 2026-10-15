@@ -503,6 +503,49 @@ START_TEST(parse_bug_ypath_alias_path_key_at_eof)
 END_TEST
 #endif
 
+/* a shorthand tag in a flow collection ends at a flow indicator (gh#454) */
+static void check_flow_tag(const char *yaml, const char *path, const char *tag)
+{
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_document *fyd;
+	struct fy_node *fyn;
+	const char *text;
+	size_t len;
+
+	fyd = fy_document_build_from_string(&cfg, yaml, FY_NT);
+	ck_assert_ptr_ne(fyd, NULL);
+
+	fyn = fy_node_by_path(fy_document_root(fyd), path, FY_NT, FYNWF_DONT_FOLLOW);
+	ck_assert_ptr_ne(fyn, NULL);
+
+	text = fy_node_get_tag(fyn, &len);
+	ck_assert_ptr_ne(text, NULL);
+	ck_assert_uint_eq(len, strlen(tag));
+	ck_assert_int_eq(memcmp(text, tag, len), 0);
+
+	fy_document_destroy(fyd);
+}
+
+START_TEST(parse_bug_flow_tag_before_flow_end)
+{
+	/* the tag is !b, the ']' and '}' close the collections */
+	check_flow_tag("{a: [!b]}", "/a/0", "!b");
+}
+END_TEST
+
+START_TEST(parse_bug_flow_tag_before_comma)
+{
+	check_flow_tag("[!b,c]", "/0", "!b");
+}
+END_TEST
+
+START_TEST(parse_bug_flow_verbatim_tag_keeps_indicators)
+{
+	/* a verbatim tag may hold flow indicators */
+	check_flow_tag("[!<tag:x,y]>]", "/0", "tag:x,y]");
+}
+END_TEST
+
 /* ── registration ────────────────────────────────────────────────── */
 
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
@@ -536,6 +579,11 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_with_content);
+
+	/* Issue #454: a shorthand tag in a flow collection */
+	fy_check_testcase_add_test(ctc, parse_bug_flow_tag_before_flow_end);
+	fy_check_testcase_add_test(ctc, parse_bug_flow_tag_before_comma);
+	fy_check_testcase_add_test(ctc, parse_bug_flow_verbatim_tag_keeps_indicators);
 
 #if defined(__linux__)
 	/* Issue #309: path key duplication must not read past direct token text */
