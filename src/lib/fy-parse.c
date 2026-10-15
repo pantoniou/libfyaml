@@ -2147,7 +2147,7 @@ err_out_rc:
 	return rc;
 }
 
-int fy_scan_tag_uri_length(struct fy_parser *fyp, int start)
+int fy_scan_tag_uri_length(struct fy_parser *fyp, int start, bool flow_shorthand)
 {
 	int c, cn, length;
 	ssize_t offset, offset1;
@@ -2159,6 +2159,10 @@ int fy_scan_tag_uri_length(struct fy_parser *fyp, int start)
 
 		offset1 = offset;
 		cn = fy_parse_peek_at_internal(fyp, start + length + 1, &offset1);
+
+		/* a shorthand tag in a flow collection ends at a flow indicator */
+		if (flow_shorthand && fy_is_flow_indicator(c))
+			break;
 
 		/* special handling for detecting URIs ending in ,}] */
 		if (fyp_is_blankz(fyp, cn) && fy_utf8_strchr(",}]", c))
@@ -2492,7 +2496,7 @@ int fy_scan_directive(struct fy_parser *fyp)
 		while (fy_is_ws(c = fy_parse_peek(fyp)))
 			fy_advance(fyp, c);
 
-		uri_length = fy_scan_tag_uri_length(fyp, 0);
+		uri_length = fy_scan_tag_uri_length(fyp, 0, false);
 		fyp_error_check(fyp, uri_length > 0, err_out,
 				"fy_scan_tag_uri_length() failed");
 
@@ -3545,7 +3549,8 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 				"fy_scan_tag_handle_length() failed");
 	}
 
-	uri_length = fy_scan_tag_uri_length(fyp, prefix_length + handle_length);
+	uri_length = fy_scan_tag_uri_length(fyp, prefix_length + handle_length,
+					    !prefix_length && fyp->flow_level > 0);
 	fyp_error_check(fyp, uri_length >= 0, err_out,
 			"fy_scan_tag_uri_length() failed");
 
