@@ -5613,6 +5613,9 @@ reflection_type_data_specialize(struct reflection_type_data *rtd,
 
 	switch (rtd->ti->kind) {
 	case FYTK_ENUM:
+		/* the enum is stored and loaded as its underlying integer type */
+		RTS_ERROR_CHECK(fy_type_kind_is_integer(resolved_type_kind),
+				"enum '%s' must have an integer underlying type\n", rtd->ti->name);
 		break;
 
 	case FYTK_PTR:
