@@ -3221,14 +3221,14 @@ struct_get_union_selection_index(struct reflection_walker *rw)
 	if (!rtd_parent)
 		return -1;
 
-	assert(rtd_parent);
-	assert(rtd->rtd_selector);
+	/* the selector is a field of the parent, a union behind a pointer has none */
+	if (!rtd->rtd_selector ||
+	    rtd->selector_field_idx < 0 ||
+	    rtd->selector_field_idx >= rtd_parent->fields_count)
+		return -1;
 
-	assert(rtd->selector_field_idx < rtd_parent->fields_count);
 	rfd_selector = rtd_parent->fields[rtd->selector_field_idx];
 	assert(rfd_selector);
-
-	assert(rtd->union_field_idx < rtd_parent->fields_count);
 
 	/* point to the selector */
 	memset(&rw_field, 0, sizeof(rw_field));
