@@ -3184,6 +3184,8 @@ struct_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	rc = 0;
 
 out:
+	/* an auto-select that failed leaves its checkpoint */
+	fy_parser_checkpoint_destroy(fypchk);
 	fy_parser_event_free(fyp, fye);
 	struct_instance_data_cleanup(id);
 	/* the instance data is on the stack, do not leave it behind */
