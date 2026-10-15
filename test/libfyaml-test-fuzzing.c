@@ -1012,6 +1012,28 @@ static void issue_456_scenario(unsigned int nth)
 	fy_document_destroy(fyd);
 }
 
+#ifdef HAVE_REFLECTION
+static void issue_462_scenario(unsigned int nth)
+{
+	/* "char " followed by 43 '*' */
+	static const char entry[] = "char *******************************************";
+	struct fy_reflection *rfl;
+	struct fy_type_context *ctx;
+
+	rfl = fy_reflection_from_null(NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	fy_alloc_fail_arm(nth);
+	ctx = fy_type_context_create(&(struct fy_type_context_cfg){
+		.rfl = rfl,
+		.entry_type = entry });
+	fy_alloc_fail_disarm();
+
+	fy_type_context_destroy(ctx);
+	fy_reflection_destroy(rfl);
+}
+#endif
+
 static void issue_364_scenario(unsigned int nth)
 {
 	struct fy_parser *fyp;
@@ -2190,6 +2212,15 @@ START_TEST(fuzz_issue_364_parser_setup_diag_repro)
 #endif
 }
 END_TEST
+
+#if defined(HAVE_REFLECTION) && defined(HAVE_LINKER_WRAP_MALLOC)
+/* Test: gh#462 - a pointer type that cannot be allocated. */
+START_TEST(fuzz_issue_462_pointer_type_alloc_repro)
+{
+	alloc_fail_sweep(issue_462_scenario, 4096);
+}
+END_TEST
+#endif
 
 /* Test: gh#365 - a failed token allocation while scanning. */
 START_TEST(fuzz_issue_365_scan_token_leak_repro)
@@ -6467,6 +6498,9 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_459_array_not_mapping_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_460_enum_too_wide_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_461_field_outside_struct_repro);
+#ifdef HAVE_LINKER_WRAP_MALLOC
+	fy_check_testcase_add_test(ctc, fuzz_issue_462_pointer_type_alloc_repro);
+#endif
 #endif
 	fy_check_testcase_add_test(ctc, fuzz_resolve_redefined_anchor_repro);
 #ifdef HAVE_GENERIC
