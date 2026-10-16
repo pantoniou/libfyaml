@@ -5629,6 +5629,9 @@ reflection_type_data_specialize(struct reflection_type_data *rtd,
 	bool flat_anonymous;
 	struct fy_document *fyd;
 	struct reflection_any_value *rav_select;
+	struct reflection_walker rw_a, rw_b;
+	void *value_a, *value_b;
+	int j;
 	struct reflection_meta *rm;
 	int i, rc;
 
@@ -5810,6 +5813,26 @@ reflection_type_data_specialize(struct reflection_type_data *rtd,
 
 					rc = reflection_meta_set_any_value(rm, rmvid_select, rav_select, false);
 					RTS_ASSERT(!rc);
+				}
+			}
+
+			/* the selector must tell the members apart, or the wrong one is freed */
+			for (i = 0; i < rtd->fields_count; i++) {
+				value_a = reflection_meta_generate_any_value(rfd_rtd(rtd->fields[i])->meta,
+						rmvid_select, rtd->rtd_selector);
+				if (!value_a)
+					continue;
+				for (j = i + 1; j < rtd->fields_count; j++) {
+					value_b = reflection_meta_generate_any_value(rfd_rtd(rtd->fields[j])->meta,
+							rmvid_select, rtd->rtd_selector);
+					if (!value_b)
+						continue;
+					RTS_ERROR_CHECK(reflection_eq_rw(
+							reflection_rw_value(&rw_a, rtd->rtd_selector, value_a),
+							reflection_rw_value(&rw_b, rtd->rtd_selector, value_b)) <= 0,
+							"union '%s' members '%s' and '%s' have the same select value\n",
+							rtd->ti->name, rtd->fields[i]->field_name,
+							rtd->fields[j]->field_name);
 				}
 			}
 		}
