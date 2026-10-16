@@ -3961,7 +3961,8 @@ ptr_copy(struct reflection_walker *rw_dst, struct reflection_walker *rw_src)
 	if (!src)
 		return 0;
 
-	dst = reflection_type_data_alloc(rtd);
+	/* the copy is of the pointed type, not of the pointer */
+	dst = reflection_type_data_alloc(rtd_dep);
 	RW_ASSERT(dst);
 
 	memset(&rw_dep_dst, 0, sizeof(rw_dep_dst));
