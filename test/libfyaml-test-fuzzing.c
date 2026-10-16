@@ -7238,6 +7238,37 @@ START_TEST(fuzz_issue_439_collect_diag_double_unref_repro)
 }
 END_TEST
 
+/* Test: gh#482 - the lines of a diagnostic atom stay inside the input. */
+START_TEST(fuzz_issue_482_diag_lines_past_input_repro)
+{
+	static const char data[] = "\n[\"\\uD834\\uD\r\xe2\x80\xa9-\n";
+	/* an allocator that frees each object, so that the input has no slack */
+	struct fy_auto_allocator_cfg acfg = { .scenario = FYAST_PER_OBJ_FREE };
+	struct fy_allocator *alloc;
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	struct fy_generic_op_args a;
+	fy_generic in;
+
+	alloc = fy_allocator_create("auto", &acfg);
+	ck_assert_ptr_ne(alloc, NULL);
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.allocator = alloc;
+	gb = fy_generic_builder_create(&cfg);
+	ck_assert_ptr_ne(gb, NULL);
+
+	in = fy_gb_string_size_create(gb, data, sizeof(data) - 1);
+
+	/* the error has a line with a multibyte line break */
+	memset(&a, 0, sizeof(a));
+	a.parse.flags = FYOPPF_INPUT_TYPE_STRING | FYOPPF_COLLECT_DIAG;
+	(void)fy_generic_op_args(gb, FYGBOPF_PARSE, in, &a);
+
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(alloc);
+}
+END_TEST
+
 /* Test: gh#440 - the collected diagnostics fail to be stored. */
 START_TEST(fuzz_issue_440_collect_diag_array_alloc_repro)
 {
@@ -7498,6 +7529,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_465_checkpoint_alloc_repro);
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_439_collect_diag_double_unref_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_482_diag_lines_past_input_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_440_collect_diag_array_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_442_emit_events_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_445_iterator_alloc_repro);
