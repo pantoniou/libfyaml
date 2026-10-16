@@ -29,10 +29,17 @@
 
 const char *fy_atom_data(const struct fy_atom *atom)
 {
+	const char *start;
+
 	if (!atom)
 		return NULL;
 
-	return (const char *)fy_input_start(atom->fyi) + atom->start_mark.input_pos;
+	/* an input with no data has no start, do not offset a null pointer */
+	start = fy_input_start(atom->fyi);
+	if (!start)
+		return NULL;
+
+	return start + atom->start_mark.input_pos;
 }
 
 
