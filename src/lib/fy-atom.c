@@ -2089,15 +2089,28 @@ const char *fy_atom_lines_containing(struct fy_atom *atom, size_t *lenp)
 		/* get the next too */
 		ln = fy_atom_raw_line_iter_next(&iter);
 
-		first_line = l->lineno <= 1;
+		/* the first line the iterator returns starts the span */
+		first_line = start == NULL;
 		last_line = ln == NULL;
 
 		if (first_line)
 			start = l->line_start;
 		if (last_line)
-			end = l->line_start + l->line_count;
+			end = l->line_start + l->line_len;
 	}
+
+	/* a line that runs past the input (invalid utf8) must not leave it */
+	if (end && end > iter.ie)
+		end = iter.ie;
+	if (start && start < iter.is)
+		start = NULL;
 	fy_atom_raw_line_iter_finish(&iter);
+
+	/* no lines, or lines that are not in order cannot be one span */
+	if (!start || !end || end < start) {
+		*lenp = 0;
+		return NULL;
+	}
 
 	*lenp = end - start;
 	return start;
