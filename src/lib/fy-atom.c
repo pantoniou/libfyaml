@@ -2060,11 +2060,12 @@ void fy_atom_raw_line_iter_start(const struct fy_atom *atom,
 
 	iter->atom = atom;
 
+	/* an input with no data has no start, do not offset a null pointer */
 	iter->as = fy_atom_data(atom);
-	iter->ae = iter->as + fy_atom_size(atom);
+	iter->ae = iter->as ? iter->as + fy_atom_size(atom) : NULL;
 
 	iter->is = fy_input_start(fyi);
-	iter->ie = iter->is + fy_input_size(fyi);
+	iter->ie = iter->is ? iter->is + fy_input_size(fyi) : NULL;
 
 	iter->rs = iter->as;
 }
