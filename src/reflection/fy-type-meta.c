@@ -266,6 +266,25 @@ err_out:
 }
 
 void
+reflection_meta_flush_values(struct reflection_meta *rm)
+{
+	struct reflection_any_value *rav;
+	unsigned int i;
+
+	if (!rm)
+		return;
+
+	for (i = 0; i < rmvid_any_count; i++) {
+		rav = rm->anys[i];
+		if (!rav || !rav->value || !rav->rtd)
+			continue;
+		reflection_type_data_free(rav->rtd, rav->value);
+		rav->value = NULL;
+		rav->rtd = NULL;
+	}
+}
+
+void
 reflection_meta_destroy(struct reflection_meta *rm)
 {
 	struct reflection_any_value *rav;

@@ -449,6 +449,8 @@ reflection_meta_generate_any_value(struct reflection_meta *rm, enum reflection_m
 
 struct reflection_meta *reflection_meta_create(struct reflection_type_system *rts);
 void reflection_meta_destroy(struct reflection_meta *rm);
+/* free the generated values, they are generated again when needed */
+void reflection_meta_flush_values(struct reflection_meta *rm);
 const char *reflection_meta_value_str(struct reflection_meta *rm, enum reflection_meta_value_id id);
 void reflection_meta_dump(struct reflection_meta *rm);
 int reflection_meta_fill(struct reflection_meta *rm, struct fy_node *fyn_root);

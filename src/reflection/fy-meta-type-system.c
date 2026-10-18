@@ -566,7 +566,9 @@ int
 reflection_type_data_simplify(struct reflection_type_data *rtd_root)
 {
 	struct reflection_type_data **rtds = NULL, **rtdsp1, **rtdsp2, *rtd1, *rtd2;
-	bool eq;
+	struct reflection_field_data *rfd;
+	bool eq, flushed = false;
+	int i;
 
 	if (!rtd_root)
 		return 0;
@@ -578,6 +580,18 @@ again:
 	rtds = reflection_type_data_collect(rtd_root, RTDS_DEPTH_ORDER);
 	if (!rtds)
 		return -1;
+
+	/* a generated value refers to its type, which a replacement may free */
+	if (!flushed) {
+		for (rtdsp1 = rtds; (rtd1 = *rtdsp1) != NULL; rtdsp1++) {
+			reflection_meta_flush_values(rtd1->meta);
+			for (i = 0; i < rtd1->fields_count; i++) {
+				rfd = rtd1->fields[i];
+				reflection_meta_flush_values(rfd->meta);
+			}
+		}
+		flushed = true;
+	}
 
 	rtdsp1 = rtds;
 	while ((rtd1 = *rtdsp1++) != NULL) {
