@@ -9485,14 +9485,17 @@ static inline fy_generic fy_gb_validate(struct fy_generic_builder *gb, fy_generi
 }
 
 /**
- * fy_generic_relocate() - Adjust all pointers in a generic after a buffer realloc.
+ * fy_generic_relocate() - Adjust all pointers in a generic after a buffer move.
  *
- * When a backing buffer is reallocated (e.g. by mremap), all embedded pointers
- * shift by @d bytes.  This function patches every pointer in @v that falls
- * within [@start, @end) by adding @d.
+ * When a backing buffer is reallocated (e.g. by mremap) or copied, all
+ * embedded pointers still refer to the source buffer. Add @d bytes to each
+ * pointer outside [@start, @end) to reference the destination buffer. Read
+ * the content from the destination buffer without accessing the source buffer.
+ * Pointers within the destination range are already relocated, so shared
+ * values are relocated only once.
  *
- * @start: Old buffer start
- * @end:   Old buffer end (exclusive)
+ * @start: New buffer start
+ * @end:   New buffer end (exclusive)
  * @v:     Generic value to patch
  * @d:     Delta to add to pointers (new_base - old_base)
  *

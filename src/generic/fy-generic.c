@@ -3188,9 +3188,11 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		items = (void *)fy_generic_collectionp_get_items(type, p, &count);
-
 		v.v = fy_generic_relocate_collection_ptr(v, d).v | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
+
+		/* read collection items from the destination buffer */
+		p = fy_generic_resolve_collection_ptr(v);
+		items = (void *)fy_generic_collectionp_get_items(type, p, &count);
 		for (i = 0; i < count; i++)
 			items[i] = fy_generic_relocate(start, end, items[i], d);
 		break;
