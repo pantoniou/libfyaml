@@ -7510,6 +7510,67 @@ START_TEST(generic_linearize_many_chunks)
 }
 END_TEST
 
+/* A relocated copy of an arena does not read the arena it was copied from. */
+static fy_generic generic_test_relocate_value(struct fy_generic_builder *gb)
+{
+	return fy_mapping(gb,
+		"name", "a string that is too long to be held in place",
+		"big", 1LL << 62,
+		"real", 1.0e300,
+		"empty-seq", fy_seq_empty,
+		"empty-map", fy_map_empty,
+		"list", fy_sequence(gb, "a longer string than fits in place",
+				    7, 2.5e200, true,
+				    fy_mapping(gb, "k", "another value that does not fit")),
+		"nested", fy_mapping(gb, "deep", fy_sequence(gb,
+				fy_mapping(gb, "x", 1, "y", "one more string, a long one"),
+				fy_sequence(gb, "z", "and the last long string of all"))));
+}
+
+START_TEST(generic_relocate_copy)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_generic_builder *gb, *ref;
+	struct fy_allocator *a;
+	void *src = NULL, *dst = NULL;
+	const size_t size = 64 * 1024;
+	fy_generic v, r, expect;
+
+	src = fy_align_alloc(4096, size);
+	ck_assert_ptr_ne(src, NULL);
+	dst = fy_align_alloc(4096, size);
+	ck_assert_ptr_ne(dst, NULL);
+	memset(src, 0, size);
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = src;
+	lcfg.size = size;
+	a = fy_allocator_create("linear", &lcfg);
+	ck_assert_ptr_ne(a, NULL);
+	gbcfg.allocator = a;
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_relocate_value(gb);
+	ck_assert(fy_generic_is_valid(v));
+
+	/* Copy the arena and overwrite the source buffer before relocation. */
+	memcpy(dst, src, size);
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(a);
+	memset(src, 0xa5, size);
+	r = fy_generic_relocate(dst, (char *)dst + size, v, (char *)dst - (char *)src);
+
+	ref = fy_generic_builder_create(&(struct fy_generic_builder_cfg){ .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER });
+	ck_assert_ptr_ne(ref, NULL);
+	expect = generic_test_relocate_value(ref);
+	ck_assert(fy_equal(expect, r));
+
+	fy_generic_builder_destroy(ref);
+	fy_align_free(dst);
+	fy_align_free(src);
+}
+END_TEST
+
 START_TEST(generic_signature)
 {
 	struct fy_generic_builder_cfg gbcfg = { 0 };
@@ -8084,6 +8145,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_linearize_single_chunk);
 	fy_check_testcase_add_test(ctc, generic_linearize_two_chunks);
 	fy_check_testcase_add_test(ctc, generic_linearize_many_chunks);
+	fy_check_testcase_add_test(ctc, generic_relocate_copy);
 
 	fy_check_testcase_add_test(ctc, generic_signature);
 	fy_check_testcase_add_test(ctc, generic_signature_deep_nesting);
