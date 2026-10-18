@@ -561,6 +561,15 @@ rtd_kind(const struct reflection_type_data *rtd)
 	return rtd && rtd->ti ? rtd->ti->kind : FYTK_INVALID;
 }
 
+/* the kind of the type, looking through the typedefs */
+static inline enum fy_type_kind
+rtd_resolved_kind(const struct reflection_type_data *rtd)
+{
+	while (rtd && rtd->ti && rtd->ti->kind == FYTK_TYPEDEF && rtd->rtd_dep)
+		rtd = rtd->rtd_dep;
+	return rtd_kind(rtd);
+}
+
 static inline int
 rtd_signess(const struct reflection_type_data *rtd)
 {
@@ -583,9 +592,9 @@ rtd_signess(const struct reflection_type_data *rtd)
 			}
 			return 1;	/* all values non-negative: unsigned */
 		}
-		return fy_type_kind_signess(rtd_kind(rtd->rtd_dep));
+		return fy_type_kind_signess(rtd_resolved_kind(rtd->rtd_dep));
 	}
-	return fy_type_kind_signess(kind);
+	return fy_type_kind_signess(rtd_resolved_kind(rtd));
 }
 
 static inline bool

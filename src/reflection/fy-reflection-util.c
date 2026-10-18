@@ -743,7 +743,7 @@ load_integer_scalar_rw(struct reflection_walker *rw)
 	assert(rw->rtd);
 
 	if (!(rw->flags & RWF_BITFIELD_DATA))
-		numi = load_integer_scalar(rtd_kind(rw->rtd), rw->data);
+		numi = load_integer_scalar(rtd_resolved_kind(rw->rtd), rw->data);
 	else
 		numi.uval = load_bitfield_le(rw->data, rw->data_size.bit_offset,
 				rw->data_size.bit_width, rtd_is_signed(rw->rtd));
@@ -806,7 +806,7 @@ store_integer_scalar_no_check_rw(struct reflection_walker *rw, union integer_sca
 	assert(rw->rtd);
 
 	if (!(rw->flags & RWF_BITFIELD_DATA))
-		store_integer_scalar(rtd_kind(rw->rtd), rw->data, num);
+		store_integer_scalar(rtd_resolved_kind(rw->rtd), rw->data, num);
 	else
 		store_bitfield_le(rw->data, rw->data_size.bit_offset,
 				rw->data_size.bit_width, num.uval);
