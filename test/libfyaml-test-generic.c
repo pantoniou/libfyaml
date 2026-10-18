@@ -11,6 +11,7 @@
 #endif
 
 #include <stdlib.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -30,6 +31,7 @@
 #include "fy-parse.h"
 
 #include "fy-check.h"
+#include "xxhash.h"
 
 /* make it less noisy, this is a test-suite after all */
 FY_DIAG_PUSH
@@ -7571,6 +7573,360 @@ START_TEST(generic_relocate_copy)
 }
 END_TEST
 
+/* Relocatable images */
+
+static void *generic_test_image_copy(const void *image, size_t size)
+{
+	void *copy = NULL;
+
+	copy = fy_align_alloc(FY_GENERIC_IMAGE_ALIGN, size);
+	ck_assert_ptr_ne(copy, NULL);
+	memcpy(copy, image, size);
+	return copy;
+}
+
+START_TEST(generic_image_roundtrip)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder *gb, *ref;
+	fy_generic v, root = fy_invalid, again = fy_invalid, expect;
+	void *image;
+	size_t size;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_relocate_value(gb);
+	image = fy_generic_image_create(v, &size);
+	ck_assert_ptr_ne(image, NULL);
+	ck_assert_uint_gt(size, 0);
+	/* the arena follows the compact header at container alignment */
+	{
+		const size_t offset = FY_ALIGN((size_t)FY_GENERIC_CONTAINER_ALIGN,
+				2 * sizeof(uint32_t) + sizeof(size_t) + sizeof(fy_generic_value));
+		size_t arena_size;
+
+		memcpy(&arena_size, (char *)image + 2 * sizeof(uint32_t), sizeof(arena_size));
+		ck_assert_uint_eq(size, offset + arena_size);
+	}
+	/* the image does not refer to the builder */
+	fy_generic_builder_destroy(gb);
+
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ref = fy_generic_builder_create(&(struct fy_generic_builder_cfg){ .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER });
+	ck_assert_ptr_ne(ref, NULL);
+	expect = generic_test_relocate_value(ref);
+	ck_assert(fy_equal(expect, root));
+
+	/* a second load preserves the relocated pointers */
+	ck_assert_int_eq(fy_generic_image_load(image, size, &again), 0);
+	ck_assert(fy_equal(expect, again));
+
+	fy_generic_builder_destroy(ref);
+	fy_generic_image_destroy(image);
+}
+END_TEST
+
+/* A collection at the start of the arena must not encode as an empty value. */
+START_TEST(generic_image_collection_root)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic value, root = fy_invalid;
+	void *image;
+	size_t size;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	value = fy_sequence(gb, 1, 2, 3);
+	image = fy_generic_image_create(value, &size);
+	ck_assert_ptr_ne(image, NULL);
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ck_assert(fy_equal(value, root));
+	fy_generic_image_destroy(image);
+
+	value = fy_mapping(gb, 1, 2);
+	image = fy_generic_image_create(value, &size);
+	ck_assert_ptr_ne(image, NULL);
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ck_assert(fy_equal(value, root));
+	fy_generic_image_destroy(image);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+START_TEST(generic_image_reproducible)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder *a, *b;
+	void *ia, *ib;
+	size_t sa, sb;
+
+	a = fy_generic_builder_create(&gbcfg);
+	b = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(a, NULL);
+	ck_assert_ptr_ne(b, NULL);
+	ia = fy_generic_image_create(generic_test_relocate_value(a), &sa);
+	ib = fy_generic_image_create(generic_test_relocate_value(b), &sb);
+	ck_assert_ptr_ne(ia, NULL);
+	ck_assert_ptr_ne(ib, NULL);
+	/* the same value produces identical image bytes */
+	ck_assert_uint_eq(sa, sb);
+	ck_assert_int_eq(memcmp(ia, ib, sa), 0);
+	fy_generic_image_destroy(ia);
+	fy_generic_image_destroy(ib);
+	fy_generic_builder_destroy(a);
+	fy_generic_builder_destroy(b);
+}
+END_TEST
+
+START_TEST(generic_image_hint)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic value, root = fy_invalid;
+	void *image, *expected;
+	size_t size, expected_size, i;
+	size_t hints[6];
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	value = generic_test_relocate_value(gb);
+	expected = fy_generic_image_create(value, &expected_size);
+	ck_assert_ptr_ne(expected, NULL);
+	hints[0] = 0;
+	hints[1] = 1;
+	hints[2] = expected_size - 1;
+	hints[3] = expected_size;
+	hints[4] = expected_size + 17;
+	hints[5] = FY_GENERIC_IMAGE_ALIGN + 1;
+	for (i = 0; i < sizeof(hints) / sizeof(hints[0]); i++) {
+		image = fy_generic_image_create_with_hint(value, hints[i], &size);
+		ck_assert_ptr_ne(image, NULL);
+		ck_assert_uint_eq((uintptr_t)image % FY_GENERIC_IMAGE_ALIGN, 0);
+		ck_assert_uint_eq(size, expected_size);
+		ck_assert_int_eq(memcmp(image, expected, size), 0);
+		ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+		ck_assert(fy_equal(value, root));
+		fy_generic_image_destroy(image);
+	}
+	errno = 0;
+	ck_assert_ptr_eq(fy_generic_image_create_with_hint(value, SIZE_MAX, &size), NULL);
+	ck_assert_int_eq(errno, ENOMEM);
+	ck_assert_uint_eq(size, 0);
+	ck_assert_ptr_eq(fy_generic_image_create_with_hint(value, 1, NULL), NULL);
+	fy_generic_image_destroy(expected);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+START_TEST(generic_image_large)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder *gb;
+	fy_generic items[30000], v, root = fy_invalid, got;
+	char text[96];
+	void *image;
+	size_t size, i;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	for (i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
+		snprintf(text, sizeof(text), "string number %zu, long enough to leave the word", i);
+		items[i] = fy_gb_string_create(gb, text);
+	}
+	v = fy_gb_sequence_create(gb, sizeof(items) / sizeof(items[0]), items);
+	image = fy_generic_image_create_with_hint(v, 2 * FY_GENERIC_IMAGE_ALIGN + 1, &size);
+	ck_assert_ptr_ne(image, NULL);
+	/* exceed the initial arena capacity */
+	ck_assert_uint_gt(size, 1u << 20);
+	fy_generic_builder_destroy(gb);
+
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ck_assert_uint_eq(fy_len(root), sizeof(items) / sizeof(items[0]));
+	got = fy_get_at(root, 29999, fy_invalid);
+	snprintf(text, sizeof(text), "string number %d, long enough to leave the word", 29999);
+	ck_assert_str_eq(fy_castp(&got, ""), text);
+	fy_generic_image_destroy(image);
+}
+END_TEST
+
+START_TEST(generic_image_refusals)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic v, root = fy_invalid;
+	unsigned char *image, *copy;
+	const size_t header_size = 2 * sizeof(uint32_t) + sizeof(size_t) + sizeof(fy_generic_value);
+	uint32_t magic, hash;
+	size_t size, other, i;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_relocate_value(gb);
+	image = fy_generic_image_create(v, &size);
+	ck_assert_ptr_ne(image, NULL);
+
+	/* reject inline values */
+	ck_assert_ptr_eq(fy_generic_image_create(fy_value(gb, 7), &other), NULL);
+	ck_assert_uint_eq(other, 0);
+	ck_assert_ptr_eq(fy_generic_image_create(fy_invalid, &other), NULL);
+
+	/* reject a one-bit change in each header byte */
+	copy = generic_test_image_copy(image, size);
+	for (i = 0; i < header_size; i++) {
+		copy[i] ^= 0x01;
+		ck_assert_int_eq(fy_generic_image_load(copy, size, &root), -1);
+		copy[i] ^= 0x01;
+	}
+	ck_assert_int_eq(memcmp(copy, image, size), 0);
+
+	/* reject word-size, endian, and version changes with valid checksums */
+	for (i = 0; i < 3; i++) {
+		memcpy(copy, image, size);
+		memcpy(&magic, copy, sizeof(magic));
+		magic ^= 1u << i;
+		memcpy(copy, &magic, sizeof(magic));
+		memset(copy + sizeof(magic), 0, sizeof(hash));
+		hash = (uint32_t)XXH64(copy, header_size, 0);
+		memcpy(copy + sizeof(magic), &hash, sizeof(hash));
+		ck_assert_int_eq(fy_generic_image_load(copy, size, &root), -1);
+	}
+	memcpy(copy, image, size);
+
+	/* reject incorrect and truncated image sizes */
+	ck_assert_int_eq(fy_generic_image_load(copy, size - 16, &root), -1);
+	ck_assert_int_eq(fy_generic_image_load(copy, size + 16, &root), -1);
+	ck_assert_int_eq(fy_generic_image_load(copy, 8, &root), -1);
+	ck_assert_int_eq(fy_generic_image_load(NULL, 0, &root), -1);
+	ck_assert_int_eq(fy_generic_image_load(copy, size, NULL), -1);
+	/* an image that is not aligned */
+	ck_assert_int_eq(fy_generic_image_load(copy + 16, size - 16, &root), -1);
+
+	/* failed loads leave the image and output value unchanged */
+	ck_assert_int_eq(memcmp(copy, image, size), 0);
+	ck_assert(fy_generic_is_invalid(root));
+	ck_assert_int_eq(fy_generic_image_load(copy, size, &root), 0);
+
+	fy_align_free(copy);
+	fy_generic_image_destroy(image);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+START_TEST(generic_image_in_place)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder *gb, *ref;
+	fy_generic v, root = fy_invalid, expect;
+	void *image, *buf = NULL;
+	size_t size, need, cap = 64 * 1024;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_relocate_value(gb);
+	image = fy_generic_image_create(v, &size);
+	ck_assert_ptr_ne(image, NULL);
+
+	/* accept a nonzero buffer larger than the image */
+	buf = fy_align_alloc(FY_GENERIC_IMAGE_ALIGN, cap);
+	ck_assert_ptr_ne(buf, NULL);
+	memset(buf, 0x5a, cap);
+	ck_assert_int_eq(fy_generic_image_create_in_place(v, buf, cap, &need), 0);
+	/* match the bytes produced by fy_generic_image_create() */
+	ck_assert_uint_eq(need, size);
+	ck_assert_int_eq(memcmp(buf, image, size), 0);
+
+	ck_assert_int_eq(fy_generic_image_load(buf, need, &root), 0);
+	ref = fy_generic_builder_create(&(struct fy_generic_builder_cfg){ .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER });
+	ck_assert_ptr_ne(ref, NULL);
+	expect = generic_test_relocate_value(ref);
+	ck_assert(fy_equal(expect, root));
+
+	/* an undersized buffer returns ENOSPC and the required size */
+	memset(buf, 0x5a, cap);
+	ck_assert_int_eq(fy_generic_image_create_in_place(v, buf, size, &need), 0);
+	errno = 0;
+	ck_assert_int_eq(fy_generic_image_create_in_place(v, buf, size - 1, &need), -1);
+	ck_assert_int_eq(errno, ENOSPC);
+	ck_assert_uint_eq(need, size);
+
+	/* reject an unaligned buffer, an inline value, and a null size pointer */
+	errno = 0;
+	ck_assert_int_eq(fy_generic_image_create_in_place(v, (char *)buf + 16, cap - 16, &need), -1);
+	ck_assert_int_eq(errno, EINVAL);
+	errno = 0;
+	ck_assert_int_eq(fy_generic_image_create_in_place(fy_value(gb, 7), buf, cap, &need), -1);
+	ck_assert_int_eq(errno, EINVAL);
+	ck_assert_int_eq(fy_generic_image_create_in_place(v, buf, cap, NULL), -1);
+
+	fy_generic_builder_destroy(ref);
+	fy_generic_builder_destroy(gb);
+	fy_align_free(buf);
+	fy_generic_image_destroy(image);
+}
+END_TEST
+
+/* Tags, anchors, comments, styles and several documents survive an image. */
+START_TEST(generic_image_yaml_features)
+{
+	static const char yaml[] =
+		"# head comment\n"
+		"--- !tagged\n"
+		"a: &x [1, 2]  # trailing\n"
+		"b: *x\n"
+		"c: !!str 123\n"
+		"d: !custom {k: v}\n"
+		"e: !<tag:example.com,2026:t> 'single'\n"
+		"---\n"
+		"- second document\n"
+		"- \"double\"\n"
+		"- |\n"
+		"  literal text\n"
+		"- >\n"
+		"  folded text\n"
+		"- ? complex\n"
+		"  : key\n"
+		"...\n"
+		"---\n"
+		"third: 3\n";
+	const unsigned int pflags = FYOPPF_MODE_YAML_1_2 | FYOPPF_KEEP_COMMENTS |
+				    FYOPPF_KEEP_STYLE | FYOPPF_KEEP_ANCHORS |
+				    FYOPPF_INPUT_TYPE_STRING;
+	const unsigned int eflags = FYOPEF_MODE_YAML_1_2 | FYOPEF_STYLE_PRETTY |
+				    FYOPEF_WIDTH_INF | FYOPEF_OUTPUT_COMMENTS;
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder *gb;
+	fy_generic_sized_string text = { yaml, sizeof(yaml) - 1 };
+	fy_generic v, root = fy_invalid, before, after;
+	void *image;
+	size_t size;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = fy_parse(gb, text, pflags, NULL);
+	ck_assert(fy_generic_is_valid(v));
+	/* a document stream is parsed as a directory */
+	ck_assert_uint_gt(fy_len(v), 1);
+	before = fy_emit(v, eflags, NULL);
+	ck_assert(fy_generic_is_valid(before));
+
+	image = fy_generic_image_create(v, &size);
+	ck_assert_ptr_ne(image, NULL);
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ck_assert_uint_eq(fy_len(root), fy_len(v));
+	after = fy_emit(root, eflags, NULL);
+	ck_assert(fy_generic_is_valid(after));
+	/* the tags, the anchors, the comments and the styles are all in the text */
+	ck_assert_str_eq(fy_castp(&before, ""), fy_castp(&after, ""));
+	ck_assert_ptr_ne(strstr(fy_castp(&after, ""), "!custom"), NULL);
+	ck_assert_ptr_ne(strstr(fy_castp(&after, ""), "&x"), NULL);
+	ck_assert_ptr_ne(strstr(fy_castp(&after, ""), "# trailing"), NULL);
+
+	fy_generic_builder_destroy(gb);
+	fy_generic_image_destroy(image);
+}
+END_TEST
+
 START_TEST(generic_signature)
 {
 	struct fy_generic_builder_cfg gbcfg = { 0 };
@@ -8146,6 +8502,14 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_linearize_two_chunks);
 	fy_check_testcase_add_test(ctc, generic_linearize_many_chunks);
 	fy_check_testcase_add_test(ctc, generic_relocate_copy);
+	fy_check_testcase_add_test(ctc, generic_image_roundtrip);
+	fy_check_testcase_add_test(ctc, generic_image_collection_root);
+	fy_check_testcase_add_test(ctc, generic_image_reproducible);
+	fy_check_testcase_add_test(ctc, generic_image_hint);
+	fy_check_testcase_add_test(ctc, generic_image_large);
+	fy_check_testcase_add_test(ctc, generic_image_refusals);
+	fy_check_testcase_add_test(ctc, generic_image_in_place);
+	fy_check_testcase_add_test(ctc, generic_image_yaml_features);
 
 	fy_check_testcase_add_test(ctc, generic_signature);
 	fy_check_testcase_add_test(ctc, generic_signature_deep_nesting);

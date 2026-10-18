@@ -39,6 +39,7 @@ libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/test/ \
 			 -I$(top_srcdir)/src/check/ \
 			 -I$(top_srcdir)/src/lib/ \
 			 -I$(top_srcdir)/src/util \
+			 -I$(top_srcdir)/src/xxhash \
 			 -I$(top_srcdir)/src/allocator \
 			 -I$(top_srcdir)/src/generic \
 			 -I$(top_srcdir)/src/reflection
