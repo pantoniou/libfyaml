@@ -24,6 +24,7 @@
 #include "fy-utf8.h"
 
 #include "fy-allocator.h"
+#include "fy-allocator-linear.h"
 #include "fy-thread.h"
 
 #include "xxhash.h"
@@ -3202,6 +3203,312 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 	}
 
 	return v;
+}
+
+/*
+ * Relocatable generic images. See the DOC section of libfyaml-generic.h.
+ */
+
+/* Low bits encode word size, byte order, and the six-bit format version. */
+#define FY_GENERIC_IMAGE_MAGIC \
+	(0x46474900u | (FY_GENERIC_IMAGE_VERSION << 2) | \
+	 ((__BYTE_ORDER == __BIG_ENDIAN) << 1) | (sizeof(void *) == 8))
+#define FY_GENERIC_IMAGE_INITIAL	(1u << 20)
+
+struct fy_generic_image_header {
+	uint32_t magic;
+	uint32_t hash;		/* truncated XXH64 of the header with this field zero */
+	size_t size;		/* arena size in bytes */
+	fy_generic_value root;	/* root encoded relative to the image base */
+};
+
+#define FY_GENERIC_IMAGE_ARENA_OFFSET \
+	FY_ALIGN((size_t)FY_GENERIC_CONTAINER_ALIGN, sizeof(struct fy_generic_image_header))
+
+_Static_assert(FY_GENERIC_IMAGE_VERSION < 64, "image version must fit in six bits");
+_Static_assert(sizeof(void *) == 4 || sizeof(void *) == 8, "unsupported image word size");
+
+static uint32_t fy_generic_image_header_hash(const struct fy_generic_image_header *hdr)
+{
+	struct fy_generic_image_header tmp = *hdr;
+
+	tmp.hash = 0;
+	return (uint32_t)XXH64(&tmp, sizeof(tmp), 0);
+}
+
+static void fy_generic_image_header_fill(struct fy_generic_image_header *hdr,
+					 size_t size, fy_generic root)
+{
+	memset(hdr, 0, sizeof(*hdr));
+	hdr->magic = FY_GENERIC_IMAGE_MAGIC;
+	hdr->size = size;
+	hdr->root = root.v;
+	hdr->hash = fy_generic_image_header_hash(hdr);
+}
+
+/*
+ * Convert pointers in [@start, @end) to image-relative offsets. Read items
+ * from the current arena before converting their pointers. Offsets are outside
+ * the arena address range, so shared values are converted only once.
+ */
+static fy_generic fy_generic_image_rebase(const char *start, const char *end,
+					  fy_generic v)
+{
+	const void *p;
+	fy_generic *vp, *items;
+	enum fy_generic_type type;
+	uint64_t flags;
+	ptrdiff_t d = -(ptrdiff_t)(uintptr_t)start;
+	size_t i, count;
+
+	if (fy_generic_is_indirect(v)) {
+		p = fy_generic_resolve_ptr(v);
+		if (!((const char *)p >= start && (const char *)p < end))
+			return v;
+		vp = (fy_generic *)p;
+		flags = (uint64_t)(vp->v & FYGIF_CONTENT_MASK);
+		for (vp++; flags; vp++) {
+			flags &= flags - 1;
+			*vp = fy_generic_image_rebase(start, end, *vp);
+		}
+		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_INDIRECT_V;
+		return v;
+	}
+	type = fy_generic_get_type(v);
+	switch (type) {
+	case FYGT_INT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_INT_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		if (!((const char *)p >= start && (const char *)p < end))
+			return v;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_INT_OUTPLACE_V;
+		return v;
+	case FYGT_FLOAT:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_FLOAT_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		if (!((const char *)p >= start && (const char *)p < end))
+			return v;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_FLOAT_OUTPLACE_V;
+		return v;
+	case FYGT_STRING:
+		if ((v.v & FY_INPLACE_TYPE_MASK) == FY_STRING_INPLACE_V)
+			return v;
+		p = fy_generic_resolve_ptr(v);
+		if (!((const char *)p >= start && (const char *)p < end))
+			return v;
+		v.v = fy_generic_relocate_ptr(v, d).v | FY_STRING_OUTPLACE_V;
+		return v;
+	case FYGT_SEQUENCE:
+	case FYGT_MAPPING:
+		p = fy_generic_resolve_collection_ptr(v);
+		/* an empty collection has no storage */
+		if (!p || !((const char *)p >= start && (const char *)p < end))
+			return v;
+		items = (fy_generic *)fy_generic_collectionp_get_items(type, p, &count);
+		for (i = 0; i < count; i++)
+			items[i] = fy_generic_image_rebase(start, end, items[i]);
+		v.v = fy_generic_relocate_collection_ptr(v, d).v |
+		      (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
+		return v;
+	default:
+		return v;
+	}
+}
+
+/*
+ * Build an image of @v directly in the aligned buffer @buf of @cap bytes.
+ * Keep allocator state on the stack, outside the serialized arena. If the
+ * copy does not fit, return -1 with errno ENOSPC. On success, return 0 and
+ * store the image size in @totalp.
+ */
+static int fy_generic_image_make(fy_generic v, void *buf, size_t cap,
+				 size_t *totalp)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCOPE_LEADER };
+	struct fy_generic_image_header hdr;
+	struct fy_linear_allocator la;
+	struct fy_linear_allocator_cfg lcfg;
+	struct fy_generic_builder *gb = NULL;
+	struct fy_allocator *a = &la.a;
+	struct fy_allocator_info *info;
+	unsigned char *image = buf;
+	const unsigned char *arena;
+	const size_t offset = FY_GENERIC_IMAGE_ARENA_OFFSET;
+	size_t used;
+	fy_generic root;
+	int err = ENOSPC;
+
+	errno = ENOSPC;
+	if (cap <= offset)
+		return -1;
+	/* zero unused bytes to produce reproducible images */
+	memset(image, 0, cap);
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.buf = image + offset;
+	lcfg.size = cap - offset;
+	if (fy_linear_allocator_ops.setup(a, NULL, FY_ALLOC_TAG_DEFAULT, &lcfg))
+		return -1;
+	gbcfg.allocator = a;
+	gb = fy_generic_builder_create(&gbcfg);
+	if (!gb) {
+		err = ENOMEM;
+		goto err_out;
+	}
+	root = fy_gb_copy_memoized(gb, v, 0);
+	if (fy_generic_is_invalid(root))
+		goto err_out;
+
+	info = fy_allocator_get_info(a, FY_ALLOC_TAG_NONE);
+	if (!info) {
+		err = ENOMEM;
+		goto err_out;
+	}
+	if (info->num_tag_infos != 1 ||
+	    info->tag_infos[0].num_arena_infos != 1) {
+		free(info);
+		goto err_out;
+	}
+	arena = info->tag_infos[0].arena_infos[0].data;
+	used = info->tag_infos[0].arena_infos[0].size;
+	free(info);
+	if (arena != image + offset || !used ||
+	    used > SIZE_MAX - (FY_GENERIC_CONTAINER_ALIGN - 1))
+		goto err_out;
+	used = FY_ALIGN((size_t)FY_GENERIC_CONTAINER_ALIGN, used);
+	if (used > cap - offset)
+		goto err_out;
+
+	root = fy_generic_image_rebase((const char *)image,
+				       (const char *)arena + used, root);
+	fy_generic_builder_destroy(gb);
+	fy_linear_allocator_ops.cleanup(a);
+	fy_generic_image_header_fill(&hdr, used, root);
+	memcpy(image, &hdr, sizeof(hdr));
+	*totalp = offset + used;
+	errno = 0;
+	return 0;
+
+err_out:
+	fy_generic_builder_destroy(gb);
+	fy_linear_allocator_ops.cleanup(a);
+	errno = err;
+	return -1;
+}
+
+static bool fy_generic_image_value_usable(fy_generic v)
+{
+	return fy_generic_is_valid(v) && !fy_generic_is_in_place(v);
+}
+
+void *fy_generic_image_create(fy_generic v, size_t *sizep)
+{
+	return fy_generic_image_create_with_hint(v, FY_GENERIC_IMAGE_INITIAL, sizep);
+}
+
+void *fy_generic_image_create_with_hint(fy_generic v, size_t hint, size_t *sizep)
+{
+	const size_t max_cap = SIZE_MAX > UINT32_MAX ?
+		(size_t)(UINT64_C(1) << 32) : SIZE_MAX / 2 + 1;
+	size_t cap, total;
+	void *image;
+
+	if (!sizep)
+		return NULL;
+	*sizep = 0;
+	if (!fy_generic_image_value_usable(v)) {
+		errno = EINVAL;
+		return NULL;
+	}
+	cap = hint ? hint : FY_GENERIC_IMAGE_INITIAL;
+	if (cap > max_cap) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	cap = FY_ALIGN((size_t)FY_GENERIC_IMAGE_ALIGN, cap);
+	/* grow the buffer until the copy fits */
+	for (;;) {
+		image = fy_align_alloc(FY_GENERIC_IMAGE_ALIGN, cap);
+		if (!image) {
+			errno = ENOMEM;
+			return NULL;
+		}
+		if (!fy_generic_image_make(v, image, cap, &total)) {
+			*sizep = total;
+			return image;
+		}
+		fy_align_free(image);
+		if (errno != ENOSPC)
+			return NULL;
+		if (cap >= max_cap)
+			break;
+		cap = cap > max_cap / 2 ? max_cap : cap * 2;
+	}
+	errno = ENOMEM;
+	return NULL;
+}
+
+void fy_generic_image_destroy(void *image)
+{
+	fy_align_free(image);
+}
+
+int fy_generic_image_create_in_place(fy_generic v, void *buf, size_t size,
+				     size_t *sizep)
+{
+	size_t total, need;
+	void *image;
+
+	if (!sizep) {
+		errno = EINVAL;
+		return -1;
+	}
+	*sizep = 0;
+	if (!buf || ((uintptr_t)buf & (FY_GENERIC_IMAGE_ALIGN - 1)) ||
+	    !fy_generic_image_value_usable(v)) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (!fy_generic_image_make(v, buf, size, &total)) {
+		*sizep = total;
+		return 0;
+	}
+	if (errno != ENOSPC)
+		return -1;
+	/* report the required buffer size */
+	image = fy_generic_image_create(v, &need);
+	if (!image)
+		return -1;
+	fy_align_free(image);
+	*sizep = need;
+	errno = ENOSPC;
+	return -1;
+}
+
+int fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
+{
+	struct fy_generic_image_header hdr;
+	unsigned char *arena;
+	uintptr_t at;
+	fy_generic root;
+
+	if (!image || !rootp || size <= FY_GENERIC_IMAGE_ARENA_OFFSET ||
+	    ((uintptr_t)image & (FY_GENERIC_IMAGE_ALIGN - 1)))
+		return -1;
+	memcpy(&hdr, image, sizeof(hdr));
+	if (hdr.magic != FY_GENERIC_IMAGE_MAGIC ||
+	    hdr.hash != fy_generic_image_header_hash(&hdr) ||
+	    !hdr.root || hdr.size != size - FY_GENERIC_IMAGE_ARENA_OFFSET)
+		return -1;
+	arena = (unsigned char *)image + FY_GENERIC_IMAGE_ARENA_OFFSET;
+	at = (uintptr_t)image;
+	/* Image-relative offsets must not overlap the destination address range. */
+	if (at < size)
+		return -1;
+	root.v = hdr.root;
+	*rootp = fy_generic_relocate(arena, arena + hdr.size, root, (ptrdiff_t)at);
+	return 0;
 }
 
 const void *fy_generic_builder_linearize(struct fy_generic_builder *gb, fy_generic *vp, size_t *sizep)

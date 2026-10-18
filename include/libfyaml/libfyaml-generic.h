@@ -9506,6 +9506,128 @@ fy_generic
 fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
 	FY_EXPORT;
 
+/*
+ * DOC: Relocatable generic images
+ *
+ * An image stores a generic value and its referenced data in one block.
+ * Stored pointers are relative to the image base. Applications can save an
+ * image and load it without parsing the original document. The first load
+ * relocates pointers in place.
+ *
+ * The magic encodes FY_GENERIC_IMAGE_VERSION, byte order, and 32-bit or
+ * 64-bit word size. The remaining fields are a 32-bit header checksum, the
+ * native-size arena length, and the root word. The arena starts immediately
+ * after the header, rounded up to FY_GENERIC_CONTAINER_ALIGN.
+ *
+ * Images require the native byte order and word size of the loader. The
+ * version changes when the image layout or generic encoding changes. Loading
+ * fails if the magic differs or the header checksum is invalid.
+ *
+ * The same value produces identical image bytes in processes with compatible
+ * generic encodings.
+ */
+
+/** Version of the format of an image. */
+#define FY_GENERIC_IMAGE_VERSION	1
+
+/** Alignment of an image in memory. Loading requires this alignment. */
+#define FY_GENERIC_IMAGE_ALIGN		4096
+
+/**
+ * fy_generic_image_create() - Create an image of a generic value.
+ *
+ * Copy @v and its referenced data. Preserve shared values and encode pointers
+ * relative to the image base.
+ *
+ * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @sizep: Receives the size of the image in bytes
+ *
+ * Returns:
+ * The image, aligned to FY_GENERIC_IMAGE_ALIGN, or NULL on error. Release it
+ * with fy_generic_image_destroy(). The image does not refer to the builder
+ * of @v.
+ */
+void *
+fy_generic_image_create(fy_generic v, size_t *sizep)
+	FY_EXPORT;
+
+/**
+ * fy_generic_image_create_with_hint() - Create an image with a capacity hint.
+ *
+ * Like fy_generic_image_create(), but start with @hint bytes of capacity,
+ * rounded up to FY_GENERIC_IMAGE_ALIGN. Grow the buffer if the image does not
+ * fit. A zero hint uses the default initial capacity. The returned size is
+ * the image size, which can be smaller than the allocated capacity.
+ *
+ * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @hint:  Estimated image size in bytes, or zero for the default
+ * @sizep: Receives the size of the image in bytes
+ *
+ * Returns:
+ * The image, aligned to FY_GENERIC_IMAGE_ALIGN, or NULL on error. Release it
+ * with fy_generic_image_destroy().
+ */
+void *
+fy_generic_image_create_with_hint(fy_generic v, size_t hint, size_t *sizep)
+	FY_EXPORT;
+
+/**
+ * fy_generic_image_destroy() - Free an allocated image.
+ *
+ * Release an image returned by fy_generic_image_create() or
+ * fy_generic_image_create_with_hint(), before or after loading. Do not use
+ * this function for caller-provided buffers. Values that refer to the image
+ * become invalid after this call. A NULL image is ignored.
+ *
+ * @image: Allocated image, or NULL
+ */
+void
+fy_generic_image_destroy(void *image)
+	FY_EXPORT;
+
+/**
+ * fy_generic_image_create_in_place() - Create an image in a supplied buffer.
+ *
+ * Like fy_generic_image_create(), but use a linear allocator in @buf to build
+ * the image directly in the supplied buffer. The buffer need not be zeroed.
+ * If it is too small, allocate a temporary image to determine the required
+ * size, then free the temporary image before returning. The caller retains
+ * ownership of @buf and must release it with its matching deallocator.
+ *
+ * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @buf:   The buffer, aligned to FY_GENERIC_IMAGE_ALIGN
+ * @size:  Size of the buffer in bytes
+ * @sizep: Receives the size of the image in bytes; when the buffer is too
+ *         small it receives the size that the image needs
+ *
+ * Returns:
+ * 0 on success. On error -1, with errno ENOSPC when the buffer is too small,
+ * EINVAL for a value or a buffer that cannot be used, and ENOMEM when a
+ * memory allocation fails.
+ */
+int
+fy_generic_image_create_in_place(fy_generic v, void *buf, size_t size, size_t *sizep)
+	FY_EXPORT;
+
+/**
+ * fy_generic_image_load() - Load and relocate an image in place.
+ *
+ * Validate the header and relocate pointers to the current arena address.
+ * The image must be in writable memory aligned to FY_GENERIC_IMAGE_ALIGN.
+ * The first load modifies the image. Subsequent loads of the same image do
+ * not modify the relocated pointers. A failed load does not change the image.
+ *
+ * @image: The image
+ * @size:  Size of the image in bytes
+ * @rootp: Receives the value, which lives in the image and is read only
+ *
+ * Returns:
+ * 0 on success, -1 when the image is not usable.
+ */
+int
+fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
+	FY_EXPORT;
+
 /**
  * fy_gb_get_schema() - Return the schema currently active in a builder.
  *
