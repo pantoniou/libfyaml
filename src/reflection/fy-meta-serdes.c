@@ -3856,8 +3856,9 @@ ptr_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	rtd = rw->rtd;
 	assert(rtd);
 
+	/* the type is not complete while a default value is generated in its setup */
 	rtd_dep = rtd->rtd_dep;
-	assert(rtd_dep);
+	RP_ASSERT(rtd_dep);
 
 	RP_INPUT_CHECK(!(rtd_dep->ti->flags & FYTIF_UNRESOLVED),
 			"Pointer to unresolved type '%s' cannot be serialized",
