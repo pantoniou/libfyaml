@@ -5826,6 +5826,15 @@ reflection_type_data_specialize(struct reflection_type_data *rtd,
 				}
 			}
 
+			/* a value is generated for the selector, its field must not become an array later */
+			rtd_resolved_ptr = reflection_type_data_resolved_typedef(rtd->rtd_selector);
+			RTS_ERROR_CHECK(rtd_resolved_ptr &&
+					(rtd_resolved_ptr->ti->kind == FYTK_ENUM ||
+					 rtd_resolved_ptr->ti->kind == FYTK_BOOL ||
+					 fy_type_kind_is_integer(rtd_resolved_ptr->ti->kind)),
+					"selector of union '%s' must be an enum, a boolean or an integer\n",
+					rtd->ti->name);
+
 			/* the selector must tell the members apart, or the wrong one is freed */
 			for (i = 0; i < rtd->fields_count; i++) {
 				value_a = reflection_meta_generate_any_value(rfd_rtd(rtd->fields[i])->meta,
