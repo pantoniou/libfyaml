@@ -3189,6 +3189,14 @@ struct_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	rc = 0;
 
 out:
+	/* a union member that was parsed, but not selected, would be destroyed as another one */
+	if (rc && is_union && union_field_idx >= 0 && !(flags & RPF_NO_STORE)) {
+		rw_field.flags = RWF_VALUE;
+		struct_setup_field_rw(&rw_field, rtd->fields[union_field_idx]);
+		reflection_dtor_rw(&rw_field);
+		memset(rw->data, 0, rw->data_size.bytes);
+	}
+
 	/* an auto-select that failed leaves its checkpoint */
 	fy_parser_checkpoint_destroy(fypchk);
 	fy_parser_event_free(fyp, fye);
