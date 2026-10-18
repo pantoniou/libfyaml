@@ -101,7 +101,8 @@ libfyaml_la_SOURCES += \
 
 if HAVE_LIBCLANG
 libfyaml_la_SOURCES += \
-	reflection/fy-clang-backend.c reflection/fy-clang-backend.h
+	reflection/fy-clang-backend.c reflection/fy-clang-backend.h \
+	reflection/fy-clang-dlopen.c reflection/fy-clang-dlopen.h
 endif
 
 libfyaml_la_CPPFLAGS = $(AM_CPPFLAGS) $(INTERNAL_INCLUDES)

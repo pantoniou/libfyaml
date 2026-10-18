@@ -35,6 +35,8 @@
 #include <clang-c/Index.h>
 #include <clang-c/Documentation.h>
 
+#include "fy-clang-dlopen.h"
+
 void clang_dump_types(struct fy_reflection *rfl);
 
 static int clang_reflection_setup(struct fy_reflection *rfl);
@@ -924,6 +926,9 @@ static int clang_reflection_setup(struct fy_reflection *rfl)
 	assert(rfl);
 
 	RFL_ASSERT(rfl->cfg.backend_cfg);
+
+	if (fy_clang_api_load())
+		return -1;
 
 	rflb = malloc(sizeof(*rflb));
 	RFL_ASSERT(rflb);

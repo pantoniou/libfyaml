@@ -108,8 +108,14 @@ macro(add_libclang_to_target target_name link_scope)
             target_include_directories(${target_name} PRIVATE ${LIBCLANG_INCLUDES})
         endif()
 
-        # Add libclang libraries
-        target_link_libraries(${target_name} ${link_scope} ${LIBCLANG_LIBS})
+        # Add libclang libraries; with the lazy load only dlopen() is linked
+        if(LIBCLANG_DLOPEN)
+            if(CMAKE_DL_LIBS)
+                target_link_libraries(${target_name} ${link_scope} ${CMAKE_DL_LIBS})
+            endif()
+        else()
+            target_link_libraries(${target_name} ${link_scope} ${LIBCLANG_LIBS})
+        endif()
     endif()
 endmacro()
 
@@ -144,6 +150,7 @@ option(BUILD_TESTING "Build tests" ON)
 option(ENABLE_GENERIC "Enable generic subsystem (requires statement expressions)" ON)
 option(ENABLE_REFLECTION "Enable reflection subsystem (requires statement expressions)" ON)
 option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
+option(ENABLE_LIBCLANG_DLOPEN "Load libclang on the first use of reflection, not at start-up" ON)
 
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
@@ -397,6 +404,7 @@ set(HAVE_LIBCLANG 0)
 set(LIBCLANG_CFLAGS "")
 set(LIBCLANG_LDFLAGS "")
 set(LIBCLANG_LIBS "")
+set(LIBCLANG_DLOPEN FALSE)
 set(LIBCLANG_FOUND FALSE)
 set(LIBCLANG_DETECTION_METHOD "")
 
@@ -569,6 +577,17 @@ else()
             endif()
             set(LIBCLANG_LIBS "${LIBCLANG_LIBS_LIST}")
             message(STATUS "Found libclang via ${LIBCLANG_DETECTION_METHOD}")
+            # A shared libclang is loaded on first use, so a process that does
+            # not use reflection does not initialise libclang and LLVM. A
+            # static libclang is linked, as it cannot be loaded later.
+            set(LIBCLANG_DLOPEN FALSE)
+            if(ENABLE_LIBCLANG_DLOPEN AND NOT WIN32 AND
+               LIBCLANG_FULL_PATH MATCHES "(\\.so(\\.[0-9]+)*|\\.dylib)$")
+                check_libclang_dlopen_works(LIBCLANG_DLOPEN)
+                if(LIBCLANG_DLOPEN)
+                    message(STATUS "libclang is loaded on first use: ${LIBCLANG_FULL_PATH}")
+                endif()
+            endif()
             # Check for llvm-c/Core.h (absent in stripped installs e.g. Chocolatey)
             set(_SAVED_CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES}")
             set(CMAKE_REQUIRED_INCLUDES "${LIBCLANG_INCLUDES}")
@@ -1068,7 +1087,19 @@ if(HAVE_REFLECTION)
     )
     # Conditionally add clang backend if libclang is available
     if(HAVE_LIBCLANG)
-        list(APPEND LIBSRCS src/reflection/fy-clang-backend.c)
+        list(APPEND LIBSRCS
+            src/reflection/fy-clang-backend.c
+            src/reflection/fy-clang-dlopen.c)
+        if(LIBCLANG_DLOPEN)
+            set_property(SOURCE src/reflection/fy-clang-backend.c src/reflection/fy-clang-dlopen.c
+                APPEND PROPERTY COMPILE_DEFINITIONS FY_LIBCLANG_DLOPEN)
+            set_property(SOURCE src/reflection/fy-clang-dlopen.c APPEND PROPERTY
+                COMPILE_DEFINITIONS "FY_LIBCLANG_PATH=\"${LIBCLANG_FULL_PATH}\"")
+            if(LLVM_VERSION_MAJOR)
+                set_property(SOURCE src/reflection/fy-clang-dlopen.c APPEND PROPERTY
+                    COMPILE_DEFINITIONS "FY_LIBCLANG_MAJOR=\"${LLVM_VERSION_MAJOR}\"")
+            endif()
+        endif()
     endif()
 endif()
 
@@ -1620,7 +1651,8 @@ if(CAN_TEST)
         link_whole_archive_static(libfyaml-test fyaml_static)
         target_link_libraries(libfyaml-test PRIVATE
             ${CHECK_LIBRARIES}
-            $<$<BOOL:${HAVE_LIBCLANG}>:${LIBCLANG_LIBS}>
+            $<$<AND:$<BOOL:${HAVE_LIBCLANG}>,$<NOT:$<BOOL:${LIBCLANG_DLOPEN}>>>:${LIBCLANG_LIBS}>
+            $<$<BOOL:${LIBCLANG_DLOPEN}>:${CMAKE_DL_LIBS}>
         )
         if(NOT MSVC)
             if(HAVE_ASAN)

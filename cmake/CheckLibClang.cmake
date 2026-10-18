@@ -75,3 +75,29 @@ function(check_libclang_works result_var)
     # Return result
     set(${result_var} ${_LIBCLANG_COMPILE_TEST} PARENT_SCOPE)
 endfunction()
+
+# Check the loader facilities before replacing direct libclang linking.
+function(check_libclang_dlopen_works result_var)
+    set(CMAKE_REQUIRED_FLAGS "")
+    set(CMAKE_REQUIRED_INCLUDES "")
+    set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+    check_c_source_compiles([=[
+        #include <dlfcn.h>
+        #include <pthread.h>
+        static pthread_once_t once = PTHREAD_ONCE_INIT;
+        static void init(void) {}
+        int main(void) {
+            __typeof__(dlopen) *open_library = dlopen;
+            void *h;
+            pthread_once(&once, init);
+            h = open_library(0, RTLD_NOW | RTLD_LOCAL);
+            if (h) {
+                (void)dlsym(h, "dlopen");
+                (void)dlerror();
+                dlclose(h);
+            }
+            return 0;
+        }
+    ]=] _LIBCLANG_DLOPEN_COMPILE_TEST)
+    set(${result_var} "${_LIBCLANG_DLOPEN_COMPILE_TEST}" PARENT_SCOPE)
+endfunction()
