@@ -3227,6 +3227,34 @@ START_TEST(fuzz_issue_481_pointer_copy_size_repro)
 }
 END_TEST
 
+/* Test: gh#489 - a pointer chain that nests deeper than the stack allows. */
+START_TEST(fuzz_issue_489_pointer_chain_depth_repro)
+{
+	enum { N = 4096 };
+	struct fy_reflection *rfl;
+	struct fy_type_context *ctx;
+	char *entry;
+
+	entry = malloc(5 + N + 1);
+	ck_assert_ptr_ne(entry, NULL);
+	memcpy(entry, "char ", 5);
+	memset(entry + 5, '*', N);
+	entry[5 + N] = '\0';
+
+	rfl = fy_reflection_from_null(NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	/* the type is refused, the setup must not run out of stack */
+	ctx = fy_type_context_create(&(struct fy_type_context_cfg){
+		.rfl = rfl,
+		.entry_type = entry });
+	ck_assert_ptr_eq(ctx, NULL);
+
+	fy_reflection_destroy(rfl);
+	free(entry);
+}
+END_TEST
+
 #endif
 
 /* Test: gh#357 - a failed ypath operand must not be freed twice. */
@@ -7639,6 +7667,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_468_bitfield_default_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_469_empty_struct_terminated_array_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_481_pointer_copy_size_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_489_pointer_chain_depth_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_480_union_same_select_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_474_auto_select_recursion_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_477_overlapping_fields_repro);
