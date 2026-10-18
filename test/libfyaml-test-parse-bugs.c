@@ -417,6 +417,7 @@ START_TEST(parse_bug_nested_explicit_key)
 	static const char * const inputs[] = {
 		"? ? b\n  : d\n: 23\n",
 		"? - ? b\n    : d\n: 23\n",
+		"? ? ? ? a\n      : b\n    : c\n  : e\n: 23\n",
 	};
 	struct fy_document *fyd;
 	struct fy_node *fyn;
