@@ -2173,10 +2173,15 @@ START_TEST(fuzz_issue_460_enum_too_wide_repro)
 	"";
 	int rc;
 
-	/* the value cannot be stored, the parse must fail */
 	rc = fuzz_blob_parse(blob, sizeof(blob), entry, yaml, sizeof(yaml) - 1);
+#ifdef FY_HAS_INT128
+	/* reject the enum after importing its integer type */
 	ck_assert_int_gt(rc, -2);
 	ck_assert_int_ne(rc, 0);
+#else
+	/* reject the unsupported integer type during blob import */
+	ck_assert_int_eq(rc, -2);
+#endif
 }
 END_TEST
 
@@ -2510,10 +2515,15 @@ START_TEST(fuzz_issue_470_int128_emit_repro)
 
 	int rc;
 
-	/* the emit must fail, the type has no emit method */
 	rc = fuzz_blob_parse_emit(blob, sizeof(blob), entry, yaml, sizeof(yaml) - 1);
+#ifdef FY_HAS_INT128
+	/* the emit must fail, the type has no emit method */
 	ck_assert_int_lt(rc, 0);
 	ck_assert_int_gt(rc, -2);
+#else
+	/* reject the unsupported integer type before parsing or emitting */
+	ck_assert_int_eq(rc, -4);
+#endif
 }
 END_TEST
 
@@ -2543,8 +2553,16 @@ START_TEST(fuzz_issue_471_int128_counter_repro)
 	"  three: 300\n"
 	"";
 
-	/* the type setup rejects the wide counter, the parse must not run */
-	ck_assert_int_eq(fuzz_blob_parse(blob, sizeof(blob), entry, yaml, sizeof(yaml) - 1), -1);
+	int rc;
+
+	rc = fuzz_blob_parse(blob, sizeof(blob), entry, yaml, sizeof(yaml) - 1);
+#ifdef FY_HAS_INT128
+	/* reject the wide counter during type setup, before parsing */
+	ck_assert_int_eq(rc, -1);
+#else
+	/* reject the unsupported counter type during blob import */
+	ck_assert_int_eq(rc, -2);
+#endif
 }
 END_TEST
 
