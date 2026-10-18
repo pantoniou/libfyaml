@@ -5954,6 +5954,11 @@ reflection_setup_type(struct reflection_type_system *rts,
 
 	*rtdp = NULL;
 
+	/* a type chain nests one call per level, bound it by the stack */
+	RTS_ERROR_CHECK(rstc->rtds.top < reflection_parse_depth_limit(),
+			"type is nested more than %d levels deep",
+			reflection_parse_depth_limit());
+
 	rtd = malloc(sizeof(*rtd));
 	RTS_ASSERT(rtd);
 	memset(rtd, 0, sizeof(*rtd));
