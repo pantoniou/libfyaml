@@ -1407,6 +1407,9 @@ int array_info_setup(struct array_info *info, struct reflection_walker *rw)
 	if (info->rtd_dep)
 		terminator_value = reflection_meta_generate_any_value(info->rtd->meta, rmvid_terminator, info->rtd_dep);
 
+	/* without its terminator value the array would end at another item than it was parsed with */
+	RW_ASSERT(terminator_value || !reflection_meta_get_any_value(info->rtd->meta, rmvid_terminator));
+
 	if (info->has_count && !terminator_value)
 		info->has_terminator = false;
 
@@ -1434,11 +1437,14 @@ int array_info_setup(struct array_info *info, struct reflection_walker *rw)
 		RW_ASSERT(info->rfd_value);
 	}
 
-	if (array_type_is_const(info->type) &&
-	    (info->value_fill = reflection_meta_generate_any_value(info->rtd->meta,
-					rmvid_fill, info->rtd_dep)) != NULL) {
-		info->has_fill = true;
-		reflection_rw_value(&info->rw_fill, info->rtd_dep, info->value_fill);
+	if (array_type_is_const(info->type)) {
+		info->value_fill = reflection_meta_generate_any_value(info->rtd->meta,
+					rmvid_fill, info->rtd_dep);
+		RW_ASSERT(info->value_fill || !reflection_meta_get_any_value(info->rtd->meta, rmvid_fill));
+		if (info->value_fill) {
+			info->has_fill = true;
+			reflection_rw_value(&info->rw_fill, info->rtd_dep, info->value_fill);
+		}
 	}
 
 	return 0;
@@ -2049,6 +2055,13 @@ out:
 			if (have_map_key)
 				reflection_dtor_rw(&rw_key);
 			array_mapping_info_parse_item_epilog(minfo, &rw_item, flags, true);
+		} else if (!array_type_is_mapping(info->type) && idx < data_count) {
+			/* the item that failed is zeroed, or it holds what was parsed of it */
+			rw_item.idx = idx;
+			rw_item.data = data + idx * item_size;
+			reflection_dtor_rw(&rw_item);
+			if (array_type_is_const(info->type))
+				memset(rw_item.data, 0, item_size);
 		}
 		while (idx) {
 			rw_item.idx = --idx;
