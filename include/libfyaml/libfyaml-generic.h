@@ -8619,6 +8619,12 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
  * Control how input is located and how the YAML parser behaves during a
  * fy_parse() / fy_local_parse() / fy_gb_parse() call.
  *
+ * With %FYOPPF_ENABLE_CACHE a parse served from the cache returns values that
+ * live in the cache entry, and the builder keeps that entry until it is
+ * destroyed. A builder holds one cache entry: a second cached parse into the
+ * same builder replaces it, and the first entry stays allocated until the
+ * process exits. Use a builder per cached parse, e.g. one per file.
+ *
  * @FYOPPF_DISABLE_DIRECTORY:       Do not include a document-state directory in the result
  * @FYOPPF_MULTI_DOCUMENT:          Allow multiple YAML documents in the input
  * @FYOPPF_TRACE:                   Enable parser trace output for debugging
