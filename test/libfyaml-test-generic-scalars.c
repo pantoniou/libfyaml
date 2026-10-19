@@ -950,6 +950,176 @@ START_TEST(scalar_json_specific)
 END_TEST
 
 /* =========================================================================
+ * EMIT - a string that reads back as another type is quoted, e.g. "0"
+ * ========================================================================= */
+
+static const char * const lookalike_strings[] = {
+	"", "0", "1", "-1", "+1", "010", "0o17", "0x10", "0b101", "1_000",
+	"1.5", "-1.5", ".5", "1e+3", "1.0e+3", ".inf", "-.Inf", "+.INF", ".nan", ".NaN",
+	"~", "null", "Null", "NULL", "true", "True", "TRUE", "false", "False",
+	"y", "Y", "n", "N", "yes", "Yes", "YES", "no", "No", "on", "On", "ON", "off", "OFF",
+};
+
+static const struct {
+	const char *name;
+	enum fy_op_emit_flags emit;
+	enum fy_op_parse_flags parse;
+} lookalike_modes[] = {
+	{ "yaml-1.1",		FYOPEF_MODE_YAML_1_1 | FYOPEF_STYLE_BLOCK,	FYOPPF_MODE_YAML_1_1 },
+	{ "yaml-1.1-flow",	FYOPEF_MODE_YAML_1_1 | FYOPEF_STYLE_FLOW,	FYOPPF_MODE_YAML_1_1 },
+	{ "yaml-1.2",		FYOPEF_MODE_YAML_1_2 | FYOPEF_STYLE_BLOCK,	FYOPPF_MODE_YAML_1_2 },
+	{ "yaml-1.2-flow",	FYOPEF_MODE_YAML_1_2 | FYOPEF_STYLE_FLOW,	FYOPPF_MODE_YAML_1_2 },
+	{ "json",		FYOPEF_MODE_JSON,				FYOPPF_MODE_JSON },
+};
+
+static void lookalike_check(struct fy_generic_builder *gb, const char *str, fy_generic v)
+{
+	fy_generic_sized_string text;
+	fy_generic emitted, parsed;
+	enum fy_op_emit_flags emit;
+	size_t i, ev;
+
+	for (i = 0; i < sizeof(lookalike_modes) / sizeof(lookalike_modes[0]); i++) {
+		for (ev = 0; ev < 2; ev++) {
+			emit = lookalike_modes[i].emit | FYOPEF_DISABLE_DIRECTORY;
+			if (ev)
+				emit |= FYOPEF_EMIT_EVENTS;
+
+			emitted = fy_emit(gb, v, emit, NULL);
+			ck_assert(fy_is_string(emitted));
+			text = fy_castp(&emitted, fy_szstr_empty);
+
+			parsed = fy_parse(gb, text, lookalike_modes[i].parse | FYOPPF_DISABLE_DIRECTORY, NULL);
+			ck_assert_msg(fy_generic_compare(v, parsed) == 0,
+				      "\"%s\" %s%s: type changed on the round trip:\n%.*s",
+				      str, lookalike_modes[i].name, ev ? "/events" : "",
+				      (int)text.size, text.data);
+		}
+	}
+}
+
+START_TEST(scalar_emit_quotes_lookalikes)
+{
+	struct fy_generic_builder *gb;
+	fy_generic_indirect gi;
+	fy_generic v, vplain;
+	size_t i;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_nonnull(gb);
+
+	for (i = 0; i < sizeof(lookalike_strings) / sizeof(lookalike_strings[0]); i++) {
+		v = fy_value(gb, lookalike_strings[i]);
+		ck_assert(fy_is_string(v));
+
+		lookalike_check(gb, lookalike_strings[i], v);
+		lookalike_check(gb, lookalike_strings[i], fy_mapping(gb, "k", v));
+		lookalike_check(gb, lookalike_strings[i], fy_mapping(gb, v, "v"));
+		lookalike_check(gb, lookalike_strings[i], fy_sequence(gb, v, v));
+
+		/* asking for plain doesn't help, it is still quoted */
+		fy_generic_indirect_reset(&gi);
+		gi.flags = FYGIF_VALUE | FYGIF_STYLE;
+		gi.value = v;
+		gi.style.v = fy_generic_in_place_unsigned_int((unsigned int)FYSS_PLAIN);
+		vplain = fy_gb_indirect_create(gb, &gi);
+		ck_assert(fy_generic_is_valid(vplain));
+		lookalike_check(gb, lookalike_strings[i], fy_mapping(gb, "k", vplain));
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* strings that can't be read as anything else stay plain */
+START_TEST(scalar_emit_plain_strings)
+{
+	static const char * const strs[] = {
+		"abc", "1:20", "=", "<<", "0abc", "1.2.3", "nope", "yess", "truex", ".",
+		"+", "0x", "1e3x", "~~", "Off-road",
+	};
+	struct fy_generic_builder *gb;
+	fy_generic_sized_string text;
+	fy_generic emitted;
+	char expect[64];
+	size_t i, ev;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_nonnull(gb);
+
+	for (i = 0; i < sizeof(strs) / sizeof(strs[0]); i++) {
+		for (ev = 0; ev < 2; ev++) {
+			emitted = fy_emit(gb, fy_mapping(gb, "k", strs[i]),
+					  FYOPEF_DISABLE_DIRECTORY | FYOPEF_STYLE_BLOCK |
+					  (ev ? FYOPEF_EMIT_EVENTS : 0), NULL);
+			ck_assert(fy_is_string(emitted));
+			text = fy_castp(&emitted, fy_szstr_empty);
+			snprintf(expect, sizeof(expect), "k: %s\n", strs[i]);
+			ck_assert_msg(text.size == strlen(expect) && !memcmp(text.data, expect, text.size),
+				      "\"%s\"%s: expected plain, got:\n%.*s",
+				      strs[i], ev ? " (events)" : "", (int)text.size, text.data);
+		}
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* in failsafe everything is a string, so "0" and "null" stay plain */
+START_TEST(scalar_emit_failsafe_plain)
+{
+	static const char yaml[] = "a: 0\nb: null\nc: yes\nd: x\n";
+	struct fy_generic_builder *gb;
+	fy_generic_sized_string in = { yaml, sizeof(yaml) - 1 }, text;
+	fy_generic parsed, emitted;
+	size_t ev;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_nonnull(gb);
+
+	for (ev = 0; ev < 2; ev++) {
+		fy_gb_set_schema(gb, FYGS_YAML1_2_FAILSAFE);
+		parsed = fy_parse(gb, in, 0, NULL);
+		ck_assert(fy_generic_is_valid(parsed));
+
+		emitted = fy_emit(gb, parsed, ev ? FYOPEF_EMIT_EVENTS : 0, NULL);
+		ck_assert(fy_is_string(emitted));
+		text = fy_castp(&emitted, fy_szstr_empty);
+		ck_assert_msg(text.size == in.size && !memcmp(text.data, yaml, in.size),
+			      "failsafe%s: expected plain, got:\n%.*s",
+			      ev ? " (events)" : "", (int)text.size, text.data);
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/* the schema decides, e.g. "yes" is only a bool in yaml 1.1 */
+START_TEST(scalar_plain_string_changes_type)
+{
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_YAML1_1, "yes", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_YAML1_2_CORE, "yes", FY_NT));
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_AUTO, "yes", FY_NT));
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_YAML1_2_CORE, "0o17", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_YAML1_1, "0o17", FY_NT));
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_AUTO, "0o17", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_YAML1_2_FAILSAFE, "0", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_YAML1_1_FAILSAFE, "yes", FY_NT));
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_JSON, "null", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_JSON, "~", FY_NT));
+	ck_assert(fy_generic_plain_string_changes_type(FYGS_AUTO, "", 0));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_AUTO, "abc", FY_NT));
+	ck_assert(!fy_generic_plain_string_changes_type(FYGS_AUTO, "nope", FY_NT));
+
+	ck_assert_int_eq(fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, "0x10", FY_NT), FYGT_INT);
+	ck_assert_int_eq(fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, ".inf", FY_NT), FYGT_FLOAT);
+	ck_assert_int_eq(fy_generic_schema_plain_type(FYGS_YAML1_1, "off", FY_NT), FYGT_BOOL);
+	ck_assert_int_eq(fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, "~", FY_NT), FYGT_NULL);
+	ck_assert_int_eq(fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, "x", FY_NT), FYGT_STRING);
+}
+END_TEST
+
+/* =========================================================================
  * Register all scalar tests
  * ========================================================================= */
 
@@ -995,6 +1165,12 @@ void libfyaml_case_generic_scalars(struct fy_check_suite *cs)
 
 	/* JSON-specific behavior */
 	fy_check_testcase_add_test(ctc, scalar_json_specific);
+
+	/* emitted strings that look like other types */
+	fy_check_testcase_add_test(ctc, scalar_emit_quotes_lookalikes);
+	fy_check_testcase_add_test(ctc, scalar_emit_plain_strings);
+	fy_check_testcase_add_test(ctc, scalar_emit_failsafe_plain);
+	fy_check_testcase_add_test(ctc, scalar_plain_string_changes_type);
 }
 
 FY_DIAG_POP

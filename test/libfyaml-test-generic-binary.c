@@ -106,14 +106,8 @@ START_TEST(binary_every_byte)
 		b[2] = 'z';
 		snprintf(name, sizeof(name), "mid_%02x", i);
 		binary_check_bytes(gb, name, b, 3);
-		/*
-		 * alone only for the high bytes; a lone "0" or "~" is emitted
-		 * plain and reads back as an int or null, a separate problem
-		 */
-		if (i >= 0x80) {
-			snprintf(name, sizeof(name), "alone_%02x", i);
-			binary_check_bytes(gb, name, b + 1, 1);
-		}
+		snprintf(name, sizeof(name), "alone_%02x", i);
+		binary_check_bytes(gb, name, b + 1, 1);
 		snprintf(name, sizeof(name), "end_%02x", i);
 		binary_check_bytes(gb, name, b, 2);
 	}
