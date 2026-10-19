@@ -3368,12 +3368,29 @@ fy_generic_op_rest(const struct fy_generic_op_desc *desc FY_UNUSED,
 	return fy_generic_op_slice_internal(gb, flags, in, &local_args, 1, SIZE_MAX);
 }
 
-static void cache_entry_cleanup(struct fy_generic_builder *gb)
+/* a cache hit's values point into the entry, it goes with the builder */
+static void cache_entry_destroy(void *data)
 {
-	struct fy_parse_cache_entry *entry;
+	fy_parse_cache_entry_destroy(data);
+}
 
-	entry = fy_generic_builder_get_userdata(gb);
-	fy_parse_cache_entry_destroy(entry);
+/*
+ * keep the cache entry of a hit for as long as the builder lives; an
+ * in-place builder, e.g. of fy_local_parse(), is never destroyed, so the
+ * values are copied into it and the entry is left for the caller to drop
+ */
+static fy_generic
+fy_generic_op_cache_hit_keep(struct fy_generic_builder *gb,
+			     struct fy_parse_cache_entry **entryp, fy_generic out)
+{
+	if (gb->flags & FYGBF_IN_PLACE)
+		return fy_gb_internalize(gb, out);
+
+	if (fy_generic_builder_keep(gb, cache_entry_destroy, *entryp))
+		return fy_invalid;
+	*entryp = NULL;
+
+	return out;
 }
 
 static fy_generic
@@ -3508,10 +3525,10 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 				if (fy_generic_is_invalid(out))
 					goto err_out;
 
-				fy_generic_builder_set_userdata(gb, cache_entry);
-				fy_generic_builder_set_cleanup(gb, cache_entry_cleanup);
+				out = fy_generic_op_cache_hit_keep(gb, &cache_entry, out);
+				if (fy_generic_is_invalid(out))
+					goto err_out;
 
-				cache_entry = NULL;
 				goto out;
 			}
 		}
@@ -3533,9 +3550,9 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 				if (fy_generic_is_invalid(out))
 					goto err_out;
 
-				fy_generic_builder_set_userdata(gb, cache_entry);
-				fy_generic_builder_set_cleanup(gb, cache_entry_cleanup);
-				cache_entry = NULL;
+				out = fy_generic_op_cache_hit_keep(gb, &cache_entry, out);
+				if (fy_generic_is_invalid(out))
+					goto err_out;
 
 				goto out;
 			}

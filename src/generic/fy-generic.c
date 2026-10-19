@@ -1308,13 +1308,49 @@ static const struct fy_generic_builder_cfg default_generic_builder_cfg = {
 	.allocator = NULL,	/* use default */
 };
 
+int fy_generic_builder_keep(struct fy_generic_builder *gb,
+			    void (*destroy)(void *data), void *data)
+{
+	struct fy_generic_builder_keep *k, *head;
+
+	if (!gb || !destroy)
+		return -1;
+
+	/* from the builder, not malloc; builders can live on the stack */
+	k = fy_gb_alloc(gb, sizeof(*k), _Alignof(struct fy_generic_builder_keep));
+	if (!k)
+		return -1;
+	k->destroy = destroy;
+	k->data = data;
+
+	/* push, other threads may be keeping things too */
+	head = fy_atomic_load(&gb->keep);
+	do {
+		k->next = head;
+	} while (!fy_atomic_compare_exchange_weak(&gb->keep, &head, k));
+
+	return 0;
+}
+
+/* before the allocator goes, the nodes are builder memory */
+static void fy_generic_builder_release_kept(struct fy_generic_builder *gb)
+{
+	struct fy_generic_builder_keep *k;
+
+	for (k = fy_atomic_exchange(&gb->keep, NULL); k; k = k->next)
+		k->destroy(k->data);
+}
+
 void fy_generic_builder_cleanup(struct fy_generic_builder *gb)
 {
 	if (!gb)
 		return;
 
+	/* the cleanup callback may still look at values in the kept data */
 	if (gb->cleanup)
 		gb->cleanup(gb);
+
+	fy_generic_builder_release_kept(gb);
 
 	if (gb->linear)
 		fy_align_free(gb->linear);
@@ -1522,6 +1558,8 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 	}
 
 	gb->userdata = NULL;
+
+	fy_generic_builder_release_kept(gb);
 
 	if (gb->linear) {
 		fy_align_free(gb->linear);

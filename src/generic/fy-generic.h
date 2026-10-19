@@ -34,6 +34,16 @@
 
 struct fy_generic_iterator;
 
+/*
+ * something destroyed with the builder, e.g. a parse cache entry that the
+ * builder's values point into
+ */
+struct fy_generic_builder_keep {
+	struct fy_generic_builder_keep *next;
+	void (*destroy)(void *data);
+	void *data;
+};
+
 struct fy_generic_builder {
 	struct fy_generic_builder_cfg cfg;
 	enum fy_generic_schema schema;
@@ -44,7 +54,16 @@ struct fy_generic_builder {
 	FY_ATOMIC(uint64_t) allocation_failures;
 	void *userdata;
 	fy_generic_builder_cleanup_fn cleanup;
+	FY_ATOMIC(struct fy_generic_builder_keep *) keep;
 };
+
+/*
+ * destroy data when the builder is destroyed or reset, after its cleanup
+ * callback; many can be kept, e.g. one per cached parse. On failure the
+ * caller still owns data.
+ */
+int fy_generic_builder_keep(struct fy_generic_builder *gb,
+			    void (*destroy)(void *data), void *data);
 
 enum fy_generic_iterator_state {
 	FYGIS_WAITING_STREAM_START,
