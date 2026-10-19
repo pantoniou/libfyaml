@@ -5143,6 +5143,12 @@ fy_emit_generic_scalar_style(struct fy_emitter *emit, fy_generic v, fy_generic_s
 	if (style == FYNS_ANY && fy_emit_generic_is_null_scalar(emit, v) &&
 	    !fy_emit_is_json_mode(emit))
 		style = FYNS_DOUBLE_QUOTED;
+
+	/* a string that reads back as another type is quoted, even if plain was asked */
+	if ((style == FYNS_ANY || style == FYNS_PLAIN) && fy_generic_is_string(v) &&
+	    !fy_emit_is_json_mode(emit) &&
+	    fy_generic_plain_string_changes_type(emit->generic_schema, szstr.data, szstr.size))
+		style = FYNS_DOUBLE_QUOTED;
 	if (fy_emit_generic_is_json_plain(emit, v))
 		ta_mod.flags |= FYTTAF_X_JSON_PLAIN;
 	if ((ta_mod.flags & FYTTAF_X_JSON_PLAIN) &&
@@ -6105,6 +6111,12 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 		fyds = fy_generic_vds_get_document_state(vds);
 		if (!fyds)
 			goto err_out;
+
+		/* the schema decides which strings must be quoted, e.g. "0" */
+		emit->generic_schema = fy_generic_schema_from_text(
+				fy_get(vds, "schema", (const char *)NULL));
+		if (!fy_generic_schema_is_valid(emit->generic_schema))
+			emit->generic_schema = FYGS_AUTO;
 
 		/* FYET_DOCUMENT_START */
 		fy_emit_prepare_document_state(emit, fyds);

@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include <libfyaml.h>
+#include <libfyaml/libfyaml-generic.h>
 
 #include "fy-utf8.h"
 #include "fy-event.h"
@@ -97,6 +98,7 @@ struct fy_emitter {
 
 	struct fy_document *fyd;
 	struct fy_document_state *fyds;	/* fyd->fyds when fyd != NULL */
+	enum fy_generic_schema generic_schema;	/* of the generic document, e.g. failsafe */
 	struct fy_emit_accum ea;
 	char ea_inplace_buf[256];	/* the in place accumulator buffer before allocating */
 	struct fy_diag *diag;

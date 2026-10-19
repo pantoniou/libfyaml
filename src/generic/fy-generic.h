@@ -198,4 +198,19 @@ fy_document_state_format_tag_alloc(struct fy_document_state *fyds,
 				   const char *tag, size_t tag_size,
 				   size_t *formatted_tag_sizep);
 
+/*
+ * the type plain scalar text resolves to under a schema, without building it,
+ * e.g. "0" is FYGT_INT and "yes" is FYGT_BOOL under FYGS_YAML1_1
+ */
+enum fy_generic_type
+fy_generic_schema_plain_type(enum fy_generic_schema schema, const char *text, size_t len);
+
+/*
+ * true if a string written plain would read back as another type under the
+ * schema, e.g. "0", "null", or "yes" in yaml 1.1; never for failsafe, and by
+ * both yaml 1.2 core and 1.1 for FYGS_AUTO, as a reader may use either
+ */
+bool fy_generic_plain_string_changes_type(enum fy_generic_schema schema,
+					  const char *text, size_t len);
+
 #endif

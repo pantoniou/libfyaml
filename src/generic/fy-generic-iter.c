@@ -543,6 +543,13 @@ fygi_emit_event_create(struct fy_generic_iterator *fygi, struct fy_emitter *emit
 		if (type == FYGT_STRING && sz == 0 && ss == FYSS_ANY &&
 		    fygi_schema_empty_is_null(fygi->schema))
 			ss = FYSS_DOUBLE_QUOTED;
+		/*
+		 * a string that reads back as another type is quoted, even if
+		 * plain was asked; JSON quotes all strings anyway
+		 */
+		if (type == FYGT_STRING && (ss == FYSS_ANY || ss == FYSS_PLAIN) &&
+		    fy_generic_plain_string_changes_type(fygi->schema, text, sz))
+			ss = FYSS_DOUBLE_QUOTED;
 		fye = fy_emit_event_create(emit, FYET_SCALAR, ss,
 				text, sz, gd->anchor, gd->tag);
 		free(text_alloc);

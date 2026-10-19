@@ -2160,12 +2160,29 @@ fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
 	return fy_gb_indirect_create(gb, &gi);
 }
 
-fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
-					 const char *text, size_t len,
-					 enum fy_generic_type force_type)
+/* what plain scalar text resolves to, before it's built into a generic */
+struct fy_scalar_text_value {
+	enum fy_generic_type type;
+	bool is_unsigned;	/* FYGT_INT: ulv, not lv */
+	union {
+		bool bv;
+		long long lv;
+		unsigned long long ulv;
+		double dv;
+	};
+};
+
+/*
+ * resolve plain scalar text by the schema rules without building a value,
+ * e.g. "0x10" is an int 16 in yaml 1.2 core, "yes" is a bool in yaml 1.1;
+ * r->type is FYGT_INVALID when force_type can't be met
+ */
+static void
+fy_scalar_text_resolve(enum fy_generic_schema schema,
+		       const char *text, size_t len,
+		       enum fy_generic_type force_type,
+		       struct fy_scalar_text_value *r)
 {
-	enum fy_generic_schema schema;
-	fy_generic v;
 	const char *s, *e, *ss;
 	const char *dec, *fract, *exp;
 	char sign, exp_sign;
@@ -2179,12 +2196,8 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 	int cn;		/* next byte, or -1 at the end */
 	char underscore_sep;
 
-	if (len == FY_NT)
-		len = strlen(text);
-
-	v = fy_invalid;
-
-	schema = gb->schema;
+	memset(r, 0, sizeof(*r));
+	r->type = FYGT_INVALID;
 
 	/* force a string? okie-dokie */
 	if (force_type == FYGT_STRING)
@@ -2209,16 +2222,18 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 	case FYGS_JSON:
 		if (len == 4) {
 			if (!memcmp(text, "null", 4)) {
-				v = fy_null;
+				r->type = FYGT_NULL;
 				break;
 			}
 			if (!memcmp(text, "true", 4)) {
-				v = fy_true;
+				r->type = FYGT_BOOL;
+				r->bv = true;
 				break;
 			}
 		} else if (len == 5) {
 			if (!memcmp(text, "false", 5)) {
-				v = fy_false;
+				r->type = FYGT_BOOL;
+				r->bv = false;
 				break;
 			}
 		}
@@ -2227,39 +2242,45 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 	case FYGS_YAML1_2_CORE:
 
 		if (len == 0 || (len == 1 && *text == '~')) {
-			v = fy_null;
+			r->type = FYGT_NULL;
 			break;
 		}
 
 		if (len == 4) {
 		    if (!memcmp(text, "null", 4) || !memcmp(text, "Null", 4) || !memcmp(text, "NULL", 4)) {
-			    v = fy_null;
+			    r->type = FYGT_NULL;
 			    break;
 		    }
 		    if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4)) {
-			    v = fy_true;
+			    r->type = FYGT_BOOL;
+			    r->bv = true;
 			    break;
 		    }
 		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
-				v = fy_gb_to_generic(gb, INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = INFINITY;
 				break;
 		    }
 		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".NaN", 4) || !memcmp(text, ".NAN", 4)) {
-				v = fy_gb_to_generic(gb, NAN);
+				r->type = FYGT_FLOAT;
+				r->dv = NAN;
 				break;
 		    }
 		}
 		if (len == 5) {
 		    if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5)) {
-			    v = fy_false;
+			    r->type = FYGT_BOOL;
+			    r->bv = false;
 			    break;
 		    }
 		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
-				v = fy_gb_to_generic(gb, INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = INFINITY;
 				break;
 		    }
 		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
-				v = fy_gb_to_generic(gb, -INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = -INFINITY;
 				break;
 		    }
 		}
@@ -2270,72 +2291,84 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 	case FYGS_YAML1_1_PYYAML:
 
 		if (len == 0 || (len == 1 && *text == '~')) {
-			v = fy_null;
+			r->type = FYGT_NULL;
 			break;
 		}
 
 		if (schema != FYGS_YAML1_1_PYYAML && len == 1) {
 			if (*text == 'y' || *text == 'Y') {
-				v = fy_true;
+				r->type = FYGT_BOOL;
+				r->bv = true;
 				break;
 			}
 			if (*text == 'n' || *text == 'N') {
-				v = fy_false;
+				r->type = FYGT_BOOL;
+				r->bv = false;
 				break;
 			}
 		}
 
 		if (len == 2) {
 			if (!memcmp(text, "on", 2) || !memcmp(text, "On", 2) || !memcmp(text, "ON", 2)) {
-				v = fy_true;
+				r->type = FYGT_BOOL;
+				r->bv = true;
 				break;
 			}
 			if (!memcmp(text, "no", 2) || !memcmp(text, "No", 2) || !memcmp(text, "NO", 2)) {
-				v = fy_false;
+				r->type = FYGT_BOOL;
+				r->bv = false;
 				break;
 			}
 		}
 
 		if (len == 3) {
 			if (!memcmp(text, "off", 3) || !memcmp(text, "Off", 3) || !memcmp(text, "OFF", 3)) {
-				v = fy_false;
+				r->type = FYGT_BOOL;
+				r->bv = false;
 				break;
 			}
 			if (!memcmp(text, "yes", 3) || !memcmp(text, "Yes", 3) || !memcmp(text, "YES", 3)) {
-				v = fy_true;
+				r->type = FYGT_BOOL;
+				r->bv = true;
 				break;
 			}
 		}
 
 		if (len == 4) {
 		    if (!memcmp(text, "null", 4) || !memcmp(text, "Null", 4) || !memcmp(text, "NULL", 4)) {
-			    v = fy_null;
+			    r->type = FYGT_NULL;
 			    break;
 		    }
 		    if (!memcmp(text, "true", 4) || !memcmp(text, "True", 4) || !memcmp(text, "TRUE", 4)) {
-			    v = fy_true;
+			    r->type = FYGT_BOOL;
+			    r->bv = true;
 			    break;
 		    }
 		    if (!memcmp(text, ".inf", 4) || !memcmp(text, ".Inf", 4) || !memcmp(text, ".INF", 4)) {
-				v = fy_gb_to_generic(gb, INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = INFINITY;
 				break;
 		    }
 		    if (!memcmp(text, ".nan", 4) || !memcmp(text, ".NaN", 4) || !memcmp(text, ".NAN", 4)) {
-				v = fy_gb_to_generic(gb, NAN);
+				r->type = FYGT_FLOAT;
+				r->dv = NAN;
 				break;
 		    }
 		}
 		if (len == 5) {
 		    if (!memcmp(text, "false", 5) || !memcmp(text, "False", 5) || !memcmp(text, "FALSE", 5)) {
-			    v = fy_false;
+			    r->type = FYGT_BOOL;
+			    r->bv = false;
 			    break;
 		    }
 		    if (!memcmp(text, "+.inf", 5) || !memcmp(text, "+.Inf", 5) || !memcmp(text, "+.INF", 5)) {
-				v = fy_gb_to_generic(gb, INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = INFINITY;
 				break;
 		    }
 		    if (!memcmp(text, "-.inf", 5) || !memcmp(text, "-.Inf", 5) || !memcmp(text, "-.INF", 5)) {
-				v = fy_gb_to_generic(gb, -INFINITY);
+				r->type = FYGT_FLOAT;
+				r->dv = -INFINITY;
 				break;
 		    }
 		}
@@ -2344,15 +2377,15 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 
 	case FYGS_PYTHON:
 		/* we don't handle the python schema here */
-		return fy_invalid;
+		return;
 	default:
 		break;
 	}
 
-	if (fy_generic_is_valid(v)) {
-		if (force_type != FYGT_INVALID && fy_generic_get_type(v) != force_type)
-			return fy_invalid;
-		return v;
+	if (r->type != FYGT_INVALID) {
+		if (force_type != FYGT_INVALID && r->type != force_type)
+			r->type = FYGT_INVALID;
+		return;
 	}
 
 	/* both yaml1.1 and python schemas allow underscores */
@@ -2549,19 +2582,26 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 
 		errno = 0;
 		lv = strtoll(tbuf, NULL, base);
-		if (errno == 0)
-			return fy_gb_to_generic(gb, lv);
+		if (errno == 0) {
+			r->type = FYGT_INT;
+			r->lv = lv;
+			return;
+		}
 
 		if (errno == ERANGE) {
 			errno = 0;
 			ulv = strtoull(tbuf, NULL, base);
-			if (errno == 0)
-				return fy_gb_to_generic(gb, ulv);
+			if (errno == 0) {
+				r->type = FYGT_INT;
+				r->is_unsigned = true;
+				r->ulv = ulv;
+				return;
+			}
 		}
 
 		if (force_type == FYGT_INVALID)
 			goto do_string;
-		return fy_invalid;
+		return;
 
 	} else if (force_type == FYGT_INVALID || force_type == FYGT_FLOAT) {
 
@@ -2570,14 +2610,93 @@ fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
 		if (errno == ERANGE)
 			goto do_string;
 
-		return fy_gb_to_generic(gb, dv);
+		r->type = FYGT_FLOAT;
+		r->dv = dv;
+		return;
 	}
 
 do_string:
 	if (force_type != FYGT_INVALID && force_type != FYGT_STRING)
-		return fy_invalid;
+		return;
 
-	return fy_gb_string_size_create(gb, text, len);
+	r->type = FYGT_STRING;
+}
+
+enum fy_generic_type
+fy_generic_schema_plain_type(enum fy_generic_schema schema, const char *text, size_t len)
+{
+	struct fy_scalar_text_value r;
+
+	if (len == FY_NT)
+		len = strlen(text);
+
+	fy_scalar_text_resolve(schema, text, len, FYGT_INVALID, &r);
+	return r.type;
+}
+
+bool fy_generic_plain_string_changes_type(enum fy_generic_schema schema,
+					  const char *text, size_t len)
+{
+	if (len == FY_NT)
+		len = strlen(text);
+
+	/* only these can start a null, bool, int or float, e.g. "0", "~", "yes" */
+	if (len > 0 && !strchr("0123456789+-.~nNtTfFyYoO", text[0]))
+		return false;
+
+	switch (schema) {
+	case FYGS_YAML1_2_FAILSAFE:
+	case FYGS_YAML1_1_FAILSAFE:
+		return false;	/* everything is a string */
+
+	case FYGS_YAML1_2_CORE:
+	case FYGS_YAML1_2_JSON:
+	case FYGS_YAML1_1:
+	case FYGS_YAML1_1_PYYAML:
+	case FYGS_JSON:
+		return fy_generic_schema_plain_type(schema, text, len) != FYGT_STRING;
+
+	default:
+		/* no schema given, a reader may use either */
+		return fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, text, len) != FYGT_STRING ||
+		       fy_generic_schema_plain_type(FYGS_YAML1_1, text, len) != FYGT_STRING;
+	}
+}
+
+fy_generic fy_gb_create_scalar_from_text(struct fy_generic_builder *gb,
+					 const char *text, size_t len,
+					 enum fy_generic_type force_type)
+{
+	struct fy_scalar_text_value r;
+	long long lv;
+	unsigned long long ulv;
+	double dv;
+
+	if (len == FY_NT)
+		len = strlen(text);
+
+	fy_scalar_text_resolve(gb->schema, text, len, force_type, &r);
+
+	switch (r.type) {
+	case FYGT_NULL:
+		return fy_null;
+	case FYGT_BOOL:
+		return r.bv ? fy_true : fy_false;
+	case FYGT_INT:
+		if (r.is_unsigned) {
+			ulv = r.ulv;
+			return fy_gb_to_generic(gb, ulv);
+		}
+		lv = r.lv;
+		return fy_gb_to_generic(gb, lv);
+	case FYGT_FLOAT:
+		dv = r.dv;
+		return fy_gb_to_generic(gb, dv);
+	case FYGT_STRING:
+		return fy_gb_string_size_create(gb, text, len);
+	default:
+		return fy_invalid;
+	}
 }
 
 /* Type conversion functions - schema-aware where appropriate */
