@@ -1221,7 +1221,7 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
 	}
 	if (fy_generic_is_valid(vfailsafe_str)) {
 		gi.flags |= FYGIF_FAILSAFE_STR;
-		gi.style = vfailsafe_str;
+		gi.failsafe_str = vfailsafe_str;
 	}
 	if (fy_generic_is_valid(vmarker)) {
 		gi.flags |= FYGIF_MARKER;
