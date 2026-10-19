@@ -366,11 +366,11 @@ START_TEST(parser_generic_parse_cache_binary)
 	ck_assert_int_eq((int)write(fd, yaml, sizeof(yaml) - 1), (int)sizeof(yaml) - 1);
 	ck_assert_int_eq(close(fd), 0);
 
-	/* a builder per parse; a builder keeps only one cache entry alive */
-	for (i = 0; i < sizeof(passes) / sizeof(passes[0]); i++) {
-		gb = fy_generic_builder_create(NULL);
-		ck_assert_ptr_ne(gb, NULL);
+	/* one builder; it keeps every cache entry its values point into */
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
 
+	for (i = 0; i < sizeof(passes) / sizeof(passes[0]); i++) {
 		parsed = fy_parse(gb, fy_null,
 				  passes[i].flags | FYOPPF_INPUT_TYPE_FILENAME |
 				  FYOPPF_ENABLE_CACHE | FYOPPF_DISABLE_DIRECTORY, yaml_template);
@@ -381,11 +381,115 @@ START_TEST(parser_generic_parse_cache_binary)
 			      !memcmp(back.data, passes[i].value, back.size),
 			      "pass %zu: got \"%.*s\"", i, (int)back.size, back.data);
 		ck_assert_int_eq(cache_dir_entry_count(), passes[i].entries);
-
-		fy_generic_builder_destroy(gb);
 	}
 
+	fy_generic_builder_destroy(gb);
 	unlink(yaml_template);
+
+	fy_parse_cache_override(NULL);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(old_min_size), 0);
+
+	remove_tmpdir(cache_dir, cache_dir);
+}
+END_TEST
+
+static int cache_builder_cleanups;
+
+static void cache_builder_cleanup(struct fy_generic_builder *gb)
+{
+	ck_assert_ptr_eq(fy_generic_builder_get_userdata(gb), &cache_builder_cleanups);
+	cache_builder_cleanups++;
+}
+
+static fy_generic cache_builder_parse(struct fy_generic_builder *gb, const char *file)
+{
+	return fy_parse(gb, fy_null, FYOPPF_INPUT_TYPE_FILENAME | FYOPPF_ENABLE_CACHE |
+			FYOPPF_DISABLE_DIRECTORY, file);
+}
+
+/*
+ * cached parses keep their entries in the builder, not in its userdata:
+ * every result stays good, the user's userdata and cleanup are left alone,
+ * reset drops the entries, and a stack builder gets a copy
+ */
+START_TEST(parser_generic_parse_cache_builder)
+{
+	static const char yaml1[] = "a: [1, 2, 3]\nb: text one\n";
+	static const char yaml2[] = "x: {y: z}\nw: text two\n";
+	struct fy_generic_builder *gb;
+	fy_generic expect1, expect2, r[6], vl;
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	char *cache_template, *file1, *file2, *cache_dir;
+	ssize_t old_min_size;
+	size_t i;
+	int fd;
+
+	tmp = fy_tmpdir(tmpbuf, sizeof(tmpbuf));
+	ck_assert_ptr_ne(tmp, NULL);
+	cache_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-gb-XXXXXX", tmp);
+	file1 = fy_sprintfa("%s" FY_PS "libfyaml-cache-gb1-XXXXXX", tmp);
+	file2 = fy_sprintfa("%s" FY_PS "libfyaml-cache-gb2-XXXXXX", tmp);
+	cache_dir = fy_mkdtemp(cache_template);
+	ck_assert_ptr_ne(cache_dir, NULL);
+	old_min_size = fy_parse_cache_get_min_file_size();
+	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(0), 0);
+
+	fd = fy_mkstemp(file1);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq((int)write(fd, yaml1, sizeof(yaml1) - 1), (int)sizeof(yaml1) - 1);
+	ck_assert_int_eq(close(fd), 0);
+	fd = fy_mkstemp(file2);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq((int)write(fd, yaml2, sizeof(yaml2) - 1), (int)sizeof(yaml2) - 1);
+	ck_assert_int_eq(close(fd), 0);
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	expect1 = fy_mapping(gb, "a", fy_sequence(gb, 1, 2, 3), "b", "text one");
+	expect2 = fy_mapping(gb, "x", fy_mapping(gb, "y", "z"), "w", "text two");
+
+	cache_builder_cleanups = 0;
+	fy_generic_builder_set_userdata(gb, &cache_builder_cleanups);
+	fy_generic_builder_set_cleanup(gb, cache_builder_cleanup);
+
+	/* the first two fill the cache, the rest are hits */
+	for (i = 0; i < 6; i++)
+		r[i] = cache_builder_parse(gb, (i & 1) ? file2 : file1);
+	ck_assert_int_eq(cache_dir_entry_count(), 2);
+
+	/* all of them are still good, and the userdata is still ours */
+	for (i = 0; i < 6; i++)
+		ck_assert_msg(fy_generic_compare(r[i], (i & 1) ? expect2 : expect1) == 0,
+			      "result %zu changed", i);
+	ck_assert_ptr_eq(fy_generic_builder_get_userdata(gb), &cache_builder_cleanups);
+
+	/* reset runs the cleanup once and drops the entries */
+	fy_generic_builder_reset(gb);
+	ck_assert_int_eq(cache_builder_cleanups, 1);
+
+	/* the builder still works after it */
+	expect1 = fy_mapping(gb, "a", fy_sequence(gb, 1, 2, 3), "b", "text one");
+	r[0] = cache_builder_parse(gb, file1);
+	ck_assert(fy_generic_compare(r[0], expect1) == 0);
+
+	/* our cleanup is gone after a reset, set it again for the destroy */
+	fy_generic_builder_set_userdata(gb, &cache_builder_cleanups);
+	fy_generic_builder_set_cleanup(gb, cache_builder_cleanup);
+	fy_generic_builder_destroy(gb);
+	ck_assert_int_eq(cache_builder_cleanups, 2);
+
+	/* a stack builder is never destroyed, a hit is copied into it */
+	for (i = 0; i < 3; i++) {
+		vl = fy_local_parse_file(FYOPPF_ENABLE_CACHE | FYOPPF_DISABLE_DIRECTORY, file2);
+		ck_assert(fy_generic_is_valid(vl));
+		ck_assert_str_eq(fy_get(vl, "w", ""), "text two");
+		ck_assert_str_eq(fy_get(fy_get(vl, "x", fy_invalid), "y", ""), "z");
+	}
+
+	unlink(file1);
+	unlink(file2);
 
 	fy_parse_cache_override(NULL);
 	ck_assert_int_eq(fy_parse_cache_set_min_file_size(old_min_size), 0);
@@ -2880,6 +2984,7 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 #endif
 	fy_check_testcase_add_test(ctc, parser_file_parse_cache_restore);
 	fy_check_testcase_add_test(ctc, parser_generic_parse_cache_binary);
+	fy_check_testcase_add_test(ctc, parser_generic_parse_cache_builder);
 #endif
 	fy_check_testcase_add_test(ctc, parser_parse_load_document);
 	fy_check_testcase_add_test(ctc, parser_document_resolve);
