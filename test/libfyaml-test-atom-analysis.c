@@ -21,6 +21,8 @@
 
 #include "fy-atom.h"
 #include "fy-token.h"
+#include "fy-input.h"
+#include "fy-utf8.h"
 
 #include "fy-check.h"
 
@@ -78,6 +80,8 @@ static const struct {
 	{ FYTTAF_VALID_ANCHOR, "VALID_ANCHOR" },
 	{ FYTTAF_JSON_ESCAPE, "JSON_ESCAPE" },
 	{ FYTTAF_HIGH_ASCII, "HIGH_ASCII" },
+	{ FYTTAF_HAS_INVALID_UTF8, "HAS_INVALID_UTF8" },
+	{ FYTTAF_HAS_PARTIAL_UTF8, "HAS_PARTIAL_UTF8" },
 	{ FYTTAF_ANALYZED, "ANALYZED" },
 };
 
@@ -117,6 +121,8 @@ static const uint64_t atom_analysis_coverage_mask =
 	FYTTAF_VALID_ANCHOR |
 	FYTTAF_JSON_ESCAPE |
 	FYTTAF_HIGH_ASCII |
+	FYTTAF_HAS_INVALID_UTF8 |
+	FYTTAF_HAS_PARTIAL_UTF8 |
 	FYTTAF_ANALYZED;
 
 static void format_flags(uint64_t flags, char *buf, size_t bufsz)
@@ -182,6 +188,31 @@ static void check_atom_analysis_flag_case(const struct atom_analysis_case *tc,
 		      flag_name, tc->name, ta.flags, got_buf);
 }
 
+/* same case, through an input atom instead of the raw content */
+static void check_atom_analysis_case_atom(const struct atom_analysis_case *tc)
+{
+	struct fy_text_analysis ta;
+	struct fy_input *fyi;
+	struct fy_atom handle;
+	char got_buf[1024];
+
+	memset(&handle, 0, sizeof(handle));
+	fyi = fy_input_from_data(tc->data, tc->size, &handle, false);
+	ck_assert_ptr_ne(fyi, NULL);
+
+	memset(&ta, 0, sizeof(ta));
+	fy_atom_text_analyze(&handle, handle.style, &ta);
+	fy_input_unref(fyi);
+
+	format_flags(ta.flags, got_buf, sizeof(got_buf));
+	ck_assert_msg((ta.flags & tc->set_flags) == tc->set_flags,
+		      "%s (atom): missing expected flags\nhave=0x%016" PRIx64 " (%s)",
+		      tc->name, ta.flags, got_buf);
+	ck_assert_msg((ta.flags & tc->clear_flags) == 0,
+		      "%s (atom): unexpected flags present\nhave=0x%016" PRIx64 " (%s)",
+		      tc->name, ta.flags, got_buf);
+}
+
 START_TEST(atom_analysis_flag_no_text_token)
 {
 	struct fy_token *fyt;
@@ -241,6 +272,8 @@ START_TEST(atom_analysis_coverage)
 		FYTTAF_VALID_ANCHOR |
 		FYTTAF_JSON_ESCAPE |
 		FYTTAF_HIGH_ASCII |
+		FYTTAF_HAS_INVALID_UTF8 |
+		FYTTAF_HAS_PARTIAL_UTF8 |
 		FYTTAF_ANALYZED;
 
 	ck_assert_msg((covered & atom_analysis_coverage_mask) == atom_analysis_coverage_mask,
@@ -657,6 +690,264 @@ START_TEST(atom_analysis_high_ascii)
 	};
 
 	check_atom_analysis_case(&tc);
+}
+END_TEST
+
+/* a scalar with bad bytes can only be double quoted, and is never direct */
+#define BAD_UTF8_CLEAR \
+	(FYTTAF_DIRECT_OUTPUT | FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW | \
+	 FYTTAF_CAN_BE_SINGLE_QUOTED | FYTTAF_CAN_BE_LITERAL | FYTTAF_CAN_BE_FOLDED)
+
+static const struct atom_analysis_case bad_utf8_cases[] = {
+	{
+		/* the line break after the bad byte is still seen */
+		.name = "invalid_mid",
+		.data = "ab\x89 c\nd", .size = 7,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8 | FYTTAF_CAN_BE_DOUBLE_QUOTED |
+			     FYTTAF_JSON_ESCAPE | FYTTAF_HAS_LB | FYTTAF_HAS_WS,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "zero_after_invalid",
+		.data = "\x89\0", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8 | FYTTAF_HAS_ZERO,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		/* U+20AC cut short */
+		.name = "partial_end",
+		.data = "ab\xe2\x82", .size = 4,
+		.set_flags = FYTTAF_HAS_PARTIAL_UTF8 | FYTTAF_CAN_BE_DOUBLE_QUOTED,
+		.clear_flags = FYTTAF_HAS_INVALID_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "partial_lead_only",
+		.data = "ab\xf0", .size = 3,
+		.set_flags = FYTTAF_HAS_PARTIAL_UTF8,
+		.clear_flags = FYTTAF_HAS_INVALID_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "partial_4byte",
+		.data = "\xf0\x9f\x98", .size = 3,
+		.set_flags = FYTTAF_HAS_PARTIAL_UTF8,
+		.clear_flags = FYTTAF_HAS_INVALID_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		/* a lead byte followed by ascii is not partial */
+		.name = "lead_then_ascii",
+		.data = "\xe2\x41", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		/* a stray continuation at the end is not partial either */
+		.name = "continuation_at_end",
+		.data = "a\x80", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		/* U+D800 encoded; never a valid start, even cut short */
+		.name = "encoded_surrogate",
+		.data = "\xed\xa0\x80", .size = 3,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "encoded_surrogate_cut",
+		.data = "\xed\xa0", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "overlong",
+		.data = "\xc0\x80", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "overlong_cut",
+		.data = "\xe0\x80", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		/* above U+10FFFF */
+		.name = "out_of_range_cut",
+		.data = "\xf4\x90", .size = 2,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR,
+	}, {
+		.name = "invalid_and_partial",
+		.data = "\x89" "a\xe2\x82", .size = 4,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8 | FYTTAF_HAS_PARTIAL_UTF8,
+		.clear_flags = BAD_UTF8_CLEAR,
+	}, {
+		.name = "valid_utf8",
+		.data = "\xc2\xa9\xe2\x82\xac", .size = 5,
+		.set_flags = FYTTAF_HIGH_ASCII,
+		.clear_flags = FYTTAF_HAS_INVALID_UTF8 | FYTTAF_HAS_PARTIAL_UTF8,
+	},
+};
+
+START_TEST(atom_analysis_bad_utf8)
+{
+	struct atom_analysis_case tc;
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(bad_utf8_cases); i++) {
+		tc = bad_utf8_cases[i];
+		tc.style = FYSS_ANY;
+		tc.lb_mode = fylb_cr_nl;
+		tc.preferred_style = (tc.set_flags & (FYTTAF_HAS_INVALID_UTF8 |
+						      FYTTAF_HAS_PARTIAL_UTF8)) ?
+				     FYSS_DOUBLE_QUOTED : FYSS_ANY;
+		check_atom_analysis_case(&tc);
+		check_atom_analysis_case_atom(&tc);
+	}
+}
+END_TEST
+
+/* every high byte alone: a lead byte that could start a sequence is partial */
+START_TEST(atom_analysis_bad_utf8_every_byte)
+{
+	struct atom_analysis_case tc;
+	char name[32];
+	unsigned char b[3];
+	unsigned int i;
+	bool lead;
+
+	for (i = 0x80; i <= 0xff; i++) {
+		b[0] = 'a';
+		b[1] = (unsigned char)i;
+		b[2] = 'b';
+		lead = i >= 0xc2 && i <= 0xf4;
+
+		/* in the middle it is always invalid */
+		snprintf(name, sizeof(name), "mid_%02x", i);
+		memset(&tc, 0, sizeof(tc));
+		tc.name = name;
+		tc.data = b;
+		tc.size = 3;
+		tc.style = FYSS_ANY;
+		tc.lb_mode = fylb_cr_nl;
+		tc.set_flags = FYTTAF_HAS_INVALID_UTF8 | FYTTAF_CAN_BE_DOUBLE_QUOTED;
+		tc.clear_flags = FYTTAF_HAS_PARTIAL_UTF8 | BAD_UTF8_CLEAR;
+		tc.preferred_style = FYSS_DOUBLE_QUOTED;
+		check_atom_analysis_case(&tc);
+		check_atom_analysis_case_atom(&tc);
+
+		/* at the end it is partial only if it can start a sequence */
+		snprintf(name, sizeof(name), "end_%02x", i);
+		tc.size = 2;
+		tc.set_flags = lead ? FYTTAF_HAS_PARTIAL_UTF8 : FYTTAF_HAS_INVALID_UTF8;
+		tc.clear_flags = (lead ? FYTTAF_HAS_INVALID_UTF8 : FYTTAF_HAS_PARTIAL_UTF8) |
+				 BAD_UTF8_CLEAR;
+		check_atom_analysis_case(&tc);
+		check_atom_analysis_case_atom(&tc);
+	}
+}
+END_TEST
+
+START_TEST(atom_analysis_utf8_get_bytes)
+{
+	static const struct {
+		const char *data;
+		size_t size;
+		int c, w, err;
+	} cases[] = {
+		{ "", 0, FYUG_EOF, 0, 0 },
+		{ "a", 1, 'a', 1, 0 },
+		{ "\xc2\xa9", 2, 0xa9, 2, 0 },
+		{ "\xf0\x9f\x98\x80", 4, 0x1f600, 4, 0 },
+		{ "\x89", 1, 0xdc89, 1, FYUG_INV },
+		{ "\xff", 1, 0xdcff, 1, FYUG_INV },
+		{ "\x80", 1, 0xdc80, 1, FYUG_INV },
+		{ "\xc0\x80", 2, 0xdcc0, 1, FYUG_INV },
+		{ "\xed\xb2\x89", 3, 0xdced, 1, FYUG_INV },
+		{ "\xe2\x82", 2, 0xdce2, 1, FYUG_PARTIAL },
+		{ "\xe2\x41", 2, 0xdce2, 1, FYUG_INV },
+	};
+	size_t i;
+	int c, w, err;
+
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
+		w = -1;
+		err = -1;
+		c = fy_utf8_get_bytes(cases[i].data, cases[i].size, &w, &err);
+		ck_assert_msg(c == cases[i].c, "case %zu: c=%x expected %x", i, c, cases[i].c);
+		ck_assert_msg(err == cases[i].err, "case %zu: err=%d expected %d", i, err, cases[i].err);
+		if (c >= 0)
+			ck_assert_msg(w == cases[i].w, "case %zu: w=%d expected %d", i, w, cases[i].w);
+	}
+
+	for (i = 0; i < 0x100; i++) {
+		c = fy_utf8_byte_mark((uint8_t)i);
+		ck_assert_int_eq(fy_utf8_is_byte_mark(c), i >= 0x80);
+		ck_assert_uint_eq(fy_utf8_byte_mark_value(c), i);
+	}
+}
+END_TEST
+
+/* every strict decoder says partial only for a real start that got cut off */
+START_TEST(atom_analysis_utf8_get_partial)
+{
+	static const struct {
+		const char *data;
+		size_t size;
+		int err;
+	} cases[] = {
+		{ "\xe2\x82", 2, FYUG_PARTIAL },
+		{ "\xe2", 1, FYUG_PARTIAL },
+		{ "\xc2", 1, FYUG_PARTIAL },
+		{ "\xf0\x9f\x98", 3, FYUG_PARTIAL },
+		{ "\xf4\x8f", 2, FYUG_PARTIAL },
+		{ "\x89", 1, FYUG_INV },
+		{ "\xff", 1, FYUG_INV },
+		{ "\xc0", 1, FYUG_INV },
+		{ "\xc1", 1, FYUG_INV },
+		{ "\xf5", 1, FYUG_INV },
+		{ "\xe2\x41", 2, FYUG_INV },
+		{ "\xe0\x80", 2, FYUG_INV },
+		{ "\xed\xa0", 2, FYUG_INV },
+		{ "\xf0\x80", 2, FYUG_INV },
+		{ "\xf4\x90", 2, FYUG_INV },
+		{ "\xf0\x9f\x41", 3, FYUG_INV },
+	};
+	size_t i;
+	int w;
+
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
+		const char *d = cases[i].data;
+		size_t n = cases[i].size;
+		int err = cases[i].err;
+
+		ck_assert_msg(fy_utf8_get(d, n, &w) == err, "get case %zu", i);
+		ck_assert_msg(fy_utf8_get_branch(d, n, &w) == err, "branch case %zu", i);
+		ck_assert_msg(fy_utf8_get_64(d, n) == err, "64 case %zu", i);
+		ck_assert_msg(fy_utf8_get_table(d, n, &w) == err, "table case %zu", i);
+		ck_assert_msg(fy_utf8_get_generic(d, n, &w) == err, "generic case %zu", i);
+		ck_assert_msg(fy_utf8_get_generic_s(d, d + n, &w) == err, "generic_s case %zu", i);
+	}
+}
+END_TEST
+
+START_TEST(atom_analysis_flag_has_invalid_utf8)
+{
+	static const struct atom_analysis_case tc = {
+		.name = "has_invalid_utf8",
+		.data = "\x89", .size = 1,
+		.style = FYSS_PLAIN,
+		.lb_mode = fylb_cr_nl,
+		.set_flags = FYTTAF_HAS_INVALID_UTF8,
+		.preferred_style = FYSS_ANY,
+	};
+
+	check_atom_analysis_flag_case(&tc, FYTTAF_HAS_INVALID_UTF8, "FYTTAF_HAS_INVALID_UTF8");
+}
+END_TEST
+
+START_TEST(atom_analysis_flag_has_partial_utf8)
+{
+	static const struct atom_analysis_case tc = {
+		.name = "has_partial_utf8",
+		.data = "\xe2\x82", .size = 2,
+		.style = FYSS_PLAIN,
+		.lb_mode = fylb_cr_nl,
+		.set_flags = FYTTAF_HAS_PARTIAL_UTF8,
+		.preferred_style = FYSS_ANY,
+	};
+
+	check_atom_analysis_flag_case(&tc, FYTTAF_HAS_PARTIAL_UTF8, "FYTTAF_HAS_PARTIAL_UTF8");
 }
 END_TEST
 
@@ -1286,6 +1577,10 @@ void libfyaml_case_atom_analysis(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, atom_analysis_end_indicator);
 	fy_check_testcase_add_test(ctc, atom_analysis_zero_byte);
 	fy_check_testcase_add_test(ctc, atom_analysis_high_ascii);
+	fy_check_testcase_add_test(ctc, atom_analysis_bad_utf8);
+	fy_check_testcase_add_test(ctc, atom_analysis_bad_utf8_every_byte);
+	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_bytes);
+	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_partial);
 
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_lb);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_ws);
@@ -1321,6 +1616,8 @@ void libfyaml_case_atom_analysis(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_valid_anchor);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_json_escape);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_high_ascii);
+	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_invalid_utf8);
+	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_partial_utf8);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_analyzed);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_no_text_token);
 	fy_check_testcase_add_test(ctc, atom_analysis_coverage);
