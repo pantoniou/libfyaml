@@ -1302,9 +1302,8 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	struct fy_atom *atom;
 	struct fy_atom_iter iter;
 	struct fy_emit_accum ea;	/* use an emit accumulator */
-	uint8_t non_utf8[4];
-	size_t non_utf8_len, k, tmplen;
-	int c, i, w, digit;
+	size_t tmplen;
+	int c, i, w, digit, err;
 	const struct fy_text_analysis *ta;
 	char *str;
 	const char *text;
@@ -1358,25 +1357,10 @@ char *fy_token_get_scalar_path_key(struct fy_token *fyt, size_t *lenp)
 	fy_emit_accum_utf8_put(&ea, '"');
 
 	for (;;) {
-		non_utf8_len = sizeof(non_utf8);
-		c = fy_atom_iter_utf8_quoted_get(&iter, &non_utf8_len, non_utf8);
+		/* a bad byte is a byte mark, e.g. 0x89 is written as \uDC89 */
+		c = fy_atom_iter_utf8_get_bytes(&iter, &err);
 		if (c < 0)
 			break;
-
-		if (c == 0 && non_utf8_len > 0) {
-			for (k = 0; k < non_utf8_len; k++) {
-				c = (int)non_utf8[k] & 0xff;
-				fy_emit_accum_utf8_put(&ea, '\\');
-				fy_emit_accum_utf8_put(&ea, 'x');
-				digit = ((unsigned int)c >> 4) & 15;
-				fy_emit_accum_utf8_put(&ea,
-						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
-				digit = (unsigned int)c & 15;
-				fy_emit_accum_utf8_put(&ea,
-						digit <= 9 ? ('0' + digit) : ('A' + digit - 10));
-			}
-			continue;
-		}
 
 		if (!fy_is_printq(c) || c == '"' || c == '\\') {
 

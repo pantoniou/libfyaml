@@ -1020,7 +1020,12 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 			s = t;
 			value = ret;
 
-			tt = fy_utf8_put(code, sizeof(code), value);
+			/* a byte mark is the byte itself, e.g. \uDC89 is 0x89 */
+			if (fy_utf8_is_byte_mark(value)) {
+				code[0] = fy_utf8_byte_mark_value(value);
+				tt = code + 1;
+			} else
+				tt = fy_utf8_put(code, sizeof(code), value);
 			if (!tt) {
 				ret = -1;
 				goto out;
@@ -1634,53 +1639,6 @@ int fy_atom_iter_utf8_get(struct fy_atom_iter *iter)
 int fy_atom_iter_utf8_get_bytes(struct fy_atom_iter *iter, int *errp)
 {
 	return fy_atom_iter_utf8_get_internal(iter, errp);
-}
-
-int fy_atom_iter_utf8_quoted_get(struct fy_atom_iter *iter, size_t *lenp, uint8_t *buf)
-{
-	ssize_t nread;
-	int c, w, ww;
-
-	if (!iter || !lenp || !buf || *lenp < 4)
-		return -1;
-
-	/* first try the pushed ungetc */
-	if (iter->unget_c >= 0) {
-		c = iter->unget_c;
-		iter->unget_c = -1;
-		*lenp = 0;
-		return c;
-	}
-
-	/* read first octet */
-	nread = fy_atom_iter_read(iter, &buf[0], 1);
-	if (nread != 1)
-		return -1;
-
-	/* get width from it (0 means illegal) - return it and mark it */
-	w = fy_utf8_width_by_first_octet(buf[0]);
-	if (!w) {
-		*lenp = 1;
-		return 0;
-	}
-
-	/* read the rest octets (if possible) */
-	if (w > 1) {
-		nread = fy_atom_iter_read(iter, buf + 1, w - 1);
-		if (nread != (w - 1)) {
-			*lenp = 1 + (nread > 0 ? (size_t)nread : 0);
-			return 0;
-		}
-	}
-
-	/* and return the decoded utf8 character */
-	c = fy_utf8_get(buf, w, &ww);
-	if (c >= 0) {
-		*lenp = 0;
-		return c;
-	}
-	*lenp = w;
-	return 0;
 }
 
 int fy_atom_iter_utf8_unget(struct fy_atom_iter *iter, int c)

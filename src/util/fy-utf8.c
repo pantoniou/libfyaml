@@ -433,7 +433,7 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 	}
 
 	/* hi/lo surrogate pair */
-	if (code_length == 4 && uvalue >= 0xd800 && uvalue <= 0xdbff &&
+	if (code_length == 4 && fy_utf8_is_high_surrogate((int)uvalue) &&
 		(e - s) >= 6 && s[0] == '\\' && s[1] == 'u') {
 		hi_surrogate = uvalue;
 
@@ -453,11 +453,16 @@ int fy_utf8_parse_escape(const char **strp, size_t len, enum fy_utf8_escape esc)
 				return -1;
 		}
 		lo_surrogate = uvalue;
+		if (!fy_utf8_is_low_surrogate((int)lo_surrogate))
+			return -1;
 		uvalue = 0x10000 + (hi_surrogate - 0xd800) * 0x400 + (lo_surrogate - 0xdc00);
 	}
 
-	/* out of the code point range, or a lone surrogate */
-	if (uvalue > 0x10ffff)
+	/*
+	 * out of the code point range, or a lone surrogate; a lone
+	 * \uDC80-\uDCFF is returned as the byte mark it is, e.g. \uDC89
+	 */
+	if (uvalue > 0x10ffff || fy_utf8_is_lone_surrogate((int)uvalue))
 		goto out;
 
 	value = (int)uvalue;

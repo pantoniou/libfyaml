@@ -401,6 +401,26 @@ static inline uint8_t fy_utf8_byte_mark_value(const int c)
 	return (uint8_t)(c & 0xff);
 }
 
+static inline bool fy_utf8_is_high_surrogate(const int c)
+{
+	return c >= 0xd800 && c <= 0xdbff;
+}
+
+static inline bool fy_utf8_is_low_surrogate(const int c)
+{
+	return c >= 0xdc00 && c <= 0xdfff;
+}
+
+/*
+ * a surrogate escape that didn't pair and isn't a byte mark, e.g. a lone
+ * \uD800 is an error, while a lone \uDC89 is the byte 0x89
+ */
+static inline bool fy_utf8_is_lone_surrogate(const int c)
+{
+	return (fy_utf8_is_high_surrogate(c) || fy_utf8_is_low_surrogate(c)) &&
+	       !fy_utf8_is_byte_mark(c);
+}
+
 /*
  * like fy_utf8_get(), but a bad byte comes back as its byte mark with
  * width 1; *errp is 0, FYUG_INV, or FYUG_PARTIAL when the bytes run out

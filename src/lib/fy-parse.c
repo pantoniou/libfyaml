@@ -4447,7 +4447,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 						/* 0x10000 + (HI - 0xd800) * 0x400 + (LO - 0xdc00) */
 
 						/* high surrogate */
-						if (j == 1 && code_length == 4 && uvalue >= 0xd800 && uvalue <= 0xdbff &&
+						if (j == 1 && code_length == 4 && fy_utf8_is_high_surrogate((int)uvalue) &&
 						    fy_reader_peek_at(fyr, total_code_length) == '\\' &&
 						    fy_reader_peek_at(fyr, total_code_length + 1) == 'u') {
 							hi_surrogate = uvalue;
@@ -4458,7 +4458,7 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 						if (j == 2 && code_length == 4 && hi_surrogate) {
 
 							FYR_PARSE_ERROR_CHECK(fyr, total_code_length - 6, 6, FYEM_SCAN,
-								uvalue >= 0xdc00 && uvalue <= 0xdfff, err_out,
+								fy_utf8_is_low_surrogate((int)uvalue), err_out,
 								"Invalid low surrogate value");
 
 							lo_surrogate = uvalue;
@@ -4468,10 +4468,13 @@ int fy_reader_fetch_flow_scalar_handle(struct fy_reader *fyr, int c, int indent,
 						break;
 					}
 
-					/* check for validity */
+					/*
+					 * check for validity; a lone \uDC80-\uDCFF is
+					 * a byte that isn't UTF-8, e.g. \uDC89 is 0x89
+					 */
 					FYR_PARSE_ERROR_CHECK(fyr, 0, total_code_length, FYEM_SCAN,
-						!((uvalue >= 0xd800 && uvalue <= 0xdfff) ||
-							uvalue > 0x10ffff), err_out,
+						!(uvalue > 0x10ffff ||
+						  fy_utf8_is_lone_surrogate((int)uvalue)), err_out,
 						"double-quoted scalar has invalid UTF8 escape");
 
 					value = (int)uvalue;
