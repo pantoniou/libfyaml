@@ -205,6 +205,17 @@ Options
    With ``--generic``, write a value that appears more than once, e.g. a
    deduplicated mapping, with an anchor the first time and an alias after.
 
+.. option:: --binary-base64
+
+   With ``--generic``, write a string that is mostly bytes that aren't UTF-8,
+   e.g. an image, as a ``!!binary`` base64 scalar whose lines fit the width.
+   Other strings keep their ``\uDCxx`` escapes, and JSON output always does.
+
+.. option:: --no-yaml-1.2-binary
+
+   With ``--generic``, keep a YAML 1.2 ``!!binary`` scalar as tagged base64
+   text. By default it is decoded to its bytes, as it always is in YAML 1.1.
+
 .. rubric:: Emitter options
 
 .. option:: -i INDENT, --indent INDENT
