@@ -40,7 +40,7 @@ int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp)
 	if (!width)
 		return FYUG_INV;
 	if ((size_t)width > left)
-		return FYUG_PARTIAL;
+		return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 	/* initial value */
 	value = *p++ & (0xff >> width);
@@ -1016,7 +1016,8 @@ int fy_utf8_get_generic_s(const void *ptr, const void *ptr_end, int *widthp)
 	if (!width)
 		return FYUG_INV;
 	if ((const char *)ptr + width > (const char *)ptr_end)
-		return FYUG_PARTIAL;
+		return fy_utf8_is_partial(ptr, (size_t)((const char *)ptr_end - (const char *)ptr)) ?
+			FYUG_PARTIAL : FYUG_INV;
 
 	/* initial value */
 	value = *p++ & (0xff >> width);

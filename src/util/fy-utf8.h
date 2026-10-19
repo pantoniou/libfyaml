@@ -65,6 +65,53 @@ int fy_utf8_get_generic(const void *ptr, size_t left, int *widthp);
 #define FYUG_PARTIAL	-3
 #define FYUG_UNKNOWN	-4
 
+/*
+ * true if the bytes are the start of a valid sequence that needs more,
+ * e.g. "\xe2\x82" starts U+20AC, while "\xe2\x41" and "\xed\xa0" don't
+ */
+static inline bool fy_utf8_is_partial(const void *ptr, size_t left)
+{
+	const uint8_t *s = ptr;
+	unsigned int a, lo, hi;
+	size_t i, w;
+
+	if (!left)
+		return false;
+
+	a = s[0];
+	if (a >= 0xc2 && a <= 0xdf)
+		w = 2;
+	else if (a >= 0xe0 && a <= 0xef)
+		w = 3;
+	else if (a >= 0xf0 && a <= 0xf4)
+		w = 4;
+	else
+		return false;
+
+	if (left >= w)
+		return false;
+
+	/* the second byte rules out overlongs, surrogates and > U+10FFFF */
+	lo = 0x80;
+	hi = 0xbf;
+	if (a == 0xe0)
+		lo = 0xa0;
+	else if (a == 0xed)
+		hi = 0x9f;
+	else if (a == 0xf0)
+		lo = 0x90;
+	else if (a == 0xf4)
+		hi = 0x8f;
+
+	for (i = 1; i < left; i++) {
+		if (s[i] < lo || s[i] > hi)
+			return false;
+		lo = 0x80;
+		hi = 0xbf;
+	}
+	return true;
+}
+
 #define FY_UTF8_64_C(_x)	((int)(int32_t)(_x))
 #define FY_UTF8_64_W(_x)	(((int)((_x) >> 32)))
 
@@ -85,7 +132,7 @@ fy_utf8_get_branch_64(const void *ptr, size_t left)
 		return FY_UTF8_64_MAKE(1, a);
 
 	if (left < 2)
-		return FYUG_PARTIAL;
+		return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 	b = s[1];
 	if ((a & 0xe0) == 0xc0) {		// 2 bytes: 110xxxxx 10xxxxxx
@@ -100,7 +147,7 @@ fy_utf8_get_branch_64(const void *ptr, size_t left)
 	}
 
 	if (left < 3)
-		return FYUG_PARTIAL;
+		return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 	c = s[2];
 	if ((a & 0xf0) == 0xe0) {		// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
@@ -116,7 +163,7 @@ fy_utf8_get_branch_64(const void *ptr, size_t left)
 	}
 
 	if (left < 4)
-		return FYUG_PARTIAL;
+		return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 	d = s[3];
 	if ((a & 0xf8) == 0xf0) {		// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
@@ -211,7 +258,7 @@ err_inv:
 
 err_partial:
 	*widthp = 0;
-	return FYUG_PARTIAL;
+	return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 err_eof:
 	*widthp = 0;
@@ -290,7 +337,7 @@ err_inv:
 
 err_partial:
 	*widthp = 0;
-	return FYUG_PARTIAL;
+	return fy_utf8_is_partial(ptr, left) ? FYUG_PARTIAL : FYUG_INV;
 
 err_eof:
 	*widthp = 0;
@@ -329,6 +376,50 @@ fy_utf8_get_end_no_width(const void *ptr, const void *ptr_end)
 	int w;
 
 	return fy_utf8_get(ptr, (size_t)((const char *)ptr_end - (const char *)ptr), &w);
+}
+
+/*
+ * A byte that isn't part of valid UTF-8 travels as a code point in
+ * U+DC80-U+DCFF, e.g. byte 0x89 is 0xdc89. Strict decoding never yields
+ * a surrogate, so the range can't clash with real text.
+ */
+#define FY_UTF8_BYTE_MARK_START	0xdc80
+#define FY_UTF8_BYTE_MARK_END	0xdcff
+
+static inline bool fy_utf8_is_byte_mark(const int c)
+{
+	return c >= FY_UTF8_BYTE_MARK_START && c <= FY_UTF8_BYTE_MARK_END;
+}
+
+static inline int fy_utf8_byte_mark(const uint8_t b)
+{
+	return 0xdc00 | b;
+}
+
+static inline uint8_t fy_utf8_byte_mark_value(const int c)
+{
+	return (uint8_t)(c & 0xff);
+}
+
+/*
+ * like fy_utf8_get(), but a bad byte comes back as its byte mark with
+ * width 1; *errp is 0, FYUG_INV, or FYUG_PARTIAL when the bytes run out
+ * in the middle of a sequence
+ */
+static inline FY_ALWAYS_INLINE int
+fy_utf8_get_bytes(const void *ptr, size_t left, int *widthp, int *errp)
+{
+	int c;
+
+	c = fy_utf8_get(ptr, left, widthp);
+	if (c >= 0 || c == FYUG_EOF) {
+		*errp = 0;
+		return c;
+	}
+
+	*errp = c;
+	*widthp = 1;
+	return fy_utf8_byte_mark(*(const uint8_t *)ptr);
 }
 
 int fy_utf8_get_right_generic(const void *ptr, size_t left, int *widthp);

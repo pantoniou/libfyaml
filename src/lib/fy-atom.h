@@ -297,6 +297,9 @@ struct fy_atom_iter {
 	bool empty : 1;
 	bool current : 1;
 	bool done : 1;	/* last iteration (for block styles) */
+	/* bad bytes seen by fy_atom_iter_utf8_get_bytes() */
+	bool utf8_invalid : 1;
+	bool utf8_partial : 1;
 	struct fy_atom_iter_line_info li[2];
 	/* Saved trailing whitespace and line-break scan. */
 	const char *tb_scan_pos;	/* Start position for tb_scan_breaks. */
@@ -328,6 +331,8 @@ int fy_atom_iter_getc(struct fy_atom_iter *iter);
 int fy_atom_iter_ungetc(struct fy_atom_iter *iter, int c);
 int fy_atom_iter_peekc(struct fy_atom_iter *iter);
 int fy_atom_iter_utf8_get(struct fy_atom_iter *iter);
+/* a bad byte comes back as its byte mark, *errp says what was wrong */
+int fy_atom_iter_utf8_get_bytes(struct fy_atom_iter *iter, int *errp);
 int fy_atom_iter_utf8_quoted_get(struct fy_atom_iter *iter, size_t *lenp, uint8_t *buf);
 int fy_atom_iter_utf8_unget(struct fy_atom_iter *iter, int c);
 int fy_atom_iter_utf8_peek(struct fy_atom_iter *iter);

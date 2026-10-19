@@ -1480,12 +1480,14 @@ struct fy_scalar_content_iter {
 	const char *s;
 	const char *e;
 	int eofc;
+	bool utf8_invalid : 1;
+	bool utf8_partial : 1;
 };
 
 static int fy_scalar_content_iter_read_block(void *user, int *buf, int count)
 {
 	struct fy_scalar_content_iter *iter = user;
-	int c, rdn, w;
+	int c, rdn, w, err;
 	const char *s, *e;
 
 	assert(count > 0);
@@ -1498,11 +1500,16 @@ static int fy_scalar_content_iter_read_block(void *user, int *buf, int count)
 	s = iter->s;
 	e = iter->e;
 	while (rdn < count) {
-		c = fy_utf8_get(s, e - s, &w);
+		c = fy_utf8_get_bytes(s, e - s, &w, &err);
 		if (c < 0) {
 			iter->eofc = c;
 			break;
 		}
+		/* a partial sequence is the end, its tail isn't invalid */
+		if (err == FYUG_PARTIAL)
+			iter->utf8_partial = true;
+		else if (err == FYUG_INV && !iter->utf8_partial)
+			iter->utf8_invalid = true;
 		buf[rdn++] = c;
 		s += w;
 	}
@@ -1525,6 +1532,8 @@ void fy_analyze_scalar_content(const char *data, size_t size,
 	iter.s = data;
 	iter.e = data + size;
 	iter.eofc = 0;
+	iter.utf8_invalid = false;
+	iter.utf8_partial = false;
 
 	fy_utf8_buf_reset(&ubuf,
 			fy_scalar_content_iter_read_block,
@@ -1553,6 +1562,10 @@ void fy_analyze_scalar_content(const char *data, size_t size,
 	}
 
 	fy_atom_text_analyze_internal(&ubuf, style, lb_mode, analysis);
+	if (iter.utf8_invalid)
+		analysis->flags |= FYTTAF_HAS_INVALID_UTF8;
+	if (iter.utf8_partial)
+		analysis->flags |= FYTTAF_HAS_PARTIAL_UTF8;
 }
 
 char *fy_token_debug_text(struct fy_token *fyt)
