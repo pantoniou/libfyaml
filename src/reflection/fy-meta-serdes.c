@@ -441,7 +441,7 @@ common_scalar_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 		const char *text;
 		const uint8_t *p;
 		size_t text_len;
-		int i, c, w;
+		int c, w, err;
 		union integer_scalar numi;
 
 		text = fy_token_get_text(fyt, &text_len);
@@ -449,28 +449,13 @@ common_scalar_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 
 		RP_INPUT_CHECK(text_len != 0, "character value must exist");
 
+		/* a bad byte comes back as a byte mark, e.g. "\uDC89" is 0x89 */
 		p = (const uint8_t *)text;
-		/* get width from the first octet */
-		w = (p[0] & 0x80) == 0x00 ? 1 :
-		    (p[0] & 0xe0) == 0xc0 ? 2 :
-		    (p[0] & 0xf0) == 0xe0 ? 3 :
-		    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
-
+		c = fy_utf8_get_bytes(p, text_len, &w, &err);
+		RP_INPUT_CHECK(c >= 0, "malformed UTF8 text");
 		RP_INPUT_CHECK((size_t)w == text_len, "UTF8 text too big to fit in char");
-		RP_INPUT_CHECK((size_t)w <= text_len, "malformed UTF8 text (start)");
-
-		c = p[0] & (0xff >> w);
-		for (i = 1; i < w; i++) {
-			RP_INPUT_CHECK((p[i] & 0xc0) == 0x80, "malformed UTF8 text (middle)");
-			c = (c << 6) | (p[i] & 0x3f);
-		}
-
-		/* check for validity */
-		RP_INPUT_CHECK(!((w == 4 && c < 0x10000) ||
-			         (w == 3 && c <   0x800) ||
-				 (w == 2 && c <    0x80) ||
-				 (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000),
-				"malformed UTF8 text (end)");
+		if (fy_utf8_is_byte_mark(c))
+			c = fy_utf8_byte_mark_value(c);
 
 		RP_INPUT_CHECK(c >= 0, "malformed UTF8 text (negative value)");
 

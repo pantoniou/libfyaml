@@ -1142,7 +1142,7 @@ char *fy_event_to_string(struct fy_event *fye)
 	size_t msize, anchor_len = 0, tag_len = 0, text_len = 0, alias_len = 0;
 	enum fy_scalar_style style;
 	const uint8_t *p;
-	int i, c, w;
+	int c, w, err;
 
 	if (!fye)
 		return NULL;
@@ -1265,29 +1265,9 @@ char *fy_event_to_string(struct fy_event *fye)
 		text = fy_token_get_text(fye->scalar.value, &text_len);
 		for (p = (const uint8_t *)text; text_len > 0; p += w, text_len -= (size_t)w) {
 
-			/* get width from the first octet */
-			w = (p[0] & 0x80) == 0x00 ? 1 :
-			    (p[0] & 0xe0) == 0xc0 ? 2 :
-			    (p[0] & 0xf0) == 0xe0 ? 3 :
-			    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
-
-			/* error, clip it */
-			if ((size_t)w > text_len)
-				break;
-
-			/* initial value */
-			c = p[0] & (0xff >> w);
-			for (i = 1; i < w; i++) {
-				if ((p[i] & 0xc0) != 0x80)
-					break;
-				c = (c << 6) | (p[i] & 0x3f);
-			}
-
-			/* check for validity */
-			if ((w == 4 && c < 0x10000) ||
-			    (w == 3 && c <   0x800) ||
-			    (w == 2 && c <    0x80) ||
-			    (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000)
+			/* a bad byte comes back as a byte mark, e.g. 0x89 -> \udc89 */
+			c = fy_utf8_get_bytes(p, text_len, &w, &err);
+			if (c < 0)
 				break;
 
 			switch (c) {
@@ -1337,6 +1317,8 @@ char *fy_event_to_string(struct fy_event *fye)
 				if ((c >= 0x01 && c <= 0x1f) || c == 0x7f ||	/* C0 */
 				    (c >= 0x80 && c <= 0x9f))			/* C1 */
 					fprintf(fp, "\\x%02x", c);
+				else if (fy_utf8_is_byte_mark(c))
+					fprintf(fp, "\\u%04x", c);
 				else
 					fprintf(fp, "%.*s", w, p);
 				break;
