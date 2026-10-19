@@ -906,13 +906,14 @@ START_TEST(atom_analysis_utf8_get_partial)
 		{ "\xf4\x90", 2, FYUG_INV },
 		{ "\xf0\x9f\x41", 3, FYUG_INV },
 	};
-	size_t i;
-	int w;
+	const char *d;
+	size_t i, n;
+	int w, err;
 
 	for (i = 0; i < ARRAY_SIZE(cases); i++) {
-		const char *d = cases[i].data;
-		size_t n = cases[i].size;
-		int err = cases[i].err;
+		d = cases[i].data;
+		n = cases[i].size;
+		err = cases[i].err;
 
 		ck_assert_msg(fy_utf8_get(d, n, &w) == err, "get case %zu", i);
 		ck_assert_msg(fy_utf8_get_branch(d, n, &w) == err, "branch case %zu", i);
