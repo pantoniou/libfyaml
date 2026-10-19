@@ -217,6 +217,8 @@ jobs:
         operating_system: ${{ matrix.os }}
         version: ${{ matrix.version }}
         cpu_count: 4
+        # Compiling the generic tests exhausts the default VM memory.
+        memory: 12G
         environment_variables: BUILD_TYPE TESTING CTEST_ARGS JOBS
 
     - name: "Install dependencies"
