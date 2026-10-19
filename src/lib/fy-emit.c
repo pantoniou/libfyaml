@@ -1193,7 +1193,11 @@ void fy_emit_write_single_quoted_with_state(struct fy_emitter *emit, int flags, 
 			should_indent = allow_breaks && !spaces &&
 					fy_emit_accum_column(&emit->ea) >= emit_width;
 
-			if (should_indent && fy_is_ws(ops->iter_peekc(emit, state))) {
+			/*
+			 * break at a space before a non space; the next line's
+			 * leading white space would be lost, e.g. 'a  b'
+			 */
+			if (should_indent && !fy_is_ws(ops->iter_peekc(emit, state))) {
 				fy_emit_output_accum(emit, wtype, &emit->ea);
 
 				emit->flags &= ~FYEF_INDENTATION;
@@ -1224,19 +1228,12 @@ void fy_emit_write_single_quoted_with_state(struct fy_emitter *emit, int flags, 
 
 			breaks = true;
 		} else {
-			/* output run */
+			/*
+			 * output run; a word is never broken, single quoted has no
+			 * \ continuation, e.g. 'ab\ cd' would be read as "ab\ cd"
+			 */
 			if (breaks) {
 				fy_emit_output_accum(emit, wtype, &emit->ea);
-				fy_emit_write_indent(emit, indent);
-				fy_emit_output_col_sync(emit, &emit->ea);
-
-			} else if (allow_breaks && fy_emit_accum_column(&emit->ea) >= emit_width) {
-
-				fy_emit_output_accum(emit, wtype, &emit->ea);
-
-				fy_emit_putc_simple(emit, wtype, '\\');
-
-				emit->flags &= ~FYEF_INDENTATION;
 				fy_emit_write_indent(emit, indent);
 				fy_emit_output_col_sync(emit, &emit->ea);
 			}
