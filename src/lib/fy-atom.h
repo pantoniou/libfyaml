@@ -105,6 +105,10 @@ enum fy_atom_chomp {
 #define FYTTAF_HAS_INVALID_UTF8		FYTTAF_BIT(37)	/* has invalid utf8 */
 #define FYTTAF_HAS_PARTIAL_UTF8		FYTTAF_BIT(38)	/* has partial utf8 (ends prematurely) */
 #define FYTTAF_ITERATOR_ERROR		FYTTAF_BIT(39)	/* some kind of iterator error */
+#define FYTTAF_LIKELY_BINARY		FYTTAF_BIT(40)	/* more than 1 in FYTTAF_BINARY_RATIO bytes is bad utf8 */
+
+/* e.g. 4: "ab\x89" (1 in 3 bad) is likely binary, "abc\x89" (1 in 4) is not */
+#define FYTTAF_BINARY_RATIO		4
 
 #define FYTTAF_ANALYZED			FYTTAF_BIT(63)	/* analyzed mark */
 
