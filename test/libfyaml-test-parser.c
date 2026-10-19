@@ -33,6 +33,7 @@
 
 #include "fy-cache.h"
 #include "fy-parse.h"
+#include "fy-event.h"
 #include "fy-utf8.h"
 #include "fy-allocator.h"
 
@@ -2698,6 +2699,35 @@ START_TEST(parser_comments_3)
 }
 END_TEST
 
+/* a byte that isn't UTF-8 prints as \udcNN in the test-suite event text */
+START_TEST(parser_event_text_bad_bytes)
+{
+	static const char yaml[] = "\"x\\uDC89y\\uDCFF\"\n";
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	char *text;
+	bool got_scalar = false;
+
+	fyp = fy_parser_create(&(struct fy_parse_cfg){ .flags = FYPCF_DEFAULT_PARSE });
+	ck_assert_ptr_ne(fyp, NULL);
+	ck_assert_int_eq(fy_parser_set_string(fyp, yaml, FY_NT), 0);
+
+	while ((fye = fy_parser_parse(fyp)) != NULL) {
+		if (fye->type == FYET_SCALAR) {
+			text = fy_event_to_string(fye);
+			ck_assert_ptr_ne(text, NULL);
+			ck_assert_str_eq(text, "=VAL \"x\\udc89y\\udcff");
+			free(text);
+			got_scalar = true;
+		}
+		fy_parser_event_free(fyp, fye);
+	}
+	ck_assert(got_scalar);
+	ck_assert(!fy_parser_get_stream_error(fyp));
+	fy_parser_destroy(fyp);
+}
+END_TEST
+
 void libfyaml_case_parser(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -2793,4 +2823,5 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parser_comments_1);
 	fy_check_testcase_add_test(ctc, parser_comments_2);
 	fy_check_testcase_add_test(ctc, parser_comments_3);
+	fy_check_testcase_add_test(ctc, parser_event_text_bad_bytes);
 }
