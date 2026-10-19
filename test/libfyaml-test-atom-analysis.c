@@ -82,6 +82,7 @@ static const struct {
 	{ FYTTAF_HIGH_ASCII, "HIGH_ASCII" },
 	{ FYTTAF_HAS_INVALID_UTF8, "HAS_INVALID_UTF8" },
 	{ FYTTAF_HAS_PARTIAL_UTF8, "HAS_PARTIAL_UTF8" },
+	{ FYTTAF_LIKELY_BINARY, "LIKELY_BINARY" },
 	{ FYTTAF_ANALYZED, "ANALYZED" },
 };
 
@@ -123,6 +124,7 @@ static const uint64_t atom_analysis_coverage_mask =
 	FYTTAF_HIGH_ASCII |
 	FYTTAF_HAS_INVALID_UTF8 |
 	FYTTAF_HAS_PARTIAL_UTF8 |
+	FYTTAF_LIKELY_BINARY |
 	FYTTAF_ANALYZED;
 
 static void format_flags(uint64_t flags, char *buf, size_t bufsz)
@@ -274,6 +276,7 @@ START_TEST(atom_analysis_coverage)
 		FYTTAF_HIGH_ASCII |
 		FYTTAF_HAS_INVALID_UTF8 |
 		FYTTAF_HAS_PARTIAL_UTF8 |
+		FYTTAF_LIKELY_BINARY |
 		FYTTAF_ANALYZED;
 
 	ck_assert_msg((covered & atom_analysis_coverage_mask) == atom_analysis_coverage_mask,
@@ -918,6 +921,65 @@ START_TEST(atom_analysis_utf8_get_partial)
 		ck_assert_msg(fy_utf8_get_generic(d, n, &w) == err, "generic case %zu", i);
 		ck_assert_msg(fy_utf8_get_generic_s(d, d + n, &w) == err, "generic_s case %zu", i);
 	}
+}
+END_TEST
+
+/* more than 1 in 4 bytes bad is likely binary; bytes, not characters, are counted */
+START_TEST(atom_analysis_likely_binary)
+{
+	static const struct {
+		const char *data;
+		size_t size;
+		bool binary;
+	} cases[] = {
+		{ "", 0, false },
+		{ "abc", 3, false },
+		{ "\xc2\xa9\xc2\xa9", 4, false },	/* valid utf8 is never binary */
+		{ "\x89", 1, true },
+		{ "ab\x89", 3, true },			/* 1 in 3 */
+		{ "abc\x89", 4, false },		/* exactly 1 in 4 */
+		{ "abcd\x89", 5, false },
+		{ "\xc2\xa9\x89", 3, true },		/* 1 in 3 bytes, 1 in 2 characters */
+		{ "\xe2\x82\xac\x89", 4, false },	/* 1 in 4 bytes, 1 in 2 characters */
+		{ "\x89PNG\r\n\x1a\n", 8, false },
+		{ "\x89\xff\x00\x01\xfe\x80", 6, true },
+		{ "ab\xe2\x82", 4, true },		/* partial counts as bad bytes */
+	};
+	struct atom_analysis_case tc;
+	char name[32];
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
+		snprintf(name, sizeof(name), "likely_binary_%zu", i);
+		memset(&tc, 0, sizeof(tc));
+		tc.name = name;
+		tc.data = cases[i].data;
+		tc.size = cases[i].size;
+		tc.style = FYSS_ANY;
+		tc.lb_mode = fylb_cr_nl;
+		tc.preferred_style = FYSS_ANY;
+		if (cases[i].binary)
+			tc.set_flags = FYTTAF_LIKELY_BINARY;
+		else
+			tc.clear_flags = FYTTAF_LIKELY_BINARY;
+		check_atom_analysis_case(&tc);
+		check_atom_analysis_case_atom(&tc);
+	}
+}
+END_TEST
+
+START_TEST(atom_analysis_flag_likely_binary)
+{
+	static const struct atom_analysis_case tc = {
+		.name = "likely_binary",
+		.data = "\x89\xff", .size = 2,
+		.style = FYSS_PLAIN,
+		.lb_mode = fylb_cr_nl,
+		.set_flags = FYTTAF_LIKELY_BINARY,
+		.preferred_style = FYSS_ANY,
+	};
+
+	check_atom_analysis_flag_case(&tc, FYTTAF_LIKELY_BINARY, "FYTTAF_LIKELY_BINARY");
 }
 END_TEST
 
@@ -1581,6 +1643,7 @@ void libfyaml_case_atom_analysis(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, atom_analysis_bad_utf8_every_byte);
 	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_bytes);
 	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_partial);
+	fy_check_testcase_add_test(ctc, atom_analysis_likely_binary);
 
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_lb);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_ws);
@@ -1618,6 +1681,7 @@ void libfyaml_case_atom_analysis(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_high_ascii);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_invalid_utf8);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_partial_utf8);
+	fy_check_testcase_add_test(ctc, atom_analysis_flag_likely_binary);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_analyzed);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_no_text_token);
 	fy_check_testcase_add_test(ctc, atom_analysis_coverage);
