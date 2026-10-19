@@ -1888,6 +1888,144 @@ static void issue_415_scenario(unsigned int nth)
 	issue_413_415_scenario("auto", nth);
 }
 
+#ifdef HAVE_GENERIC
+/*
+ * bytes that aren't UTF-8, with and without !!binary base64, under a failed
+ * allocation: the emit or parse fails, or it is right; never half done
+ */
+static fy_generic binary_alloc_doc(struct fy_generic_builder *gb)
+{
+	static const char png[] = "\x89PNG\r\n\x1a\n\0\0\0\rIHDR\xff\xfe\x80\x81\x90\x91";
+	static const char few[] = "abcdefgh\x89";
+	fy_generic_sized_string b = { png, sizeof(png) - 1 }, t = { few, sizeof(few) - 1 };
+
+	return fy_mapping(gb, "img", fy_value(gb, b), "text", fy_value(gb, t),
+			  "list", fy_sequence(gb, fy_value(gb, b), "x", fy_value(gb, t)),
+			  fy_value(gb, b), "binary key");
+}
+
+static void binary_emit_alloc_scenario(enum fy_op_emit_flags flags, unsigned int nth)
+{
+	struct fy_generic_builder *gb;
+	fy_generic doc, emitted, parsed;
+	fy_generic_sized_string text;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	doc = binary_alloc_doc(gb);
+	ck_assert(fy_generic_is_valid(doc));
+
+	fy_alloc_fail_arm(nth);
+	emitted = fy_emit(gb, doc, flags | FYOPEF_DISABLE_DIRECTORY, NULL);
+	fy_alloc_fail_disarm();
+
+	if (fy_generic_is_valid(emitted)) {
+		ck_assert(fy_generic_is_string(emitted));
+		text = fy_castp(&emitted, fy_szstr_empty);
+		parsed = fy_parse(gb, text, FYOPPF_DISABLE_DIRECTORY, NULL);
+		ck_assert_msg(fy_generic_compare(doc, parsed) == 0,
+			      "emit flags 0x%x, allocation %u: emitted %zu bytes, but wrong:\n%.*s",
+			      (unsigned int)flags, nth, text.size, (int)text.size, text.data);
+	}
+
+	fy_generic_builder_destroy(gb);
+}
+
+static void binary_emit_escape_scenario(unsigned int nth)
+{
+	binary_emit_alloc_scenario(0, nth);
+}
+
+static void binary_emit_escape_events_scenario(unsigned int nth)
+{
+	binary_emit_alloc_scenario(FYOPEF_EMIT_EVENTS, nth);
+}
+
+static void binary_emit_base64_scenario(unsigned int nth)
+{
+	binary_emit_alloc_scenario(FYOPEF_BINARY_BASE64 | FYOPEF_WIDTH_80, nth);
+}
+
+static void binary_emit_base64_events_scenario(unsigned int nth)
+{
+	binary_emit_alloc_scenario(FYOPEF_BINARY_BASE64 | FYOPEF_EMIT_EVENTS, nth);
+}
+
+/* a document with tags and anchors emits all of them, or fails */
+static void document_emit_alloc_scenario(unsigned int nth)
+{
+	static const char bytes[] = "x\x89y";
+	struct fy_document *fyd;
+	struct fy_node *fyn_map, *fyn;
+	char *expect, *out;
+
+	/* made through the node API, so the tag and anchor texts get prepared */
+	fyd = fy_document_create(NULL);
+	ck_assert_ptr_ne(fyd, NULL);
+	fyn_map = fy_node_create_mapping(fyd);
+	ck_assert_ptr_ne(fyn_map, NULL);
+	fyn = fy_node_create_scalar_copy(fyd, "text", FY_NT);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_int_eq(fy_node_set_tag(fyn, "!!str", FY_NT), 0);
+	ck_assert_int_eq(fy_node_set_anchor_copy(fyn, "x", FY_NT), 0);
+	ck_assert_int_eq(fy_node_mapping_append(fyn_map,
+			fy_node_create_scalar_copy(fyd, "a", FY_NT), fyn), 0);
+	fyn = fy_node_create_scalar_copy(fyd, bytes, sizeof(bytes) - 1);
+	ck_assert_ptr_ne(fyn, NULL);
+	ck_assert_int_eq(fy_node_set_tag(fyn, "!foo", FY_NT), 0);
+	ck_assert_int_eq(fy_node_mapping_append(fyn_map,
+			fy_node_create_scalar_copy(fyd, "b", FY_NT), fyn), 0);
+	ck_assert_int_eq(fy_document_set_root(fyd, fyn_map), 0);
+
+	expect = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
+	ck_assert_ptr_ne(expect, NULL);
+
+	fy_alloc_fail_arm(nth);
+	out = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK);
+	fy_alloc_fail_disarm();
+
+	if (out)
+		ck_assert_msg(!strcmp(out, expect), "allocation %u: emitted but wrong:\n%s", nth, out);
+
+	free(out);
+	free(expect);
+	fy_document_destroy(fyd);
+}
+
+static void binary_parse_alloc_scenario(unsigned int nth)
+{
+	static const char yaml[] =
+		"a: !!binary |\n"
+		"  iVBORw0KGgoAAAANSUhEUv/+gIGQkQ==\n"
+		"b: [!!binary iQ==, \"x\\uDC89y\"]\n"
+		"? !!binary eHk=\n"
+		": z\n";
+	static const char png[] = "\x89PNG\r\n\x1a\n\0\0\0\rIHDR\xff\xfe\x80\x81\x90\x91";
+	struct fy_generic_builder *gb;
+	fy_generic_sized_string in = { yaml, sizeof(yaml) - 1 };
+	fy_generic_sized_string b = { png, sizeof(png) - 1 }, b89 = { "\x89", 1 };
+	fy_generic_sized_string xy = { "x\x89y", 3 }, k = { "xy", 2 };
+	fy_generic expect, parsed;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+	expect = fy_mapping(gb, "a", fy_value(gb, b),
+			    "b", fy_sequence(gb, fy_value(gb, b89), fy_value(gb, xy)),
+			    fy_value(gb, k), "z");
+	ck_assert(fy_generic_is_valid(expect));
+
+	fy_alloc_fail_arm(nth);
+	parsed = fy_parse(gb, in, FYOPPF_DISABLE_DIRECTORY, NULL);
+	fy_alloc_fail_disarm();
+
+	if (fy_generic_is_valid(parsed))
+		ck_assert_msg(fy_generic_compare(expect, parsed) == 0,
+			      "allocation %u: parsed but wrong", nth);
+
+	fy_generic_builder_destroy(gb);
+}
+#endif
+
 #endif /* HAVE_LINKER_WRAP_MALLOC */
 
 /* Test: gh#422 - a cyclic alias path must be reported quickly. */
@@ -3703,6 +3841,20 @@ START_TEST(fuzz_issue_360_tag_directives_repro)
 {
 #ifdef HAVE_LINKER_WRAP_MALLOC
 	alloc_fail_sweep(issue_360_scenario, 256);
+#endif
+}
+END_TEST
+
+/* Test: bytes that aren't UTF-8 survive or fail cleanly when an allocation fails */
+START_TEST(fuzz_binary_alloc_fail)
+{
+#if defined(HAVE_LINKER_WRAP_MALLOC) && defined(HAVE_GENERIC)
+	alloc_fail_sweep(binary_emit_escape_scenario, 4096);
+	alloc_fail_sweep(binary_emit_escape_events_scenario, 4096);
+	alloc_fail_sweep(binary_emit_base64_scenario, 4096);
+	alloc_fail_sweep(binary_emit_base64_events_scenario, 4096);
+	alloc_fail_sweep(binary_parse_alloc_scenario, 4096);
+	alloc_fail_sweep(document_emit_alloc_scenario, 4096);
 #endif
 }
 END_TEST
@@ -8325,6 +8477,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_357_ypath_operand_double_free_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_360_tag_directives_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_361_document_create_repro);
+	fy_check_testcase_add_test(ctc, fuzz_binary_alloc_fail);
 	fy_check_testcase_add_test(ctc, fuzz_issue_362_node_pair_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_363_tag_suffix_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_364_parser_setup_diag_repro);
