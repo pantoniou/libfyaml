@@ -200,6 +200,11 @@ Options
    Use parser events to drive the emitter even when another cached or generic
    path could otherwise be used directly.
 
+.. option:: --auto-anchor
+
+   With ``--generic``, write a value that appears more than once, e.g. a
+   deduplicated mapping, with an anchor the first time and an alias after.
+
 .. rubric:: Emitter options
 
 .. option:: -i INDENT, --indent INDENT
