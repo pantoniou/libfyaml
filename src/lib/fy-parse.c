@@ -3745,6 +3745,7 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 	struct fy_mark indicator_mark;
 	bool generated_indent, final_lb;
 	size_t tlength;
+	int node_column;
 
 	fyp_error_check(fyp, c == '|' || c == '>', err_out,
 			"bad start of block scalar ('%s')",
@@ -3824,11 +3825,23 @@ int fy_fetch_block_scalar(struct fy_parser *fyp, bool is_literal, int c)
 			fyp_is_lbz(fyp, c), err_out,
 			"block scalar no linebreak found");
 
-	/* if the block scalar indicator is on a different line we need a new indent */
+	/*
+	 * if the block scalar indicator is on a different line we need a new
+	 * indent; the node starts at its first tag or anchor on that line,
+	 * e.g. "!!str |" starts at the "!", not at the "|"
+	 */
 	generated_indent = false;
 	if (!increment && indicator_mark.line != fyp->indent_line) {
-		fyp_scan_debug(fyp, "generating indent %d/%d\n", indicator_mark.line, fyp->indent_line);
-		rc = fy_push_indent(fyp, indicator_mark.column, false, indicator_mark.line);
+		node_column = indicator_mark.column;
+		for (fyt = fy_token_list_tail(&fyp->queued_tokens);
+		     fyt && (fyt->type == FYTT_TAG || fyt->type == FYTT_ANCHOR) &&
+			fy_token_start_line(fyt) == indicator_mark.line;
+		     fyt = fy_token_prev(&fyp->queued_tokens, fyt))
+			node_column = fy_token_start_column(fyt);
+
+		fyp_scan_debug(fyp, "generating indent %d/%d at %d\n", indicator_mark.line,
+			       fyp->indent_line, node_column);
+		rc = fy_push_indent(fyp, node_column, false, indicator_mark.line);
 		fyp_error_check(fyp, !rc, err_out_rc,
 				"fy_push_indent() failed");
 		generated_indent = true;
