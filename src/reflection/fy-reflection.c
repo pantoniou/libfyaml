@@ -2056,9 +2056,10 @@ static bool fy_type_has_dependent_cycle(const struct fy_type *ft)
 int fy_type_update_info(struct fy_type *ft)
 {
 	struct fy_reflection *rfl;
+	struct fy_type **pending = NULL, **new_pending;
 	const struct fy_type_info *ti;
 	const struct fy_field_info *fi;
-	size_t i;
+	size_t i, count = 0, alloc = 0;
 	int ret;
 
 	if (!ft)
@@ -2073,18 +2074,28 @@ int fy_type_update_info(struct fy_type *ft)
 	/* a dependent type chain must end; reject a malformed cycle */
 	RFL_ASSERT(!fy_type_has_dependent_cycle(ft));
 
-	ti = &ft->tiw.type_info;
-	if (!(ft->flags & FYTF_TYPE_INFO_UPDATED)) {
-
+	/* Keep dependent chains off the C stack, even before type setup. */
+	while (ft && !(ft->flags & (FYTF_TYPE_INFO_UPDATING | FYTF_TYPE_INFO_UPDATED))) {
+		if (count == alloc) {
+			alloc = alloc ? alloc * 2 : 16;
+			new_pending = realloc(pending, alloc * sizeof(*pending));
+			RFL_ASSERT(new_pending);
+			pending = new_pending;
+		}
+		pending[count++] = ft;
 		ft->flags |= FYTF_TYPE_INFO_UPDATING;
 		ret = fy_type_create_info(ft);
 		RFL_ASSERT(!ret);
+		ft = ft->dependent_type;
+	}
+	if (ft)
+		RFL_ASSERT(fy_type_kind_is_valid(ft->tiw.type_info.kind));
 
-		if (ft->dependent_type) {
-			ret = fy_type_update_info(ft->dependent_type);
-			RFL_ASSERT(!ret);
-		}
-
+	/* Finish dependencies before their users, retaining the cycle markers
+	 * while updating fields that may refer back to a type in progress. */
+	while (count) {
+		ft = pending[count - 1];
+		ti = &ft->tiw.type_info;
 		if (fy_type_kind_has_fields(ti->kind)) {
 			for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
 				ret = fy_type_update_info(fy_type_from_info(fi->type_info));
@@ -2092,16 +2103,19 @@ int fy_type_update_info(struct fy_type *ft)
 			}
 		}
 
+		RFL_ASSERT(fy_type_kind_is_valid(ti->kind));
 		ft->flags &= ~FYTF_TYPE_INFO_UPDATING;
 		ft->flags |= FYTF_TYPE_INFO_UPDATED;
+		count--;
 	}
-	RFL_ASSERT(fy_type_kind_is_valid(ti->kind));
-
+	free(pending);
 	return 0;
 
 err_out:
 	/* do not let a failed update look like a recursive update */
-	ft->flags &= ~FYTF_TYPE_INFO_UPDATING;
+	while (count)
+		pending[--count]->flags &= ~FYTF_TYPE_INFO_UPDATING;
+	free(pending);
 	return -1;
 }
 
