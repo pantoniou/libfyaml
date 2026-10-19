@@ -84,6 +84,7 @@ struct fy_emitter {
 	int flow_level;
 	unsigned int flags;
 	bool output_error : 1;
+	bool emit_error : 1;		/* content couldn't be made, e.g. a tag's text */
 	bool source_json : 1;		/* the source was json */
 	bool force_json : 1;		/* force JSON mode unconditionally */
 	bool suppress_recycling_force : 1;

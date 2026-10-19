@@ -904,22 +904,27 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 	const char *anchor, *tag, *td_prefix, *td_handle;
 	size_t tag_len, anchor_len, td_prefix_len, td_handle_len;
 
-	if (fyt_anchor)
+	/* a missing anchor or tag text is an error, not something to leave out */
+	if (fyt_anchor) {
 		anchor = fy_token_get_text(fyt_anchor, &anchor_len);
-	else {
+		if (!anchor)
+			goto err_out;
+	} else {
 		anchor = NULL;
 		anchor_len = 0;
 	}
 
 	if (fyt_tag) {
 		tag = fy_token_get_text(fyt_tag, &tag_len);
+		if (!tag)
+			goto err_out;
 
 		td_handle = fy_tag_token_get_directive_handle(fyt_tag, &td_handle_len);
 		if (!td_handle)
-			return;
+			goto err_out;
 		td_prefix = fy_tag_token_get_directive_prefix(fyt_tag, &td_prefix_len);
 		if (!td_prefix)
-			return;
+			goto err_out;
 	} else {
 		tag = td_prefix = td_handle = NULL;
 		tag_len = td_prefix_len = td_handle_len = 0;
@@ -930,6 +935,10 @@ void fy_emit_common_node_preamble(struct fy_emitter *emit,
 				     td_handle, td_handle_len,
 				     td_prefix, td_prefix_len,
 				     flags, indent, type);
+	return;
+
+err_out:
+	emit->emit_error = true;
 }
 
 void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int flags, int indent, bool is_key)
@@ -3118,6 +3127,7 @@ void fy_emit_reset(struct fy_emitter *emit, bool reset_events)
 	emit->column = 0;
 	emit->flow_level = 0;
 	emit->output_error = 0;
+	emit->emit_error = 0;
 	/* clear/set flags for a fresh start */
 	emit->flags &= ~(FYEF_OPEN_ENDED | FYEF_HAD_DOCUMENT_START | FYEF_HAD_DOCUMENT_OUTPUT);
 	emit->flags |= FYEF_WHITESPACE | FYEF_INDENTATION;
@@ -3305,9 +3315,11 @@ int fy_emit_root_node_no_check(struct fy_emitter *emit, struct fy_node *fyn)
 	if (!emit || !fyn)
 		return -1;
 
+	/* nodes don't return errors, a failure in one is marked, e.g. its tag */
+	emit->emit_error = false;
 	fy_emit_node_internal(emit, fyn, DDNF_ROOT, -1, false);
 
-	return 0;
+	return emit->emit_error ? -1 : 0;
 }
 
 int fy_emit_root_node(struct fy_emitter *emit, struct fy_node *fyn)
@@ -4777,6 +4789,10 @@ int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, st
 		else
 			fy_parse_eventp_recycle(fyp, fyep);
 
+		/* e.g. a tag whose text couldn't be made */
+		if (!ret && emit->emit_error)
+			ret = -1;
+
 		if (ret)
 			break;
 	}
@@ -5954,7 +5970,7 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 	style = FYNS_ANY;
 	switch (fy_generic_get_type(v)) {
 	case FYGT_INVALID:
-		return -1;
+		goto err_out;
 	case FYGT_ALIAS:
 		style = FYNS_ALIAS;
 		/* fall-through */
@@ -5982,7 +5998,7 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 		 * appearance and aliased afterwards */
 		rc = fy_emit_generic_auto_anchor(emit, v, &aa_anchor);
 		if (rc < 0)
-			return -1;
+			goto err_out;
 		if (rc == 2) {
 			fy_emit_generic_alias_name(emit, aa_anchor, flags, indent);
 			return 0;
@@ -6066,6 +6082,11 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 err_out:
 	if (tag_data)
 		free(tag_data);
+	/*
+	 * collections ignore what their items return, so mark the failure,
+	 * e.g. a mapping value whose tag failed to allocate fails the document
+	 */
+	emit->emit_error = true;
 	return -1;
 }
 
@@ -6078,6 +6099,9 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 
 	if (!emit || fy_generic_is_invalid(vdir))
 		return -1;
+
+	/* a failure of an earlier call is not ours */
+	emit->emit_error = false;
 
 	/* auto-anchor context tracks the FYEXCF_GENERIC_AUTO_ANCHOR flag */
 	if (emit->xcfg.xflags & FYEXCF_GENERIC_AUTO_ANCHOR) {
@@ -6133,7 +6157,7 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 		}
 
 		rc = fy_emit_generic_internal(emit, vroot, DDNF_ROOT, -1, false, NULL, NULL);
-		if (rc)
+		if (rc || emit->emit_error)
 			goto err_out;
 
 		/* FYET_DOCUMENT_END */
