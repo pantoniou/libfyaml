@@ -28,6 +28,8 @@
 #include "fy-generic-encoder.h"
 #include "fy-generic-decoder.h"
 #include "fy-cache.h"
+#include "fy-token.h"
+#include "fy-utils.h"
 
 static int fy_generic_seqmap_qsort_cmp(const void *a, const void *b)
 {
@@ -3460,6 +3462,8 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 		parse_cfg.flags |= FYPCF_CREATE_MARKERS;
 	if (parse_flags & FYOPPF_KEEP_STYLE)
 		parse_cfg.flags |= FYPCF_KEEP_STYLE;
+	if (parse_flags & FYOPPF_NO_YAML_1_2_BINARY)
+		parse_cfg.flags |= FYPCF_NO_YAML_1_2_BINARY;
 
 	if (parse_flags & FYOPPF_DISABLE_DIRECTORY)
 		decoder_parse_flags |= FYGDPF_DISABLE_DIRECTORY;
@@ -3475,6 +3479,8 @@ fy_generic_op_parse(const struct fy_generic_op_desc *desc FY_UNUSED,
 		decoder_parse_flags |= FYGDPF_KEEP_STYLE;
 	if (parse_flags & FYOPPF_KEEP_FAILSAFE_STR)
 		decoder_parse_flags |= FYGDPF_KEEP_FAILSAFE_STR;
+	if (parse_flags & FYOPPF_NO_YAML_1_2_BINARY)
+		decoder_parse_flags |= FYGDPF_NO_YAML_1_2_BINARY;
 
 	/* Create parser */
 	fyp = fy_parser_create(&parse_cfg);
@@ -3669,6 +3675,195 @@ err_out:
 	goto out;
 }
 
+/* base64 line length when no width is given, as in MIME */
+#define FY_BINARY_BASE64_LINE	76
+/* never shorter than this, however deep */
+#define FY_BINARY_BASE64_MIN_LINE	16
+
+struct fy_binary_base64_ctx {
+	struct fy_generic_builder *gb;
+	bool block;		/* literal block with lines, else one flow line */
+	size_t width;		/* 0 for one line */
+	size_t line;		/* fixed line length, 0 to fit the width */
+	size_t indent;		/* per nesting level */
+	bool err;
+};
+
+/*
+ * base64 line length for a value nested depth collections deep; the indent
+ * is guessed high, e.g. width 80, indent 2, depth 3 gives lines of 72
+ */
+static size_t
+fy_binary_base64_line_len(const struct fy_binary_base64_ctx *ctx, int depth)
+{
+	size_t used, len;
+
+	if (!ctx->block)
+		return 0;
+	if (ctx->line)
+		return ctx->line;
+	if (!ctx->width)
+		return (size_t)-1;	/* one line, ending in a newline */
+
+	used = (size_t)(depth > 1 ? depth : 1) * ctx->indent;
+	len = ctx->width > used + FY_BINARY_BASE64_MIN_LINE ? ctx->width - used :
+							     FY_BINARY_BASE64_MIN_LINE;
+	return len & ~(size_t)3;	/* whole quads, e.g. 78 -> 76 */
+}
+
+/*
+ * a string that is mostly bytes that aren't UTF-8 as its base64 text, e.g.
+ * "\x89\xff" is "if8="; fy_invalid when it stays as it is, or on error
+ */
+static fy_generic
+fy_generic_op_binary_text(struct fy_binary_base64_ctx *ctx, fy_generic v, int depth)
+{
+	fy_generic_sized_string szstr;
+	struct fy_text_analysis ta;
+	size_t size, n, line_len;
+	fy_generic vb;
+	char *buf;
+
+	szstr = fy_castp(&v, fy_szstr_empty);
+	fy_analyze_scalar_content(szstr.data, szstr.size, FYSS_ANY, fylb_cr_nl, &ta);
+	if (!(ta.flags & FYTTAF_LIKELY_BINARY))
+		return fy_invalid;
+
+	line_len = fy_binary_base64_line_len(ctx, depth);
+	size = fy_base64_encode_size(szstr.size, line_len);
+	buf = size != (size_t)-1 ? malloc(size) : NULL;
+	if (!buf) {
+		ctx->err = true;
+		return fy_invalid;
+	}
+
+	n = fy_base64_encode(buf, szstr.data, szstr.size, line_len);
+	vb = fy_gb_string_size_create(ctx->gb, buf, n);
+	free(buf);
+
+	if (fy_generic_is_invalid(vb))
+		ctx->err = true;
+	return vb;
+}
+
+/* tag it !!binary and in block style write it literal, e.g. "!!binary |" */
+static fy_generic
+fy_generic_op_binary_wrap(struct fy_binary_base64_ctx *ctx, fy_generic_indirect *gi, fy_generic vb)
+{
+	fy_generic v;
+
+	gi->flags |= FYGIF_VALUE | FYGIF_TAG;
+	gi->value = vb;
+	gi->tag = fy_gb_string_create(ctx->gb, "tag:yaml.org,2002:binary");
+	gi->flags &= ~FYGIF_STYLE;
+	gi->style = fy_invalid;
+	if (ctx->block) {
+		gi->flags |= FYGIF_STYLE;
+		gi->style.v = fy_generic_in_place_unsigned_int((unsigned int)FYSS_LITERAL);
+	}
+
+	v = fy_generic_is_valid(gi->tag) ? fy_gb_indirect_create(ctx->gb, gi) : fy_invalid;
+	if (fy_generic_is_invalid(v))
+		ctx->err = true;
+	return v;
+}
+
+/*
+ * write the likely binary strings as !!binary base64, e.g. a png turns into
+ * "!!binary |" and base64 lines; a string with a tag of its own, e.g. !foo,
+ * is left alone and keeps its \uDCxx escapes; returns v when nothing changed
+ */
+static fy_generic
+fy_generic_op_binary_to_base64(struct fy_binary_base64_ctx *ctx, fy_generic v, int depth)
+{
+	const fy_generic_map_pair *pairs;
+	const fy_generic *items;
+	fy_generic_indirect gi;
+	fy_generic *nitems;
+	fy_generic vb, vn;
+	size_t i, count;
+	bool changed;
+
+	if (ctx->err || fy_generic_is_invalid(v))
+		return v;
+
+	switch (fy_generic_get_type(v)) {
+	case FYGT_ALIAS:
+		return v;
+
+	case FYGT_STRING:
+		fy_generic_indirect_reset(&gi);
+		if (fy_generic_is_indirect(v)) {
+			fy_generic_indirect_get(v, &gi);
+			if (gi.flags & FYGIF_TAG)
+				return v;
+			vb = fy_generic_op_binary_text(ctx, gi.value, depth);
+		} else
+			vb = fy_generic_op_binary_text(ctx, v, depth);
+		if (fy_generic_is_invalid(vb))
+			return v;
+		return fy_generic_op_binary_wrap(ctx, &gi, vb);
+
+	case FYGT_SEQUENCE:
+	case FYGT_MAPPING:
+		break;
+
+	default:
+		return v;
+	}
+
+	/* a styled or anchored collection, do what's inside */
+	if (fy_generic_is_indirect(v)) {
+		fy_generic_indirect_get(v, &gi);
+		vn = fy_generic_op_binary_to_base64(ctx, gi.value, depth);
+		if (ctx->err || vn.v == gi.value.v)
+			return v;
+		gi.value = vn;
+		vn = fy_gb_indirect_create(ctx->gb, &gi);
+		if (fy_generic_is_invalid(vn))
+			ctx->err = true;
+		return vn;
+	}
+
+	/* a mapping is a sequence of key, value items */
+	if (fy_generic_get_type(v) == FYGT_SEQUENCE) {
+		items = fy_generic_sequence_get_items(v, &count);
+	} else {
+		pairs = fy_generic_mapping_get_pairs(v, &count);
+		items = pairs ? pairs[0].items : NULL;
+		count *= 2;
+	}
+	if (!count || !items)
+		return v;
+
+	nitems = malloc(count * sizeof(*nitems));
+	if (!nitems) {
+		ctx->err = true;
+		return v;
+	}
+
+	changed = false;
+	for (i = 0; i < count; i++) {
+		nitems[i] = fy_generic_op_binary_to_base64(ctx, items[i], depth + 1);
+		if (ctx->err)
+			break;
+		if (nitems[i].v != items[i].v)
+			changed = true;
+	}
+
+	vn = v;
+	if (!ctx->err && changed) {
+		vn = fy_generic_get_type(v) == FYGT_SEQUENCE ?
+			fy_gb_sequence_create(ctx->gb, count, nitems) :
+			fy_gb_mapping_create(ctx->gb, count / 2, nitems);
+		if (fy_generic_is_invalid(vn))
+			ctx->err = true;
+	}
+	free(nitems);
+
+	return vn;
+}
+
 static fy_generic
 fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 		   struct fy_generic_builder *gb,
@@ -3683,10 +3878,11 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 	enum fy_emitter_cfg_flags emit_cfg_flags = 0;
 	enum fy_emitter_xcfg_flags emit_cfg_xflags = 0;
 	enum fy_generic_encoder_emit_flags encoder_emit_flags = 0;
+	struct fy_binary_base64_ctx bctx;
 	char *output_str = NULL;
 	size_t output_len = 0;
 	fy_generic out;
-	int rc;
+	int rc, depth;
 
 	emit_flags = args->emit.flags;
 
@@ -3876,6 +4072,73 @@ fy_generic_op_emit(const struct fy_generic_op_desc *desc FY_UNUSED,
 		encoder_emit_flags |= FYGEEF_EMIT_EVENTS;
 	if (emit_flags & FYOPEF_AUTO_ANCHOR)
 		encoder_emit_flags |= FYGEEF_AUTO_ANCHOR;
+
+	/* likely binary strings as !!binary base64; JSON has no tags, it keeps the escapes */
+	if ((emit_flags & FYOPEF_BINARY_BASE64) &&
+	    (emit_flags & FYOPEF_MODE(FYOPEF_MODE_MASK)) != FYOPEF_MODE_JSON) {
+		memset(&bctx, 0, sizeof(bctx));
+		bctx.gb = gb;
+
+		switch (emit_flags & FYOPEF_STYLE(FYOPEF_STYLE_MASK)) {
+		case FYOPEF_STYLE_FLOW:
+		case FYOPEF_STYLE_ONELINE:
+		case FYOPEF_STYLE_COMPACT:
+			bctx.block = false;
+			break;
+		default:
+			bctx.block = true;
+			break;
+		}
+
+		switch (emit_flags & FYOPEF_WIDTH(FYOPEF_WIDTH_MASK)) {
+		case FYOPEF_WIDTH_80:
+			bctx.width = 80;
+			break;
+		case FYOPEF_WIDTH_132:
+			bctx.width = 132;
+			break;
+		case FYOPEF_WIDTH_INF:
+			bctx.width = 0;
+			break;
+		default:
+			bctx.line = FY_BINARY_BASE64_LINE;
+			break;
+		}
+
+		switch (emit_flags & FYOPEF_INDENT(FYOPEF_INDENT_MASK)) {
+		case FYOPEF_INDENT_1:
+			bctx.indent = 1;
+			break;
+		case FYOPEF_INDENT_3:
+			bctx.indent = 3;
+			break;
+		case FYOPEF_INDENT_4:
+			bctx.indent = 4;
+			break;
+		case FYOPEF_INDENT_6:
+			bctx.indent = 6;
+			break;
+		case FYOPEF_INDENT_8:
+			bctx.indent = 8;
+			break;
+		default:
+			bctx.indent = 2;
+			break;
+		}
+
+		/*
+		 * depth 0 is the document root; a directory puts it under a
+		 * vds mapping, and many documents are a sequence of them
+		 */
+		depth = 0;
+		if (!(emit_flags & FYOPEF_DISABLE_DIRECTORY))
+			depth--;
+		if (emit_flags & FYOPEF_MULTI_DOCUMENT)
+			depth--;
+		in = fy_generic_op_binary_to_base64(&bctx, in, depth);
+		if (bctx.err)
+			goto err_out;
+	}
 
 	/* Emit the value */
 	rc = fy_generic_encoder_emit(fyge, encoder_emit_flags, in);

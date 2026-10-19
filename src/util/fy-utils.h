@@ -313,4 +313,20 @@ int fy_munmap(void *addr, size_t len);
 /* portable way to find size of the current thread's stack */
 size_t fy_stack_size(void);
 
+/*
+ * base64 (RFC 4648), e.g. "PNG" is "UE5H"; with line_len a newline ends
+ * every line_len characters and the last line, e.g. for a literal block
+ */
+size_t fy_base64_encode_size(size_t size, size_t line_len);	/* (size_t)-1 on overflow */
+size_t fy_base64_encode(char *out, const void *data, size_t size, size_t line_len);
+
+/* the decoded size is never more than this */
+static inline size_t fy_base64_decode_max_size(size_t len)
+{
+	return (len / 4) * 3;
+}
+
+/* white space is skipped; -1 for bad characters, bad padding or out too small */
+ssize_t fy_base64_decode(void *out, size_t out_size, const char *text, size_t len);
+
 #endif

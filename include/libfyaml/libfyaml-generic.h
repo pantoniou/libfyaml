@@ -8394,6 +8394,7 @@ struct fy_op_filter_map_reduce_common {
  * @FYGDBF_PYYAML_COMPAT:     Apply YAML 1.1 PyYAML-compatible parsing quirks
  * @FYGDBF_KEEP_STYLE:        Preserve original scalar/collection style information
  * @FYGDBF_KEEP_FAILSAFE_STR: Keep failsafe-schema plain string tags
+ * @FYGDBF_NO_YAML_1_2_BINARY: Keep YAML 1.2 !!binary scalars as tagged base64 text
  */
 enum fy_generic_document_builder_flags {
 	FYGDBF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8403,6 +8404,7 @@ enum fy_generic_document_builder_flags {
 	FYGDBF_PYYAML_COMPAT		= FY_BIT(4),
 	FYGDBF_KEEP_STYLE		= FY_BIT(5),
 	FYGDBF_KEEP_FAILSAFE_STR	= FY_BIT(6),
+	FYGDBF_NO_YAML_1_2_BINARY	= FY_BIT(7),
 };
 
 #define FYGDBF_DEFAULT		FYGDBF_DISABLE_DIRECTORY
@@ -8640,6 +8642,8 @@ fy_generic_document_builder_process_event(struct fy_generic_document_builder *fy
  * @FYOPPF_RELAXED_FLOW_DOC:        Documents are implicitly started via flow markers
  * @FYOPPF_KEEP_ANCHORS:            Preserve anchor metadata even when resolving documents
  * @FYOPPF_ENABLE_CACHE:            Enable transparent regular-file parse caching
+ * @FYOPPF_NO_YAML_1_2_BINARY:      Keep YAML 1.2 !!binary scalars as tagged base64 text;
+ *                                  by default they decode to their bytes, as in YAML 1.1
  */
 enum fy_op_parse_flags {
 	FYOPPF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8665,6 +8669,7 @@ enum fy_op_parse_flags {
 	FYOPPF_RELAXED_FLOW_DOC		= FY_BIT(20),
 	FYOPPF_KEEP_ANCHORS		= FY_BIT(21),
 	FYOPPF_ENABLE_CACHE		= FY_BIT(22),
+	FYOPPF_NO_YAML_1_2_BINARY	= FY_BIT(23),
 };
 
 /* FYOPPF_DEFAULT - Recommended default parse flags (disables directory) */
@@ -8772,6 +8777,8 @@ struct fy_op_parse_args {
  * @FYOPEF_STYLE_ONELINE:          Single-line style
  * @FYOPEF_EMIT_EVENTS:            Use emit events, not the optimized generic emit path
  * @FYOPEF_AUTO_ANCHOR:            Auto-emit anchors/aliases for repeated values
+ * @FYOPEF_BINARY_BASE64:           In YAML, write a string that is mostly bytes that aren't
+ *                                  UTF-8 as !!binary base64; others keep \uDCxx escapes
  */
 enum fy_op_emit_flags {
 	FYOPEF_DISABLE_DIRECTORY	= FY_BIT(0),
@@ -8813,6 +8820,7 @@ enum fy_op_emit_flags {
 	FYOPEF_STYLE_ONELINE		= FYOPEF_STYLE(5),
 	FYOPEF_EMIT_EVENTS		= FY_BIT(25),
 	FYOPEF_AUTO_ANCHOR		= FY_BIT(26),
+	FYOPEF_BINARY_BASE64		= FY_BIT(27),
 };
 
 /* FYOPEF_DEFAULT - Recommended default emit flags (disables directory) */

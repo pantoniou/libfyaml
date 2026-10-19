@@ -65,6 +65,7 @@ enum fy_generic_decoder_parse_flags {
 	FYGDPF_PYYAML_COMPAT		= FY_BIT(5),
 	FYGDPF_KEEP_STYLE		= FY_BIT(6),
 	FYGDPF_KEEP_FAILSAFE_STR	= FY_BIT(7),
+	FYGDPF_NO_YAML_1_2_BINARY	= FY_BIT(8),
 };
 
 struct fy_generic_decoder {

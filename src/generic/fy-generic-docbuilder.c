@@ -497,6 +497,38 @@ fygdb_object_add_item(struct fy_generic_decoder_obj *gdo, fy_generic item)
 	return fygdb_item_append(&gdo->items, &gdo->count, &gdo->alloc, item);
 }
 
+/* !!binary is always decoded in yaml 1.1, and in 1.2 unless turned off */
+static bool
+fygdb_decodes_binary(struct fy_generic_document_builder *fygdb)
+{
+	switch (fy_gb_get_schema(fygdb->cfg.gb)) {
+	case FYGS_YAML1_1:
+	case FYGS_YAML1_1_PYYAML:
+		return true;
+	default:
+		return !(fygdb->cfg.flags & FYGDBF_NO_YAML_1_2_BINARY);
+	}
+}
+
+/* the bytes of a !!binary scalar, e.g. "UE5H" is "PNG"; invalid on bad base64 */
+static fy_generic
+fygdb_create_binary(struct fy_generic_document_builder *fygdb, const char *text, size_t len)
+{
+	fy_generic v;
+	ssize_t n;
+	void *buf;
+
+	buf = malloc(fy_base64_decode_max_size(len) + 1);
+	if (!buf)
+		return fy_invalid;
+
+	n = fy_base64_decode(buf, fy_base64_decode_max_size(len), text, len);
+	v = n >= 0 ? fy_gb_string_size_create(fygdb->cfg.gb, buf, (size_t)n) : fy_invalid;
+	free(buf);
+
+	return v;
+}
+
 static fy_generic
 fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *fye,
 		    fy_generic_indirect *gi, bool *is_empty_plain_scalarp)
@@ -572,7 +604,17 @@ fygdb_create_scalar(struct fy_generic_document_builder *fygdb, struct fy_event *
 			force_type = FYGT_FLOAT;
 		else if (!strcmp(sfx, "str"))
 			force_type = FYGT_STRING;
-		else
+		else if (!strcmp(sfx, "binary") && fygdb_decodes_binary(fygdb)) {
+			v = fygdb_create_binary(fygdb, text, len);
+			FYGDB_TOKEN_ERROR_CHECK(fygdb, fy_event_get_token(fye), FYEM_PARSE,
+						fy_generic_is_valid(v), err_out,
+						"invalid base64 in !!binary scalar");
+
+			/* the value is the bytes now, the tag would say it's base64 */
+			gi->flags &= ~FYGIF_TAG;
+			gi->tag = fy_invalid;
+			goto have_value;
+		} else
 			force_type = FYGT_INVALID;
 
 create_scalar:
@@ -582,6 +624,7 @@ create_scalar:
 					"failed to create scalar with tag %s", tag);
 	}
 
+have_value:
 	needs_indirect = gi && (gi->flags & ~FYGIF_VALUE);
 
 	if (needs_indirect) {
@@ -913,6 +956,8 @@ fy_generic_document_builder_create_on_parser(struct fy_parser *fyp, struct fy_ge
 		cfg.flags |= FYGDBF_CREATE_MARKERS;
 	if (cfg.parse_cfg.flags & FYPCF_KEEP_STYLE)
 		cfg.flags |= FYGDBF_KEEP_STYLE;
+	if (cfg.parse_cfg.flags & FYPCF_NO_YAML_1_2_BINARY)
+		cfg.flags |= FYGDBF_NO_YAML_1_2_BINARY;
 
 	fygdb = fy_generic_document_builder_create(&cfg);
 	if (!fygdb) {

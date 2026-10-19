@@ -38,6 +38,8 @@ fy_generic_decoder_to_builder_flags(enum fy_generic_decoder_parse_flags flags)
 		builder_flags |= FYGDBF_KEEP_STYLE;
 	if (flags & FYGDPF_KEEP_FAILSAFE_STR)
 		builder_flags |= FYGDBF_KEEP_FAILSAFE_STR;
+	if (flags & FYGDPF_NO_YAML_1_2_BINARY)
+		builder_flags |= FYGDBF_NO_YAML_1_2_BINARY;
 
 	return builder_flags;
 }

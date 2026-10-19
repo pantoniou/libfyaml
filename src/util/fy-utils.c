@@ -1967,3 +1967,135 @@ size_t fy_stack_size(void)
 	/* nothing worked */
 	return 0;
 }
+
+static const char fy_base64_chars[] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+size_t fy_base64_encode_size(size_t size, size_t line_len)
+{
+	size_t chars, lines;
+
+	if (size > (SIZE_MAX / 4) * 3 - 3)
+		return (size_t)-1;
+
+	chars = ((size + 2) / 3) * 4;
+	if (!line_len)
+		return chars;
+
+	/* one newline per line, the last one too */
+	lines = chars / line_len + (chars % line_len != 0);
+	if (chars > SIZE_MAX - lines)
+		return (size_t)-1;
+	return chars + lines;
+}
+
+size_t fy_base64_encode(char *out, const void *data, size_t size, size_t line_len)
+{
+	const uint8_t *s = data;
+	char quad[4];
+	size_t i, j, o, col;
+	uint32_t q;
+
+	o = col = 0;
+	for (i = 0; i < size; i += 3) {
+		q = (uint32_t)s[i] << 16;
+		if (i + 1 < size)
+			q |= (uint32_t)s[i + 1] << 8;
+		if (i + 2 < size)
+			q |= (uint32_t)s[i + 2];
+
+		quad[0] = fy_base64_chars[(q >> 18) & 0x3f];
+		quad[1] = fy_base64_chars[(q >> 12) & 0x3f];
+		quad[2] = i + 1 < size ? fy_base64_chars[(q >> 6) & 0x3f] : '=';
+		quad[3] = i + 2 < size ? fy_base64_chars[q & 0x3f] : '=';
+
+		for (j = 0; j < 4; j++) {
+			out[o++] = quad[j];
+			if (line_len && ++col == line_len) {
+				out[o++] = '\n';
+				col = 0;
+			}
+		}
+	}
+	if (line_len && col)
+		out[o++] = '\n';
+
+	return o;
+}
+
+static int fy_base64_value(int c)
+{
+	if (c >= 'A' && c <= 'Z')
+		return c - 'A';
+	if (c >= 'a' && c <= 'z')
+		return c - 'a' + 26;
+	if (c >= '0' && c <= '9')
+		return c - '0' + 52;
+	if (c == '+')
+		return 62;
+	if (c == '/')
+		return 63;
+	return -1;
+}
+
+ssize_t fy_base64_decode(void *out, size_t out_size, const char *text, size_t len)
+{
+	uint8_t *o = out;
+	size_t i, olen;
+	unsigned int n, pad, w;
+	uint32_t q;
+	bool done;
+	int c, v;
+
+	olen = 0;
+	q = 0;
+	n = pad = 0;
+	done = false;
+	for (i = 0; i < len; i++) {
+		c = (unsigned char)text[i];
+		if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+			continue;
+
+		/* nothing after the padded quad, e.g. "QQ==QQ==" */
+		if (done)
+			return -1;
+
+		if (c == '=') {
+			/* only the last two of a quad, e.g. "QQ==" or "QUI=" */
+			if (n < 2)
+				return -1;
+			pad++;
+			v = 0;
+		} else {
+			/* no data after a pad, e.g. "QQ=Q" */
+			if (pad)
+				return -1;
+			v = fy_base64_value(c);
+			if (v < 0)
+				return -1;
+		}
+
+		q = (q << 6) | (uint32_t)v;
+		if (++n < 4)
+			continue;
+
+		w = 3 - pad;
+		if (out_size - olen < w)
+			return -1;
+		o[olen++] = (uint8_t)(q >> 16);
+		if (w > 1)
+			o[olen++] = (uint8_t)(q >> 8);
+		if (w > 2)
+			o[olen++] = (uint8_t)q;
+
+		done = pad > 0;
+		q = 0;
+		n = 0;
+	}
+
+	/* a quad cut short, e.g. "QQ" */
+	if (n)
+		return -1;
+
+	return (ssize_t)olen;
+}

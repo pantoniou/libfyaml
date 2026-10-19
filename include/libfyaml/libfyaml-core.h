@@ -292,6 +292,8 @@ enum fy_error_module {
  * @FYPCF_RELAXED_FLOW_DOC: Documents are implicitly started via flow markers
  * @FYPCF_KEEP_ANCHORS: Preserve anchor metadata even when resolving documents
  * @FYPCF_ENABLE_CACHE: Enable transparent regular-file parse cache
+ * @FYPCF_NO_YAML_1_2_BINARY: Keep YAML 1.2 !!binary scalars as tagged base64 text
+ *                            in generic parses (YAML 1.1 always decodes them)
  */
 enum fy_parse_cfg_flags {
 	FYPCF_QUIET			= FY_BIT(0),
@@ -319,6 +321,7 @@ enum fy_parse_cfg_flags {
 	FYPCF_RELAXED_FLOW_DOC		= FY_BIT(22),
 	FYPCF_KEEP_ANCHORS		= FY_BIT(23),
 	FYPCF_ENABLE_CACHE		= FY_BIT(24),
+	FYPCF_NO_YAML_1_2_BINARY	= FY_BIT(25),
 };
 
 #define FYPCF_PARSE_COMMENTS	FYPCF_KEEP_COMMENTS

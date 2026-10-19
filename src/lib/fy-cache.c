@@ -44,7 +44,7 @@
 #define RENAME_NOREPLACE (1U << 0)
 #endif
 
-#define FY_PARSE_CACHE_VERSION 7u
+#define FY_PARSE_CACHE_VERSION 8u	/* 8: !!binary decodes to bytes */
 #define FY_PARSE_CACHE_ENDIAN 0x12345678u
 #define FY_PARSE_CACHE_MIN_FILE_SIZE_ENV "FY_PARSE_CACHE_MIN_FILE_SIZE"
 #define FY_PARSE_CACHE_FORCE_RELOCATE_ENV "FY_PARSE_CACHE_FORCE_RELOCATE"
@@ -265,6 +265,8 @@ fy_parse_cache_decoder_flags(enum fy_parse_cfg_flags flags)
 		dflags |= FYGDPF_CREATE_MARKERS;
 	if (flags & FYPCF_KEEP_STYLE)
 		dflags |= FYGDPF_KEEP_STYLE;
+	if (flags & FYPCF_NO_YAML_1_2_BINARY)
+		dflags |= FYGDPF_NO_YAML_1_2_BINARY;
 	return dflags;
 }
 
@@ -279,6 +281,8 @@ fy_parse_cache_builder_flags(enum fy_parse_cfg_flags flags)
 		bflags |= FYGDBF_CREATE_MARKERS;
 	if (flags & FYPCF_KEEP_STYLE)
 		bflags |= FYGDBF_KEEP_STYLE;
+	if (flags & FYPCF_NO_YAML_1_2_BINARY)
+		bflags |= FYGDBF_NO_YAML_1_2_BINARY;
 
 	return bflags;
 }
