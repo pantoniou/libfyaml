@@ -5684,6 +5684,10 @@ reflection_type_data_specialize(struct reflection_type_data *rtd,
 		/* the enum is stored and loaded as its underlying integer type */
 		RTS_ERROR_CHECK(fy_type_kind_is_integer(resolved_type_kind),
 				"enum '%s' must have an integer underlying type\n", rtd->ti->name);
+
+		/* and it is accessed with the widest integer type */
+		RTS_ERROR_CHECK(rtd_resolved_typedef->ti->size <= sizeof(uintmax_t),
+				"enum '%s' underlying type is too wide\n", rtd->ti->name);
 		break;
 
 	case FYTK_PTR:
