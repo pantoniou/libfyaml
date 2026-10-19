@@ -1627,6 +1627,15 @@ array_mapping_info_parse_item_epilog(struct array_mapping_info *minfo, struct re
 			default:
 				break;
 			}
+
+			/*
+			 * when the pointers were stored, freeing the outermost one
+			 * released the rest of the chain, and cleared the item slot
+			 */
+			if (!(flags & RPF_NO_STORE) && rw_dep->rtd->ti->kind == FYTK_PTR) {
+				*(void **)rw_dep->data = NULL;
+				break;
+			}
 		}
 	}
 
