@@ -5333,10 +5333,15 @@ reflection_parse_rw(struct fy_parser *fyp, struct reflection_walker *rw, enum re
 
 	/* an auto-select of a type that holds itself can recurse without end */
 	depth = 0;
-	depth_max = rw->parent ? reflection_parse_depth_limit() : 0;
 	for (rw_parent = rw->parent; rw_parent; rw_parent = rw_parent->parent)
-		RP_INPUT_CHECK(++depth <= depth_max,
+		depth++;
+
+	/* the limit is never below the minimum, finding the stack size is expensive */
+	if (depth > REFLECTION_PARSE_DEPTH_MIN) {
+		depth_max = reflection_parse_depth_limit();
+		RP_INPUT_CHECK(depth <= depth_max,
 			       "nesting of '%s' is too deep\n", rw->rtd->ti->name);
+	}
 
 	rc = rw->rtd->ops->parse(fyp, rw, flags);
 
