@@ -590,6 +590,64 @@ END_TEST
 
 /* ── registration ────────────────────────────────────────────────── */
 
+/*
+ * a block scalar with a tag or anchor in front, on a line of its own, takes
+ * its indent from the tag, e.g. "!!str |" at the root has content "abc\n"
+ */
+START_TEST(parse_bug_block_scalar_after_properties)
+{
+	static const struct {
+		const char *yaml;
+		int index;		/* of the scalar to check */
+		const char *value;
+	} cases[] = {
+		{ "!!str |\n  abc\n", 0, "abc\n" },
+		{ "!!str >\n  abc\n  def\n", 0, "abc def\n" },
+		{ "&a |\n  abc\n", 0, "abc\n" },
+		{ "&a !!str |-\n  abc\n", 0, "abc" },
+		{ "!!binary |\n  UE5H\n", 0, "UE5H\n" },
+		{ "!!str |\n abc\n", 0, "abc\n" },
+		{ "key:\n  !!str |\n    text\n", 1, "text\n" },
+		{ "-\n  &a !!str >\n    text\n", 0, "text\n" },
+		{ "- !!str |\n  abc\n", 0, "abc\n" },
+		{ "a: !!str |\n  abc\nb: x\n", 1, "abc\n" },
+		{ "--- !!str |\n  abc\n", 0, "abc\n" },
+	};
+	struct fy_parse_cfg cfg = { .flags = FYPCF_DEFAULT_PARSE };
+	struct fy_parser *fyp;
+	struct fy_event *fye;
+	const char *text;
+	size_t i, tlen;
+	int idx;
+	bool found;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		fyp = fy_parser_create(&cfg);
+		ck_assert_ptr_ne(fyp, NULL);
+		ck_assert_int_eq(fy_parser_set_string(fyp, cases[i].yaml, FY_NT), 0);
+
+		idx = 0;
+		found = false;
+		while ((fye = fy_parser_parse(fyp)) != NULL) {
+			if (fye->type == FYET_SCALAR) {
+				if (idx == cases[i].index) {
+					text = fy_token_get_text(fye->scalar.value, &tlen);
+					ck_assert_msg(text && tlen == strlen(cases[i].value) &&
+						      !memcmp(text, cases[i].value, tlen),
+						      "case %zu: got \"%.*s\"", i, (int)tlen, text ? text : "");
+					found = true;
+				}
+				idx++;
+			}
+			fy_parser_event_free(fyp, fye);
+		}
+		ck_assert_msg(!fy_parser_get_stream_error(fyp), "case %zu: parse error", i);
+		ck_assert_msg(found, "case %zu: no scalar %d", i, cases[i].index);
+		fy_parser_destroy(fyp);
+	}
+}
+END_TEST
+
 void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -630,6 +688,9 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_flow_tag_before_flow_end);
 	fy_check_testcase_add_test(ctc, parse_bug_flow_tag_before_comma);
 	fy_check_testcase_add_test(ctc, parse_bug_flow_verbatim_tag_keeps_indicators);
+
+	/* a block scalar with a tag or anchor in front */
+	fy_check_testcase_add_test(ctc, parse_bug_block_scalar_after_properties);
 
 #if defined(__linux__)
 	/* Issue #309: path key duplication must not read past direct token text */
