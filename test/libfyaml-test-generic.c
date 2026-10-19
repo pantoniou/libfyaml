@@ -8350,6 +8350,13 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	ctc = fy_check_suite_add_test_case(cs, "generic");
 
+	/*
+	 * generic_image_large builds a 30000 item image, on a slow debug ASAN
+	 * runner that can exceed libcheck's 4s default per-test timeout.
+	 * CK_TIMEOUT_MULTIPLIER still scales it.
+	 */
+	fy_check_testcase_set_timeout(ctc, 60);
+
 	/* baby steps first */
 	fy_check_testcase_add_test(ctc, generic_basics);
 	fy_check_testcase_add_test(ctc, generic_macro_stress);
