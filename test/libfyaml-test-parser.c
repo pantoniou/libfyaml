@@ -323,6 +323,77 @@ END_TEST
  * it, in both the fixed-base and forced-relocate load modes. Also verifies the
  * v5 blob (content + concatenated index) still reads back intact.
  */
+/*
+ * the parse cache keys on FYOPPF_NO_YAML_1_2_BINARY, e.g. the same file is
+ * "PNG" by default and the tagged text "UE5H" with it, both from the cache
+ */
+START_TEST(parser_generic_parse_cache_binary)
+{
+	static const char yaml[] = "a: !!binary UE5H\n";
+	static const struct {
+		enum fy_op_parse_flags flags;
+		const char *value;
+		int entries;		/* in the cache after this parse */
+	} passes[] = {
+		{ 0, "PNG", 1 },
+		{ 0, "PNG", 1 },
+		{ FYOPPF_NO_YAML_1_2_BINARY, "UE5H", 2 },
+		{ FYOPPF_NO_YAML_1_2_BINARY, "UE5H", 2 },
+		{ 0, "PNG", 2 },
+	};
+	struct fy_generic_builder *gb;
+	fy_generic_sized_string back;
+	fy_generic parsed, va;
+	char tmpbuf[PATH_MAX];
+	const char *tmp;
+	char *cache_template, *yaml_template, *cache_dir;
+	ssize_t old_min_size;
+	size_t i;
+	int fd;
+
+	tmp = fy_tmpdir(tmpbuf, sizeof(tmpbuf));
+	ck_assert_ptr_ne(tmp, NULL);
+	cache_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-binary-XXXXXX", tmp);
+	yaml_template = fy_sprintfa("%s" FY_PS "libfyaml-cache-byaml-XXXXXX", tmp);
+	cache_dir = fy_mkdtemp(cache_template);
+	ck_assert_ptr_ne(cache_dir, NULL);
+	old_min_size = fy_parse_cache_get_min_file_size();
+	ck_assert_int_eq(fy_parse_cache_override(cache_dir), 0);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(0), 0);
+
+	fd = fy_mkstemp(yaml_template);
+	ck_assert_int_ge(fd, 0);
+	ck_assert_int_eq((int)write(fd, yaml, sizeof(yaml) - 1), (int)sizeof(yaml) - 1);
+	ck_assert_int_eq(close(fd), 0);
+
+	/* a builder per parse; a builder keeps only one cache entry alive */
+	for (i = 0; i < sizeof(passes) / sizeof(passes[0]); i++) {
+		gb = fy_generic_builder_create(NULL);
+		ck_assert_ptr_ne(gb, NULL);
+
+		parsed = fy_parse(gb, fy_null,
+				  passes[i].flags | FYOPPF_INPUT_TYPE_FILENAME |
+				  FYOPPF_ENABLE_CACHE | FYOPPF_DISABLE_DIRECTORY, yaml_template);
+		ck_assert_msg(fy_generic_is_valid(parsed), "pass %zu: parse failed", i);
+		va = fy_get(parsed, "a", fy_invalid);
+		back = fy_castp(&va, fy_szstr_empty);
+		ck_assert_msg(back.size == strlen(passes[i].value) &&
+			      !memcmp(back.data, passes[i].value, back.size),
+			      "pass %zu: got \"%.*s\"", i, (int)back.size, back.data);
+		ck_assert_int_eq(cache_dir_entry_count(), passes[i].entries);
+
+		fy_generic_builder_destroy(gb);
+	}
+
+	unlink(yaml_template);
+
+	fy_parse_cache_override(NULL);
+	ck_assert_int_eq(fy_parse_cache_set_min_file_size(old_min_size), 0);
+
+	remove_tmpdir(cache_dir, cache_dir);
+}
+END_TEST
+
 START_TEST(parser_file_parse_cache_restore)
 {
 	struct fy_parse_cfg cfg = {
@@ -2808,6 +2879,7 @@ void libfyaml_case_parser(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parser_file_parse_cache_multi_document_lifecycle);
 #endif
 	fy_check_testcase_add_test(ctc, parser_file_parse_cache_restore);
+	fy_check_testcase_add_test(ctc, parser_generic_parse_cache_binary);
 #endif
 	fy_check_testcase_add_test(ctc, parser_parse_load_document);
 	fy_check_testcase_add_test(ctc, parser_document_resolve);
