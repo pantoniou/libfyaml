@@ -76,7 +76,8 @@ libfyaml_test_SOURCES += \
 if HAVE_GENERIC
 libfyaml_test_SOURCES += \
 	libfyaml-test-generic.c \
-	libfyaml-test-generic-scalars.c
+	libfyaml-test-generic-scalars.c \
+	libfyaml-test-generic-binary.c
 endif
 libfyaml_test_LDFLAGS += -static
 endif

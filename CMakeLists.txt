@@ -1617,6 +1617,7 @@ if(CAN_TEST)
             test/libfyaml-test-thread.c
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
+            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-binary.c>
             $<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
             ${GETOPT_SOURCES}
         )

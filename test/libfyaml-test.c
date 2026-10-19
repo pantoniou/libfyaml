@@ -54,6 +54,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs);
 #ifdef HAVE_GENERIC
 void libfyaml_case_generic(struct fy_check_suite *cs);
 void libfyaml_case_generic_scalars(struct fy_check_suite *cs);
+void libfyaml_case_generic_binary(struct fy_check_suite *cs);
 #endif
 #ifdef HAVE_REFLECTION
 void libfyaml_case_reflection(struct fy_check_suite *cs);
@@ -81,6 +82,7 @@ struct fy_check_suite *libfyaml_suite(int argc, char **argv)
 #ifdef HAVE_GENERIC
 	libfyaml_case_generic(cs);
 	libfyaml_case_generic_scalars(cs);
+	libfyaml_case_generic_binary(cs);
 #endif
 #ifdef HAVE_REFLECTION
 	libfyaml_case_reflection(cs);

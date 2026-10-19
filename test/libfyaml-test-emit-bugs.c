@@ -1266,8 +1266,9 @@ static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
 	struct fy_document *fyd, *parsed;
 	struct fy_node *fyn;
 	char *emitted, *expected;
-	size_t emitted_len, expected_len, off, i;
-	char esc[5];
+	size_t emitted_len, expected_len, off, i, back_len;
+	const char *back;
+	char esc[7];
 
 	fyd = fy_document_create(NULL);
 	ck_assert_ptr_ne(fyd, NULL);
@@ -1281,7 +1282,7 @@ static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
 	ck_assert_msg(emitted != NULL, "%s: failed to emit document", name);
 	emitted_len = strlen(emitted);
 
-	expected_len = 2 + (size * 4) + 2;
+	expected_len = 2 + (size * 6) + 2;
 	expected = malloc(expected_len + 1);
 	ck_assert_ptr_ne(expected, NULL);
 
@@ -1292,8 +1293,8 @@ static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
 			expected[off++] = (char)data[i];
 		else {
 			snprintf(expected + off, expected_len + 1 - off,
-				 "\\x%02X", data[i]);
-			off += 4;
+				 "\\uDC%02X", data[i]);
+			off += 6;
 		}
 	}
 	expected[off++] = '"';
@@ -1306,7 +1307,7 @@ static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
 	for (i = 0; i < size; i++) {
 		if (data[i] < 0x80)
 			continue;
-		snprintf(esc, sizeof(esc), "\\x%02X", data[i]);
+		snprintf(esc, sizeof(esc), "\\uDC%02X", data[i]);
 		ck_assert_msg(strstr(emitted, esc) != NULL,
 			      "%s: expected %s in emitted output:\n%s",
 			      name, esc, emitted);
@@ -1317,6 +1318,11 @@ static void assert_invalid_utf8_scalar_emits_escaped(const char *name,
 	parsed = fy_document_build_from_string(NULL, emitted, FY_NT);
 	ck_assert_msg(parsed != NULL,
 		      "%s: emitted invalid YAML:\n%s", name, emitted);
+
+	/* and the same bytes come back */
+	back = fy_node_get_scalar(fy_document_root(parsed), &back_len);
+	ck_assert_msg(back && back_len == size && !memcmp(back, data, size),
+		      "%s: bytes changed on the round trip:\n%s", name, emitted);
 
 	fy_document_destroy(parsed);
 	free(expected);
@@ -1437,8 +1443,8 @@ static void assert_invalid_utf8_generic_string_emits_escaped(const char *name,
 							     const uint8_t *data,
 							     size_t size)
 {
-	fy_generic_sized_string input, output;
-	fy_generic value, emitted;
+	fy_generic_sized_string input, output, back;
+	fy_generic value, emitted, parsed;
 	char *expected;
 	size_t expected_len, off, i;
 
@@ -1459,7 +1465,7 @@ static void assert_invalid_utf8_generic_string_emits_escaped(const char *name,
 	output = fy_generic_cast_default(emitted, fy_szstr_empty);
 	ck_assert_ptr_ne(output.data, NULL);
 
-	expected_len = 2 + (size * 4) + 2;
+	expected_len = 2 + (size * 6) + 2;
 	expected = malloc(expected_len + 1);
 	ck_assert_ptr_ne(expected, NULL);
 
@@ -1470,8 +1476,8 @@ static void assert_invalid_utf8_generic_string_emits_escaped(const char *name,
 			expected[off++] = (char)data[i];
 		else {
 			snprintf(expected + off, expected_len + 1 - off,
-				 "\\x%02X", data[i]);
-			off += 4;
+				 "\\uDC%02X", data[i]);
+			off += 6;
 		}
 	}
 	expected[off++] = '"';
@@ -1486,6 +1492,14 @@ static void assert_invalid_utf8_generic_string_emits_escaped(const char *name,
 		      name, expected, (int)output.size, output.data);
 
 	assert_no_raw_invalid_bytes(output.data, output.size, data, size, name);
+
+	/* and the same bytes come back */
+	parsed = fy_parse(output, FYOPPF_DEFAULT, NULL);
+	ck_assert(fy_generic_is_string(parsed));
+	back = fy_generic_cast_default(parsed, fy_szstr_empty);
+	ck_assert_msg(back.size == size && !memcmp(back.data, data, size),
+		      "%s: bytes changed on the round trip:\n%.*s",
+		      name, (int)output.size, output.data);
 
 	free(expected);
 }

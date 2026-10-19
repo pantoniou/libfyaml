@@ -147,15 +147,15 @@ START_TEST(emit_json_non_utf8)
 {
 	struct test_emitter_data data;
 
-	/* JSON has no escape of a byte: a byte that is not UTF-8 is U+FFFD */
+	/* a byte that is not UTF-8 is a lone surrogate escape, e.g. 0xff is \uDCFF */
 	emit_dq_scalar(&data, FYECF_MODE_JSON, "a\xff" "b", 3);
-	ck_assert_ptr_ne(strstr(data.buf, "\"a\\uFFFDb\""), NULL);
+	ck_assert_ptr_ne(strstr(data.buf, "\"a\\uDCFFb\""), NULL);
 	ck_assert_ptr_eq(strstr(data.buf, "\\x"), NULL);
 	cleanup_test_emitter(&data);
 
-	/* YAML keeps the byte as it was */
+	/* same in YAML; \xFF would read back as U+00FF */
 	emit_dq_scalar(&data, FYECF_DEFAULT, "a\xff" "b", 3);
-	ck_assert_ptr_ne(strstr(data.buf, "\"a\\xFFb\""), NULL);
+	ck_assert_ptr_ne(strstr(data.buf, "\"a\\uDCFFb\""), NULL);
 	cleanup_test_emitter(&data);
 }
 END_TEST
