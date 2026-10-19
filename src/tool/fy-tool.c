@@ -143,6 +143,8 @@
 #define OPT_CACHE_INFO			2035
 #define OPT_EMIT_EVENTS			2036
 #define OPT_AUTO_ANCHOR			2037
+#define OPT_BINARY_BASE64		2038
+#define OPT_NO_YAML_1_2_BINARY		2039
 
 #define OPT_DISABLE_DIAG		3000
 #define OPT_ENABLE_DIAG			3001
@@ -253,6 +255,8 @@ static struct option lopts[] = {
 	{"enable-cache",	no_argument,		0,	OPT_ENABLE_CACHE },
 	{"emit-events",		no_argument,		0,	OPT_EMIT_EVENTS },
 	{"auto-anchor",		no_argument,		0,	OPT_AUTO_ANCHOR },
+	{"binary-base64",	no_argument,		0,	OPT_BINARY_BASE64 },
+	{"no-yaml-1.2-binary",	no_argument,		0,	OPT_NO_YAML_1_2_BINARY },
 	{"cache-list",		no_argument,		0,	OPT_CACHE_LIST },
 	{"cache-remove",	required_argument,	0,	OPT_CACHE_REMOVE },
 	{"cache-stats",		no_argument,		0,	OPT_CACHE_STATS },
@@ -504,6 +508,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 	USAGE_ITEM("--cache-stats", "Show parse cache directory statistics");
 	USAGE_ITEM("--emit-events", "Use events to drive the emitter");
 	USAGE_ITEM("--auto-anchor", "Auto-emit anchors/aliases for repeated (deduplicated) values");
+	USAGE_ITEM("--binary-base64", "Emit mostly binary strings as !!binary base64 (YAML only)");
+	USAGE_ITEM("--no-yaml-1.2-binary", "Keep YAML 1.2 !!binary scalars as tagged base64 text");
 #endif
 
 	if (tool_mode == OPT_TOOL || tool_mode != OPT_TESTSUITE) {
@@ -1667,6 +1673,8 @@ struct generic_config {
 	bool relaxed_flow_doc;
 	bool emit_events;
 	bool auto_anchor;
+	bool binary_base64;		/* mostly binary strings as !!binary base64 */
+	bool no_yaml_1_2_binary;	/* keep 1.2 !!binary as tagged base64 text */
 	const char *durable_dir;	/* if set, use a durable on-disk dedup arena here */
 	bool durable_replace;		/* replace the refs head instead of accumulating */
 };
@@ -1853,6 +1861,9 @@ static enum fy_op_emit_flags generic_emit_style_flags(const struct generic_confi
 
 	if (gcfg->auto_anchor)
 		f |= FYOPEF_AUTO_ANCHOR;
+
+	if (gcfg->binary_base64)
+		f |= FYOPEF_BINARY_BASE64;
 
 	return f;
 }
@@ -2129,6 +2140,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (gcfg->parse_cfg_flags & FYPCF_ENABLE_CACHE)
 			parse_flags |= FYOPPF_ENABLE_CACHE;
 
+		if (gcfg->no_yaml_1_2_binary)
+			parse_flags |= FYOPPF_NO_YAML_1_2_BINARY;
+
 		if (!strcmp(filename, "-"))
 			v = fy_parse(gb, fy_invalid,
 				     parse_flags | FYOPPF_INPUT_TYPE_STDIN, NULL);
@@ -2364,6 +2378,8 @@ int main(int argc, char *argv[])
 	const char *cache_remove = NULL, *cache_info = NULL;
 	bool emit_events = false;
 	bool auto_anchor = false;
+	bool binary_base64 = false;
+	bool no_yaml_1_2_binary = false;
 #endif
 #ifdef HAVE_REFLECTION
 	/* reflection */
@@ -2764,6 +2780,12 @@ int main(int argc, char *argv[])
 		case OPT_AUTO_ANCHOR:
 			auto_anchor = true;
 			break;
+		case OPT_BINARY_BASE64:
+			binary_base64 = true;
+			break;
+		case OPT_NO_YAML_1_2_BINARY:
+			no_yaml_1_2_binary = true;
+			break;
 #endif
 		case OPT_PREFER_RECURSIVE:
 			cfg.flags |= FYPCF_PREFER_RECURSIVE;
@@ -3084,6 +3106,7 @@ int main(int argc, char *argv[])
 		dcfg.emit_xcfg_flags = emit_xflags;
 		dcfg.emit_events = emit_events;
 		dcfg.auto_anchor = auto_anchor;
+		dcfg.binary_base64 = binary_base64;
 		dcfg.keep_comments = !!(cfg.flags & FYPCF_PARSE_COMMENTS);
 		rc = do_durable_dump(durable_dump_dir, &dcfg);
 		exitcode = !rc ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -3836,6 +3859,8 @@ int main(int argc, char *argv[])
 		gcfg.relaxed_flow_doc = !!(cfg.flags & FYPCF_RELAXED_FLOW_DOC);
 		gcfg.emit_events = emit_events;
 		gcfg.auto_anchor = auto_anchor;
+		gcfg.binary_base64 = binary_base64;
+		gcfg.no_yaml_1_2_binary = no_yaml_1_2_binary;
 		gcfg.durable_dir = durable_dir;
 		gcfg.durable_replace = durable_replace;
 		rc = do_generic(argc, argv, optind, &gcfg);
