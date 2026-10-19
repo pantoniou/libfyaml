@@ -3183,8 +3183,8 @@ struct_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 		rfd = rtd->fields[i];
 		rtdf = rfd_rtd(rfd);
 
-		/* fill-in-default */
-		if (!struct_is_field_present(id, i) &&
+		/* fill-in-default; a counter is set by the array or string it counts */
+		if (!struct_is_field_present(id, i) && !rfd->is_counter &&
 		    (value = reflection_meta_generate_any_value(rtdf->meta,
 								rmvid_default, rtdf)) != NULL) {
 
