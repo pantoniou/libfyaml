@@ -1700,6 +1700,20 @@ if(CAN_TEST)
             SUITE_NAME testemitter
             EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --keep-style --schema yaml1.2-failsafe --emit-events"
         )
+        # a generic round trip keeps the values, e.g. white space in block scalars
+        add_testemitter_tests(testemitter-generic ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic" "EMITTER_PARSE_ARGS=--generic-testsuite"
+        )
+        add_testemitter_tests(testemitter-generic-events ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --emit-events" "EMITTER_PARSE_ARGS=--generic-testsuite"
+        )
+        # mostly binary strings go out as !!binary and come back as the same bytes
+        add_testemitter_tests(testemitter-generic-binary ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --binary-base64" "EMITTER_PARSE_ARGS=--generic-testsuite"
+        )
     endif()
 
     # Network-dependent tests using FetchContent
@@ -1760,6 +1774,8 @@ if(CAN_TEST)
         list(APPEND TEST_SUITES
             testsuite-generic.test
             testemitter-generic-failsafe.test
+            testemitter-generic.test
+            testemitter-generic-binary.test
         )
     endif()
     if(HAVE_JQ)

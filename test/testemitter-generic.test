@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+EMITTER_DUMP_ARGS="--generic" \
+EMITTER_PARSE_ARGS="--generic-testsuite" \
+${SRCDIR}/testemitter.test

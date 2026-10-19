@@ -114,6 +114,22 @@ jobs:
       env:
         BD: build/${{ matrix.build_type }}
 
+    - name: "Run generic emitter tests"
+      run: |
+        export FY_TOOL=./$BD/fy-tool
+        export LIBFYAML_TEST=./$BD/libfyaml-test
+        export TEST_DIR=./test
+        export EMITTER_PARSE_ARGS=--generic-testsuite
+        ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        for args in "--generic" "--generic --emit-events" "--generic --binary-base64"; do
+          export EMITTER_DUMP_ARGS="$args"
+          ls test/emitter-examples/*.yaml | xargs -n1 basename \
+            | xargs -P"$ncpu" -I{} bash cmake/run-single-tap-test.sh testemitter {} \
+            || exit 1
+        done
+      env:
+        BD: build/${{ matrix.build_type }}
+
     - name: "Run YAML test suite"
       run: |
         export FY_TOOL=./$BD/fy-tool

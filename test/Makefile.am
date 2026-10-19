@@ -147,6 +147,8 @@ TESTS += testemitter-streaming.test
 TESTS += testemitter-restreaming.test
 if HAVE_GENERIC
 TESTS += testemitter-generic-failsafe.test
+TESTS += testemitter-generic.test
+TESTS += testemitter-generic-binary.test
 endif
 
 if HAVE_LIBCLANG
@@ -171,6 +173,8 @@ EXTRA_DIST += \
 	emitter-examples/anchors-on-empty-scalars4.yaml \
 	emitter-examples/anchors.yaml \
 	emitter-examples/array.yaml \
+	emitter-examples/binary-escapes.yaml \
+	emitter-examples/binary-tagged.yaml \
 	emitter-examples/block.yaml \
 	emitter-examples/block2.yaml \
 	emitter-examples/block3.yaml \
