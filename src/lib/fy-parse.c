@@ -9055,7 +9055,7 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 	struct fy_streaming_alias_state *fysas;
 	struct fy_eventp *fyep, *fyep_src;
 	bool was_merge_key;
-	int rc;
+	int rc, i;
 
 	if (!(fyp->cfg.flags & FYPCF_RESOLVE_DOCUMENT))
 		return NULL;
@@ -9088,6 +9088,13 @@ struct fy_eventp *fy_parser_parse_resolve_prolog(struct fy_parser *fyp)
 		fysa = fy_parser_streaming_alias_lookup_pivot(fyp, fysa, fyep_src->e.alias.anchor);
 		fyp_error_check(fyp, fysa, err_out,
 				"fy_parser_streaming_alias_lookup_pivot() failed!");
+
+		/* an alias that resolves to a collection being replayed is recursive */
+		for (i = 0; i < fyp->sas.top; i++) {
+			FYP_TOKEN_ERROR_CHECK(fyp, fyep_src->e.alias.anchor, FYEM_PARSE,
+					fyp->sas.stack[i].fysa != fysa, err_out,
+					"Recursive alias reference detected");
+		}
 
 		/* and push */
 		fysas = fy_parse_streaming_alias_state_push(fyp, fysa);
