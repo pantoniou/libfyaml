@@ -2268,6 +2268,15 @@ fy_atom_text_analyze_internal(struct fy_utf8_buf *ubuf,
 			/* track if the ws run has a tab */
 			ws_run_has_tab = fy_is_tab(c);
 
+			/*
+			 * white space next to a line break is dropped when the
+			 * lines are folded, e.g. 'a \n  b' reads back as "a\nb";
+			 * only a block scalar or double quoted keeps it
+			 */
+			if (fy_is_generic_lb_m(cp, lb_mode) || fy_is_generic_lb_m(cn, lb_mode))
+				flags &= ~(FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW |
+					   FYTTAF_CAN_BE_SINGLE_QUOTED);
+
 			flags |= FYTTAF_HAS_WS;
 			flags &= ~FYTTAF_VALID_ANCHOR;
 			if (fy_is_ws(cn)) {
