@@ -26,19 +26,53 @@
 #include <libfyaml.h>
 
 #include "fy-tool-util.h"
-#include "fy-utf8.h"
+
+/*
+ * the next UTF-8 character; a byte that doesn't start a valid one comes
+ * back as 0xdc00 | byte with width 1, e.g. 0x89 is 0xdc89, as the library
+ * writes it in a double quoted scalar
+ */
+static int dump_utf8_get(const uint8_t *p, size_t left, int *widthp)
+{
+	int i, w, c;
+
+	w = (p[0] & 0x80) == 0x00 ? 1 :
+	    (p[0] & 0xe0) == 0xc0 ? 2 :
+	    (p[0] & 0xf0) == 0xe0 ? 3 :
+	    (p[0] & 0xf8) == 0xf0 ? 4 : 0;
+	if (!w || (size_t)w > left)
+		goto bad_byte;
+
+	c = p[0] & (0xff >> w);
+	for (i = 1; i < w; i++) {
+		if ((p[i] & 0xc0) != 0x80)
+			goto bad_byte;
+		c = (c << 6) | (p[i] & 0x3f);
+	}
+
+	/* overlong, a surrogate or out of range */
+	if ((w == 4 && c < 0x10000) ||
+	    (w == 3 && c <   0x800) ||
+	    (w == 2 && c <    0x80) ||
+	    (c >= 0xd800 && c <= 0xdfff) || c >= 0x110000)
+		goto bad_byte;
+
+	*widthp = w;
+	return c;
+
+bad_byte:
+	*widthp = 1;
+	return 0xdc00 | p[0];
+}
 
 void print_escaped(const char *str, size_t length)
 {
 	const uint8_t *p;
-	int c, w, err;
+	int c, w;
 
 	for (p = (const uint8_t *)str; length > 0; p += w, length -= (size_t)w) {
 
-		/* a bad byte comes back as a byte mark, e.g. 0x89 -> \udc89 */
-		c = fy_utf8_get_bytes(p, length, &w, &err);
-		if (c < 0)
-			break;
+		c = dump_utf8_get(p, length, &w);
 
 		switch (c) {
 		case '\\':
@@ -87,7 +121,7 @@ void print_escaped(const char *str, size_t length)
 			if ((c >= 0x01 && c <= 0x1f) || c == 0x7f ||	/* C0 */
 			    (c >= 0x80 && c <= 0x9f))			/* C1 */
 				printf("\\x%02x", c);
-			else if (fy_utf8_is_byte_mark(c))
+			else if (c >= 0xdc80 && c <= 0xdcff)	/* a bad byte */
 				printf("\\u%04x", c);
 			else
 				printf("%.*s", w, p);
