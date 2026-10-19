@@ -984,6 +984,46 @@ START_TEST(atom_analysis_flag_likely_binary)
 }
 END_TEST
 
+/* white space next to a line break is lost when folded: no plain, no single quoted */
+START_TEST(atom_analysis_ws_next_to_lb)
+{
+	static const struct {
+		const char *data;
+		bool lost;
+	} cases[] = {
+		{ "a \nb", true },		/* trailing space on a line */
+		{ "a\n b", true },		/* leading space on a line */
+		{ "a\n  \nb", true },		/* a line of spaces */
+		{ "a\t\nb", true },
+		{ "\t\ndetected\n", true },
+		{ "a b\nc d", false },		/* spaces inside lines are fine */
+		{ "a b", false },
+		{ " a b ", false },		/* single line, kept as is */
+	};
+	struct atom_analysis_case tc;
+	char name[32];
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
+		snprintf(name, sizeof(name), "ws_next_to_lb_%zu", i);
+		memset(&tc, 0, sizeof(tc));
+		tc.name = name;
+		tc.data = cases[i].data;
+		tc.size = strlen(cases[i].data);
+		tc.style = FYSS_ANY;
+		tc.lb_mode = fylb_cr_nl;
+		tc.preferred_style = FYSS_ANY;
+		if (cases[i].lost)
+			tc.clear_flags = FYTTAF_CAN_BE_PLAIN | FYTTAF_CAN_BE_PLAIN_FLOW |
+					 FYTTAF_CAN_BE_SINGLE_QUOTED;
+		else
+			tc.set_flags = FYTTAF_CAN_BE_SINGLE_QUOTED;
+		check_atom_analysis_case(&tc);
+		check_atom_analysis_case_atom(&tc);
+	}
+}
+END_TEST
+
 START_TEST(atom_analysis_flag_has_invalid_utf8)
 {
 	static const struct atom_analysis_case tc = {
@@ -1645,6 +1685,7 @@ void libfyaml_case_atom_analysis(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_bytes);
 	fy_check_testcase_add_test(ctc, atom_analysis_utf8_get_partial);
 	fy_check_testcase_add_test(ctc, atom_analysis_likely_binary);
+	fy_check_testcase_add_test(ctc, atom_analysis_ws_next_to_lb);
 
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_lb);
 	fy_check_testcase_add_test(ctc, atom_analysis_flag_has_ws);

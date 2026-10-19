@@ -160,6 +160,49 @@ START_TEST(emit_json_non_utf8)
 }
 END_TEST
 
+/*
+ * a long single quoted scalar breaks at a space before a word, never inside
+ * a word with a backslash, e.g. 'ab\ cd' would read back with the backslash
+ */
+START_TEST(emit_single_quoted_long_line)
+{
+	static const char * const texts[] = {
+		"This entire block of text will be the value of the 'literal-block' key, with more words",
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"words  with  two  spaces  between  each  of  them  so  a  break  can  not  drop  any  space",
+		"x y z abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz end",
+	};
+	struct fy_document *fyd, *fyd2;
+	struct fy_node *fyn;
+	const char *back;
+	char *out;
+	size_t i, len;
+
+	for (i = 0; i < sizeof(texts) / sizeof(texts[0]); i++) {
+		fyd = fy_document_create(NULL);
+		ck_assert_ptr_ne(fyd, NULL);
+		fyn = fy_node_create_scalar(fyd, texts[i], FY_NT);
+		ck_assert_ptr_ne(fyn, NULL);
+		ck_assert_int_eq(fy_node_set_style(fyn, FYNS_SINGLE_QUOTED), FYNS_SINGLE_QUOTED);
+		ck_assert_int_eq(fy_document_set_root(fyd, fyn), 0);
+
+		out = fy_emit_document_to_string(fyd, FYECF_MODE_BLOCK | FYECF_WIDTH_80);
+		ck_assert_ptr_ne(out, NULL);
+		ck_assert_msg(!strchr(out, '\\'), "case %zu: a backslash in:\n%s", i, out);
+
+		fyd2 = fy_document_build_from_string(NULL, out, FY_NT);
+		ck_assert_ptr_ne(fyd2, NULL);
+		back = fy_node_get_scalar(fy_document_root(fyd2), &len);
+		ck_assert_msg(back && len == strlen(texts[i]) && !memcmp(back, texts[i], len),
+			      "case %zu: changed on the round trip:\n%s", i, out);
+
+		fy_document_destroy(fyd2);
+		free(out);
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 START_TEST(emit_interstitial_comment_single)
 {
 	struct fy_parse_cfg cfg = { .flags = FYPCF_PARSE_COMMENTS };
@@ -1324,4 +1367,5 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_nested_mapping_first_key_comment_sort);
 	fy_check_testcase_add_test(ctc, emit_constructed_comment_indent);
 	fy_check_testcase_add_test(ctc, emit_json_non_utf8);
+	fy_check_testcase_add_test(ctc, emit_single_quoted_long_line);
 }
