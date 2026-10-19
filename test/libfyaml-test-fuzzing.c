@@ -3233,7 +3233,9 @@ START_TEST(fuzz_issue_489_pointer_chain_depth_repro)
 	enum { N = 4096 };
 	struct fy_reflection *rfl;
 	struct fy_type_context *ctx;
+	const struct fy_type_info *ti;
 	char *entry;
+	int i;
 
 	entry = malloc(5 + N + 1);
 	ck_assert_ptr_ne(entry, NULL);
@@ -3243,6 +3245,16 @@ START_TEST(fuzz_issue_489_pointer_chain_depth_repro)
 
 	rfl = fy_reflection_from_null(NULL);
 	ck_assert_ptr_ne(rfl, NULL);
+
+	/* Lookup updates the whole chain before the setup depth guard runs. */
+	ti = fy_type_info_lookup(rfl, entry);
+	for (i = 0; i < N; i++) {
+		ck_assert_ptr_ne(ti, NULL);
+		ck_assert_int_eq(ti->kind, FYTK_PTR);
+		ti = ti->dependent_type;
+	}
+	ck_assert_ptr_ne(ti, NULL);
+	ck_assert_int_eq(ti->kind, FYTK_CHAR);
 
 	/* the type is refused, the setup must not run out of stack */
 	ctx = fy_type_context_create(&(struct fy_type_context_cfg){
