@@ -576,6 +576,7 @@ if have_check:
         test_sources.extend([
             test_dir / "libfyaml-test-generic.c",
             test_dir / "libfyaml-test-generic-scalars.c",
+            test_dir / "libfyaml-test-generic-binary.c",
         ])
     if have_reflection:
         test_sources.append(test_dir / "libfyaml-test-reflection.c")
