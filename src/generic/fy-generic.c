@@ -3498,7 +3498,20 @@ static int fy_generic_image_make(fy_generic v, void *buf, size_t cap,
 	int err = ENOSPC;
 
 	errno = ENOSPC;
-	if (cap <= offset)
+	if (cap < offset)
+		return -1;
+
+	/* an inline value is all in the root word, e.g. 7 or null */
+	if (fy_generic_is_in_place(v)) {
+		memset(image, 0, offset);
+		fy_generic_image_header_fill(&hdr, 0, v);
+		memcpy(image, &hdr, sizeof(hdr));
+		*totalp = offset;
+		errno = 0;
+		return 0;
+	}
+
+	if (cap == offset)
 		return -1;
 	/* zero unused bytes to produce reproducible images */
 	memset(image, 0, cap);
@@ -3556,7 +3569,7 @@ err_out:
 
 static bool fy_generic_image_value_usable(fy_generic v)
 {
-	return fy_generic_is_valid(v) && !fy_generic_is_in_place(v);
+	return fy_generic_is_valid(v);
 }
 
 void *fy_generic_image_create(fy_generic v, size_t *sizep)
@@ -3650,20 +3663,24 @@ int fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
 	uintptr_t at;
 	fy_generic root;
 
-	if (!image || !rootp || size <= FY_GENERIC_IMAGE_ARENA_OFFSET ||
+	if (!image || !rootp || size < FY_GENERIC_IMAGE_ARENA_OFFSET ||
 	    ((uintptr_t)image & (FY_GENERIC_IMAGE_ALIGN - 1)))
 		return -1;
 	memcpy(&hdr, image, sizeof(hdr));
+	root.v = hdr.root;
 	if (hdr.magic != FY_GENERIC_IMAGE_MAGIC ||
 	    hdr.hash != fy_generic_image_header_hash(&hdr) ||
-	    !hdr.root || hdr.size != size - FY_GENERIC_IMAGE_ARENA_OFFSET)
+	    fy_generic_is_invalid(root) ||
+	    hdr.size != size - FY_GENERIC_IMAGE_ARENA_OFFSET)
+		return -1;
+	/* only an inline root has no arena */
+	if (!hdr.size && !fy_generic_is_in_place(root))
 		return -1;
 	arena = (unsigned char *)image + FY_GENERIC_IMAGE_ARENA_OFFSET;
 	at = (uintptr_t)image;
 	/* Image-relative offsets must not overlap the destination address range. */
 	if (at < size)
 		return -1;
-	root.v = hdr.root;
 	*rootp = fy_generic_relocate(arena, arena + hdr.size, root, (ptrdiff_t)at);
 	return 0;
 }
