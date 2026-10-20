@@ -202,6 +202,58 @@ START_TEST(emit_json_alias)
 }
 END_TEST
 
+/* The same through the events of a parser: an alias event is the node's events. */
+START_TEST(emit_json_alias_events)
+{
+	static const struct {
+		const char *yaml;
+		const char *json;	/* NULL: can't be written */
+	} cases[] = {
+		{ "[&x {k: v}, *x, &y [1, *x], *y]",
+		  "[{\"k\": \"v\"}, {\"k\": \"v\"}, [1, {\"k\": \"v\"}], [1, {\"k\": \"v\"}]]" },
+		/* an alias names the last anchor before it, not one inside another alias */
+		{ "[&x [&b 1], &b 2, *x, *b]", "[[1], 2, [1], 2]" },
+		{ "{a: &k key, *k : 1}", "{\"a\": \"key\", \"key\": 1}" },
+		/* the alias is inside the node it names */
+		{ "&a [*a]", NULL },
+		/* JSON keys are scalars */
+		{ "[&m {a: 1}, {*m : 2}]", NULL },
+		{ "{[1]: 2}", NULL },
+		/* an alias names an anchor of its own document */
+		{ "--- &d {a: 1}\n--- [*d]\n", NULL },
+	};
+	struct fy_parse_cfg cfg = { .flags = FYPCF_QUIET };
+	struct fy_parser *fyp;
+	struct fy_emitter *emit;
+	struct fy_event *fye;
+	char *out;
+	size_t i, len;
+	int rc;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		fyp = fy_parser_create(&cfg);
+		ck_assert_ptr_ne(fyp, NULL);
+		ck_assert_int_eq(fy_parser_set_string(fyp, cases[i].yaml, FY_NT), 0);
+		emit = fy_emit_to_string(FYECF_MODE_JSON_ONELINE | FYECF_NO_ENDING_NEWLINE);
+		ck_assert_ptr_ne(emit, NULL);
+		rc = 0;
+		while (!rc && (fye = fy_parser_parse(fyp)) != NULL)
+			rc = fy_emit_event_from_parser(emit, fyp, fye);
+		out = fy_emit_to_string_collect(emit, &len);
+		if (!cases[i].json) {
+			ck_assert_msg(rc, "case %zu: written as %s", i, out);
+		} else {
+			ck_assert_int_eq(rc, 0);
+			ck_assert_ptr_ne(out, NULL);
+			ck_assert_str_eq(out, cases[i].json);
+		}
+		free(out);
+		fy_emitter_destroy(emit);
+		fy_parser_destroy(fyp);
+	}
+}
+END_TEST
+
 START_TEST(emit_single_quoted_long_line)
 {
 	static const char * const texts[] = {
@@ -1407,4 +1459,5 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_json_non_utf8);
 	fy_check_testcase_add_test(ctc, emit_single_quoted_long_line);
 	fy_check_testcase_add_test(ctc, emit_json_alias);
+	fy_check_testcase_add_test(ctc, emit_json_alias_events);
 }
