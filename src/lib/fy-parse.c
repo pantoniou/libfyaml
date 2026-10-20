@@ -9168,7 +9168,7 @@ struct fy_parser_checkpoint *fy_parser_checkpoint_create(struct fy_parser *fyp)
 	 * with no composer or builder, neither in a merge key state */
 	if (!fyp || /* fyp->state != FYPS_DOCUMENT_CONTENT || */
 	    fyp->is_checkpoint || fyp->fydb || fyp->fyc ||
-	    fyp->mks.active) {
+	    fyp->mks.active || !fyp->reader->current_input) {
 		fyp_parse_debug(fyp, "cannot take checkpoint at this state");
 		return NULL;
 	}
