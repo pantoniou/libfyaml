@@ -499,6 +499,21 @@ Options
 
    Preserve style information in generic data.
 
+.. option:: --write-image FILE
+
+   With ``--generic``, write the parsed input as a relocatable generic image to
+   ``FILE``, or to standard output for ``-``, instead of emitting it. The image
+   keeps the documents with their tags, anchors, comments and styles, and
+   loads without parsing. It takes one input.
+
+.. option:: --read-image
+
+   With ``--generic``, ``--generic-testsuite`` or ``--generic-parse-dump``,
+   read each input as an image that ``--write-image`` made, instead of parsing
+   it as YAML, e.g. ``fy-tool --generic --read-image doc.img``. An image needs
+   the byte order and word size of the machine that made it. It can't be used
+   with ``--durable``.
+
 .. rubric:: Modes
 
 .. option:: --dump
