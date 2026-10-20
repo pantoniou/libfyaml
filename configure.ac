@@ -688,24 +688,34 @@ FY_DEFINE_IF_YES([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are e
 FY_DEFINE_IF_YES([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if generics are enabled])
 
 dnl check if -latomic is needed
+dnl Exercise every 8-byte atomic operation libfyaml uses; on targets
+dnl without native 64-bit atomics each one becomes its own __atomic_*_8
+dnl library call, and all of them must resolve.
+m4_define([FY_ATOMIC64_PROGRAM], [AC_LANG_PROGRAM([[
+volatile unsigned long long v = 1;
+]], [[
+        unsigned long long e = 1;
+
+        __atomic_store_n(&v, 1, __ATOMIC_SEQ_CST);
+        __atomic_compare_exchange_n(&v, &e, 2, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+        e += __atomic_exchange_n(&v, 3, __ATOMIC_SEQ_CST);
+        e += __atomic_fetch_add(&v, 1, __ATOMIC_SEQ_CST);
+        e += __atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+        e += __atomic_fetch_or(&v, 1, __ATOMIC_SEQ_CST);
+        e += __atomic_fetch_xor(&v, 1, __ATOMIC_SEQ_CST);
+        e += __atomic_fetch_and(&v, 1, __ATOMIC_SEQ_CST);
+        return (int)(e + __atomic_load_n(&v, __ATOMIC_SEQ_CST));
+]])])
 AC_CACHE_CHECK([whether 8-byte atomics need -latomic],
   [ac_cv_libatomic_needed],
   [
     save_LIBS="$LIBS"
 
-    AC_LINK_IFELSE(
-      [AC_LANG_PROGRAM([[]], [[
-        volatile unsigned long long v = 1;
-        return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
-      ]])],
+    AC_LINK_IFELSE([FY_ATOMIC64_PROGRAM],
       [ac_cv_libatomic_needed=no],
       [
         LIBS="$save_LIBS -latomic"
-        AC_LINK_IFELSE(
-          [AC_LANG_PROGRAM([[]], [[
-            volatile unsigned long long v = 1;
-            return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
-          ]])],
+        AC_LINK_IFELSE([FY_ATOMIC64_PROGRAM],
           [ac_cv_libatomic_needed=yes],
           [ac_cv_libatomic_needed=unknown])
       ])
