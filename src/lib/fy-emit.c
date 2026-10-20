@@ -173,10 +173,39 @@ static inline bool fy_emit_output_comments(struct fy_emitter *emit)
 		!fy_emit_is_json_mode(emit);
 }
 
+/* an alias being written in JSON, as the node it names */
+struct fy_emit_json_expand {
+	struct fy_node *fyn;
+	struct fy_emit_json_expand *prev;
+};
+
+/*
+ * the node that JSON writes for an alias, or NULL when there is none or it
+ * would never end, e.g. the *a of &a [*a] names a node that holds it
+ */
+static struct fy_node *fy_emit_json_alias_target(struct fy_emitter *emit, struct fy_node *fyn)
+{
+	struct fy_emit_json_expand *ex;
+	struct fy_node *fyn_target, *fyn_up;
+
+	fyn_target = fy_node_resolve_alias(fyn);
+	if (!fyn_target)
+		return NULL;
+	for (fyn_up = fyn; fyn_up; fyn_up = fyn_up->parent) {
+		if (fyn_up == fyn_target)
+			return NULL;
+	}
+	for (ex = emit->json_expand; ex; ex = ex->prev) {
+		if (ex->fyn == fyn_target)
+			return NULL;
+	}
+	return fyn_target;
+}
+
 static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn)
 {
 	struct fy_document *fyd;
-	struct fy_node *fyni;
+	struct fy_node *fyni, *fyn_target;
 	struct fy_node_pair *fynp, *fynpi;
 	int ret;
 
@@ -187,9 +216,11 @@ static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn)
 
 	switch (fyn->type) {
 	case FYNT_SCALAR:
+		/* JSON writes the node an alias names */
 		FYD_TOKEN_ERROR_CHECK(fyd, fyn->scalar, FYEM_INTERNAL,
-				!fy_node_is_alias(fyn), err_out,
-				"aliases not allowed in JSON emit mode");
+				!fy_node_is_alias(fyn) || fy_emit_json_alias_target(emit, fyn),
+				err_out,
+				"JSON can't write an alias that names no node, or a node that holds it");
 		break;
 
 	case FYNT_SEQUENCE:
@@ -205,6 +236,15 @@ static int fy_emit_node_check_json(struct fy_emitter *emit, struct fy_node *fyn)
 		for (fynp = fy_node_pair_list_head(&fyn->mapping); fynp; fynp = fynpi) {
 
 			fynpi = fy_node_pair_next(&fyn->mapping, fynp);
+
+			/* a key alias names a scalar, e.g. not the *m of &m {a: 1} */
+			fyn_target = fy_node_is_alias(fynp->key) ?
+				     fy_emit_json_alias_target(emit, fynp->key) : NULL;
+			FYD_TOKEN_ERROR_CHECK(fyd, fynp->key ? fynp->key->scalar : NULL, FYEM_INTERNAL,
+					!fyn_target || fyn_target->type == FYNT_SCALAR, err_out,
+					"JSON does not allow %s as keys",
+					fyn_target && fyn_target->type == FYNT_SEQUENCE ?
+						"sequences" : "mappings");
 
 			ret = fy_emit_node_check_json(emit, fynp->key);
 			if (ret)
@@ -946,6 +986,22 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 	enum fy_node_type type;
 	struct fy_anchor *fya;
 	struct fy_token *fyt_anchor, *fyt_value;
+	struct fy_emit_json_expand expand;
+	struct fy_node *fyn_target;
+
+	/* JSON has no aliases: write the node an alias names, e.g. *x as {"k": "v"} */
+	if (fyn && fy_emit_is_json_mode(emit) && fy_node_is_alias(fyn)) {
+		fyn_target = fy_emit_json_alias_target(emit, fyn);
+		FYD_TOKEN_ERROR_CHECK(fyn->fyd, fyn->scalar, FYEM_INTERNAL,
+				fyn_target, err_out,
+				"JSON can't write an alias that names no node, or a node that holds it");
+		expand.fyn = fyn_target;
+		expand.prev = emit->json_expand;
+		emit->json_expand = &expand;
+		fy_emit_node_internal(emit, fyn_target, flags, indent, is_key);
+		emit->json_expand = expand.prev;
+		return;
+	}
 
 	if (!(emit->xcfg.cfg.flags & FYECF_STRIP_LABELS)) {
 		fya = fy_document_lookup_anchor_by_node(emit->fyd, fyn);
@@ -989,9 +1045,11 @@ void fy_emit_node_internal(struct fy_emitter *emit, struct fy_node *fyn, int fla
 			fy_emit_node_mapping(emit, fyn, flags, indent);
 		break;
 	}
-err_out:
-	/* nothing */
 	return;
+
+err_out:
+	/* e.g. a mapping that an alias key names */
+	emit->emit_error = true;
 }
 
 struct fy_emit_write_state {
@@ -2661,8 +2719,8 @@ static void fy_emit_token_mapping_key_prolog(struct fy_emitter *emit, struct fy_
 static void fy_emit_token_mapping_key_epilog(struct fy_emitter *emit, struct fy_emit_save_ctx *sc,
 					     struct fy_token *fyt_key)
 {
-	/* if the key is an alias, always output an extra whitespace */
-	if (fyt_key && fyt_key->type == FYTT_ALIAS)
+	/* if the key is an alias, always output an extra whitespace; JSON has none */
+	if (fyt_key && fyt_key->type == FYTT_ALIAS && !fy_emit_is_json_mode(emit))
 		fy_emit_write_ws(emit);
 
 	sc->flags &= ~DDNF_MAP;
@@ -2810,7 +2868,7 @@ void fy_emit_node_mapping(struct fy_emitter *emit, struct fy_node *fyn, int flag
 		FYD_NODE_ERROR_CHECK(fynp->fyd, fynp->key, FYEM_INTERNAL,
 				!fy_emit_is_json_mode(emit) ||
 					(fynp->key && fynp->key->type == FYNT_SCALAR),
-					err_out, "Non scalar keys are not allowed in JSON emit mode");
+					err_key, "Non scalar keys are not allowed in JSON emit mode");
 
 		simple_key = false;
 		if (fynp->key) {
@@ -2857,6 +2915,10 @@ err_out:
 	if (fynpp && used_malloc)
 		free(fynpp);
 	return;
+
+err_key:
+	emit->emit_error = true;
+	goto err_out;
 }
 
 int fy_emit_common_document_start(struct fy_emitter *emit,

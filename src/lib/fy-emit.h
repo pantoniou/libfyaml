@@ -132,6 +132,9 @@ struct fy_emitter {
 	/* auto-anchor state for the direct generic emitter (NULL = disabled) */
 	struct fy_emit_auto_anchor *aa;
 
+	/* JSON: the nodes whose alias is being written, innermost first */
+	struct fy_emit_json_expand *json_expand;
+
 	/*
 	 * JSON has no aliases, so the direct generic emitter writes the value
 	 * an alias names, e.g. [&x {k: v}, *x] is [{"k": "v"}, {"k": "v"}];
