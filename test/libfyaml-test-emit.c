@@ -164,6 +164,44 @@ END_TEST
  * a long single quoted scalar breaks at a space before a word, never inside
  * a word with a backslash, e.g. 'ab\ cd' would read back with the backslash
  */
+/* JSON has no aliases: an alias is written as the node its anchor names. */
+START_TEST(emit_json_alias)
+{
+	static const struct {
+		const char *yaml;
+		const char *json;	/* NULL: can't be written */
+	} cases[] = {
+		{ "[&x {k: v}, *x, &y [1, *x], *y]",
+		  "[{\"k\": \"v\"}, {\"k\": \"v\"}, [1, {\"k\": \"v\"}], [1, {\"k\": \"v\"}]]" },
+		/* an alias names the last anchor before it */
+		{ "[&x [&b 1], &b 2, *x, *b]", "[[1], 2, [1], 2]" },
+		/* no space before the colon of an alias key */
+		{ "{a: &k key, *k : 1}", "{\"a\": \"key\", \"key\": 1}" },
+		/* the alias is inside the node it names */
+		{ "&a [*a]", NULL },
+		/* JSON keys are scalars */
+		{ "[&m {a: 1}, {*m : 2}]", NULL },
+	};
+	struct fy_document *fyd;
+	char *out;
+	size_t i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		fyd = fy_document_build_from_string(NULL, cases[i].yaml, FY_NT);
+		ck_assert_ptr_ne(fyd, NULL);
+		out = fy_emit_document_to_string(fyd, FYECF_MODE_JSON_ONELINE | FYECF_NO_ENDING_NEWLINE);
+		if (!cases[i].json) {
+			ck_assert_msg(!out, "case %zu: written as %s", i, out);
+		} else {
+			ck_assert_ptr_ne(out, NULL);
+			ck_assert_str_eq(out, cases[i].json);
+		}
+		free(out);
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 START_TEST(emit_single_quoted_long_line)
 {
 	static const char * const texts[] = {
@@ -1368,4 +1406,5 @@ void libfyaml_case_emit(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_constructed_comment_indent);
 	fy_check_testcase_add_test(ctc, emit_json_non_utf8);
 	fy_check_testcase_add_test(ctc, emit_single_quoted_long_line);
+	fy_check_testcase_add_test(ctc, emit_json_alias);
 }

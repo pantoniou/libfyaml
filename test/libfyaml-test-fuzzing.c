@@ -5935,9 +5935,9 @@ START_TEST(fuzz_emit_mapping_memory_leak)
 	fyd = fy_document_build_from_string(&cfg, data, FY_NT);
 	ck_assert_ptr_ne(fyd, NULL);
 
+	/* JSON has no mapping keys, e.g. {}: so it fails, freeing the sorted pairs */
 	result = fy_emit_document_to_string(fyd, FYECF_SORT_KEYS | FYECF_MODE_JSON_TP);
-	ck_assert_ptr_ne(result, NULL);
-	free(result);
+	ck_assert_ptr_eq(result, NULL);
 	fy_document_destroy(fyd);
 }
 END_TEST
