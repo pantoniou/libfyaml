@@ -49,7 +49,7 @@ static void binary_check_roundtrip(struct fy_generic_builder *gb, const char *na
 	fy_generic emitted, parsed;
 	size_t i, ev;
 
-	for (i = 0; i < sizeof(binary_modes) / sizeof(binary_modes[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(binary_modes); i++) {
 		for (ev = 0; ev < 2; ev++) {
 			emit = binary_modes[i].emit | FYOPEF_DISABLE_DIRECTORY;
 			if (ev)
@@ -149,7 +149,7 @@ START_TEST(binary_cases)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(cases); i++)
 		binary_check_bytes(gb, cases[i].name, cases[i].data, cases[i].size);
 
 	fy_generic_builder_destroy(gb);
@@ -233,7 +233,7 @@ START_TEST(binary_parse)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		text.data = cases[i].text;
 		text.size = strlen(cases[i].text);
 		parsed = fy_parse(gb, text, cases[i].parse | FYOPPF_DISABLE_DIRECTORY, NULL);
@@ -270,7 +270,7 @@ START_TEST(binary_base64_codec)
 	ssize_t r;
 	uint32_t seed;
 
-	for (i = 0; i < sizeof(vec) / sizeof(vec[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(vec); i++) {
 		sz = strlen(vec[i].data);
 		ck_assert_uint_eq(fy_base64_encode_size(sz, 0), strlen(vec[i].b64));
 		n = fy_base64_encode(out, vec[i].data, sz, 0);
@@ -298,7 +298,7 @@ START_TEST(binary_base64_codec)
 	r = fy_base64_decode(back, sizeof(back), "  \n", 3);
 	ck_assert_int_eq(r, 0);
 
-	for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(bad); i++)
 		ck_assert_msg(fy_base64_decode(back, sizeof(back), bad[i], strlen(bad[i])) < 0,
 			      "\"%s\" decoded", bad[i]);
 
@@ -353,7 +353,7 @@ static void binary_base64_check(struct fy_generic_builder *gb, const char *name,
 	size_t i, ev;
 	bool json;
 
-	for (i = 0; i < sizeof(binary_modes) / sizeof(binary_modes[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(binary_modes); i++) {
 		for (ev = 0; ev < 2; ev++) {
 			emit = binary_modes[i].emit | FYOPEF_DISABLE_DIRECTORY | FYOPEF_BINARY_BASE64;
 			if (ev)
@@ -405,7 +405,7 @@ START_TEST(binary_base64_emit)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		bytes.data = cases[i].data;
 		bytes.size = cases[i].size;
 		v = fy_value(gb, bytes);
@@ -468,7 +468,7 @@ START_TEST(binary_base64_width)
 		for (j = 0; j < depth; j++)
 			v = (j & 1) ? fy_sequence(gb, v) : fy_mapping(gb, "k", v);
 
-		for (i = 0; i < sizeof(widths) / sizeof(widths[0]); i++) {
+		for (i = 0; i < ARRAY_SIZE(widths); i++) {
 			for (ev = 0; ev < 2; ev++) {
 				emitted = fy_emit(gb, v, widths[i].flags | FYOPEF_STYLE_BLOCK |
 						  FYOPEF_DISABLE_DIRECTORY | FYOPEF_BINARY_BASE64 |
@@ -579,7 +579,7 @@ START_TEST(binary_parse_tag)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		text.data = cases[i].text;
 		text.size = strlen(cases[i].text);
 		parsed = fy_parse(gb, text, cases[i].parse | FYOPPF_DISABLE_DIRECTORY, NULL);

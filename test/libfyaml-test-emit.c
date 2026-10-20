@@ -186,7 +186,7 @@ START_TEST(emit_json_alias)
 	char *out;
 	size_t i;
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		fyd = fy_document_build_from_string(NULL, cases[i].yaml, FY_NT);
 		ck_assert_ptr_ne(fyd, NULL);
 		out = fy_emit_document_to_string(fyd, FYECF_MODE_JSON_ONELINE | FYECF_NO_ENDING_NEWLINE);
@@ -230,7 +230,7 @@ START_TEST(emit_json_alias_events)
 	size_t i, len;
 	int rc;
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		fyp = fy_parser_create(&cfg);
 		ck_assert_ptr_ne(fyp, NULL);
 		ck_assert_int_eq(fy_parser_set_string(fyp, cases[i].yaml, FY_NT), 0);
@@ -268,7 +268,7 @@ START_TEST(emit_single_quoted_long_line)
 	char *out;
 	size_t i, len;
 
-	for (i = 0; i < sizeof(texts) / sizeof(texts[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(texts); i++) {
 		fyd = fy_document_create(NULL);
 		ck_assert_ptr_ne(fyd, NULL);
 		fyn = fy_node_create_scalar(fyd, texts[i], FY_NT);

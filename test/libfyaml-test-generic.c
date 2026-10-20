@@ -7835,7 +7835,7 @@ START_TEST(generic_emit_json_alias)
 
 	gb = fy_generic_builder_create(&gbcfg);
 	ck_assert_ptr_ne(gb, NULL);
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		v = fy_parse(gb, fy_value(gb, cases[i].yaml),
 			     FYOPPF_DISABLE_DIRECTORY | FYOPPF_DONT_RESOLVE |
 			     FYOPPF_MODE_YAML_1_2 | FYOPPF_INPUT_TYPE_STRING, NULL);
@@ -7873,7 +7873,7 @@ START_TEST(generic_image_inline_root)
 	values[3] = fy_seq_empty;
 	values[4] = fy_value(gb, "abc");
 	first_size = 0;
-	for (i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(values); i++) {
 		ck_assert(fy_generic_is_in_place(values[i]));
 		image = fy_generic_image_create(values[i], &size);
 		ck_assert_ptr_ne(image, NULL);
