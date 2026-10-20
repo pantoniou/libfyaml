@@ -186,6 +186,8 @@
 #define OPT_DURABLE_DUMP		6012
 #define OPT_DURABLE_REPLACE		6013
 #define OPT_DURABLE_STATS		6014
+#define OPT_WRITE_IMAGE			6015
+#define OPT_READ_IMAGE			6016
 #endif
 
 #ifdef HAVE_REFLECTION
@@ -327,6 +329,8 @@ static struct option lopts[] = {
 	{"durable-dump",	required_argument,	0,	OPT_DURABLE_DUMP },
 	{"durable-replace",	no_argument,		0,	OPT_DURABLE_REPLACE },
 	{"durable-stats",	required_argument,	0,	OPT_DURABLE_STATS },
+	{"write-image",		required_argument,	0,	OPT_WRITE_IMAGE },
+	{"read-image",		no_argument,		0,	OPT_READ_IMAGE },
 	{"generic-parse-dump",	no_argument,		0,	OPT_GENERIC_PARSE_DUMP },
 	{"create-markers",	no_argument,		0,	OPT_CREATE_MARKERS },
 	{"keep-style",		no_argument,		0,	OPT_KEEP_STYLE },
@@ -622,6 +626,8 @@ static void display_usage(FILE *fp, char *progname, int tool_mode)
 		USAGE_ITEM("--durable-dump <dir>", "Emit the documents rooted at the durable arena's refs head at <dir>");
 		USAGE_ITEM("--durable-replace", "With --durable, replace the refs head with this run's documents instead of accumulating");
 		USAGE_ITEM("--durable-stats <dir>", "Report geometry, usage and dedup effectiveness of the durable arena at <dir>");
+		USAGE_ITEM("--write-image <file>", "Write the parsed input as a relocatable generic image to <file> (- for stdout) instead of emitting it");
+		USAGE_ITEM("--read-image", "Read the inputs as generic images made by --write-image instead of parsing them");
 		USAGE_ITEM("--create-markers", "Create markers");
 		USAGE_ITEM_DEFAULT("--schema <schema>", "Schema: auto, yaml1.2-failsafe, yaml1.2-core, "
 				"yaml1.2-json, yaml1.1-failsafe, yaml1.1, yaml1.1-pyyaml, json, python", "auto");
@@ -1677,6 +1683,8 @@ struct generic_config {
 	bool no_yaml_1_2_binary;	/* keep 1.2 !!binary as tagged base64 text */
 	const char *durable_dir;	/* if set, use a durable on-disk dedup arena here */
 	bool durable_replace;		/* replace the refs head instead of accumulating */
+	const char *write_image;	/* if set, write an image of the input here */
+	bool read_image;		/* the inputs are images, not YAML */
 };
 
 struct generic_config default_generic_cfg = {
@@ -2005,6 +2013,97 @@ static int do_durable_dump(const char *dir, const struct generic_config *gcfg)
 	return 0;
 }
 
+/*
+ * read a generic image from @filename (- for stdin) into writable memory
+ * aligned to FY_GENERIC_IMAGE_ALIGN; *@bufp is what to free()
+ */
+static void *generic_image_read(const char *filename, void **bufp, size_t *sizep)
+{
+	FILE *fp;
+	char *buf = NULL, *nbuf;
+	size_t size = 0, alloc = 0, nread;
+	uintptr_t base;
+
+	*bufp = NULL;
+	*sizep = 0;
+
+	fp = strcmp(filename, "-") ? fopen(filename, "rb") : stdin;
+	if (!fp) {
+		fprintf(stderr, "fy-tool: cannot open image '%s': %s\n",
+			filename, strerror(errno));
+		return NULL;
+	}
+
+	/* read it all; the slack in front of the data is for the alignment */
+	for (;;) {
+		if (alloc - size < 65536) {
+			alloc = alloc ? alloc * 2 : (1U << 20);
+			nbuf = realloc(buf, alloc + FY_GENERIC_IMAGE_ALIGN);
+			if (!nbuf)
+				goto err_out;
+			buf = nbuf;
+		}
+		nread = fread(buf + size, 1, alloc - size, fp);
+		size += nread;
+		if (nread == 0)
+			break;
+	}
+	if (ferror(fp)) {
+		fprintf(stderr, "fy-tool: cannot read image '%s'\n", filename);
+		goto err_out;
+	}
+	if (fp != stdin)
+		fclose(fp);
+
+	/* move the data up to the first aligned address */
+	base = ((uintptr_t)buf + FY_GENERIC_IMAGE_ALIGN - 1) &
+	       ~(uintptr_t)(FY_GENERIC_IMAGE_ALIGN - 1);
+	memmove((void *)base, buf, size);
+
+	*bufp = buf;
+	*sizep = size;
+	return (void *)base;
+
+err_out:
+	if (fp && fp != stdin)
+		fclose(fp);
+	free(buf);
+	return NULL;
+}
+
+/* write an image of @v to @filename (- for stdout) */
+static int generic_image_write(const char *filename, fy_generic v)
+{
+	FILE *fp;
+	void *image;
+	size_t size;
+	int rc = -1;
+
+	image = fy_generic_image_create(v, &size);
+	if (!image) {
+		fprintf(stderr, "fy-tool: cannot create an image of the input\n");
+		return -1;
+	}
+
+	fp = strcmp(filename, "-") ? fopen(filename, "wb") : stdout;
+	if (!fp) {
+		fprintf(stderr, "fy-tool: cannot create image '%s': %s\n",
+			filename, strerror(errno));
+		goto out;
+	}
+	if (fwrite(image, 1, size, fp) != size || fflush(fp)) {
+		fprintf(stderr, "fy-tool: cannot write image '%s'\n", filename);
+		goto out_close;
+	}
+	rc = 0;
+out_close:
+	if (fp != stdout && fclose(fp))
+		rc = -1;
+out:
+	fy_generic_image_destroy(image);
+	return rc;
+}
+
 static int
 do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 {
@@ -2028,7 +2127,19 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	bool had_error;
 	fy_generic *roots = NULL;	/* durable: document roots to publish as the refs head */
 	size_t nroots = 0, roots_alloc = 0;
+	void *image, *image_buf = NULL;	/* read-image: the loaded image */
+	size_t image_size;
 	int i, rc;
+
+	/* an image holds one value, and an image's values are not in an arena */
+	if (gcfg->write_image && argc - optind > 1) {
+		fprintf(stderr, "fy-tool: --write-image takes one input\n");
+		return -1;
+	}
+	if (gcfg->read_image && durable) {
+		fprintf(stderr, "fy-tool: --read-image can't be used with --durable\n");
+		return -1;
+	}
 
 	if (gcfg->testsuite || gcfg->parse_dump)
 		dump_flags = isatty(fileno(stdout)) ? DTEF_COLORIZE : 0;
@@ -2143,7 +2254,21 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (gcfg->no_yaml_1_2_binary)
 			parse_flags |= FYOPPF_NO_YAML_1_2_BINARY;
 
-		if (!strcmp(filename, "-"))
+		/* the previous image's values aren't used past its iteration */
+		free(image_buf);
+		image_buf = NULL;
+
+		if (gcfg->read_image) {
+			image = generic_image_read(filename, &image_buf, &image_size);
+			if (!image || fy_generic_image_load(image, image_size, &v)) {
+				if (image)
+					fprintf(stderr, "fy-tool: '%s' is not a usable generic image\n",
+						filename);
+				v = fy_invalid;
+				had_error = true;
+				break;
+			}
+		} else if (!strcmp(filename, "-"))
 			v = fy_parse(gb, fy_invalid,
 				     parse_flags | FYOPPF_INPUT_TYPE_STDIN, NULL);
 		else
@@ -2153,6 +2278,14 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		if (fy_generic_is_invalid(v)) {
 			had_error = true;
 			break;
+		}
+
+		if (gcfg->write_image) {
+			if (generic_image_write(gcfg->write_image, v)) {
+				had_error = true;
+				break;
+			}
+			continue;
 		}
 
 		/* durable: collect this file's documents (vds) so the refs head is a
@@ -2261,6 +2394,9 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 		fy_generic_emit_default(vdiag);
 	}
 
+	free(image_buf);
+	image_buf = NULL;
+
 	if (durable && allocator && !had_error) {
 		/* root this run's documents at the refs head, then flush + report */
 		if (durable_publish_roots(gb, allocator, roots, nroots,
@@ -2273,6 +2409,7 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 
 	rc = !had_error ? 0 : -1;
 out:
+	free(image_buf);
 	free(roots);
 	fy_generic_builder_destroy(gb);
 	fy_allocator_destroy(allocator);
@@ -2371,6 +2508,8 @@ int main(int argc, char *argv[])
 	const char *durable_dump_dir = NULL;
 	const char *durable_stats_dir = NULL;
 	bool durable_replace = false;
+	const char *write_image = NULL;
+	bool read_image = false;
 	bool create_markers = false;
 	enum fy_generic_schema schema = FYGS_AUTO;
 	bool keep_style = false;
@@ -2966,6 +3105,14 @@ int main(int argc, char *argv[])
 
 		case OPT_DURABLE_STATS:
 			durable_stats_dir = optarg;
+			break;
+
+		case OPT_WRITE_IMAGE:
+			write_image = optarg;
+			break;
+
+		case OPT_READ_IMAGE:
+			read_image = true;
 			break;
 
 		case OPT_CREATE_MARKERS:
@@ -3863,6 +4010,8 @@ int main(int argc, char *argv[])
 		gcfg.no_yaml_1_2_binary = no_yaml_1_2_binary;
 		gcfg.durable_dir = durable_dir;
 		gcfg.durable_replace = durable_replace;
+		gcfg.write_image = write_image;
+		gcfg.read_image = read_image;
 		rc = do_generic(argc, argv, optind, &gcfg);
 		if (rc == 1) {
 			/* display usage */
