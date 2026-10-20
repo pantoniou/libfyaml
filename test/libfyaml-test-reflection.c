@@ -96,6 +96,37 @@ START_TEST(reflection_null_backend_int_info)
 }
 END_TEST
 
+/* gh#495: synthetic arrays must fit before their byte size is computed. */
+START_TEST(reflection_array_size_overflow)
+{
+	struct fy_reflection *rfl;
+	const struct fy_type_info *ti;
+	char entry[128];
+	uintmax_t count;
+
+	rfl = fy_reflection_from_null(NULL);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	/* The reported count wraps sizeof(int) * count to zero on 64-bit hosts. */
+	ti = fy_type_info_lookup(rfl, "int[4611686018427387904]");
+	ck_assert_ptr_eq(ti, NULL);
+
+	count = (uintmax_t)PTRDIFF_MAX / sizeof(int) + 1;
+	snprintf(entry, sizeof(entry), "int[%ju]", count);
+	ck_assert_ptr_eq(fy_type_info_lookup(rfl, entry), NULL);
+
+	/* Nested arrays must check the complete element size too. */
+	snprintf(entry, sizeof(entry), "int[2][%ju]", count);
+	ck_assert_ptr_eq(fy_type_info_lookup(rfl, entry), NULL);
+
+	ti = fy_type_info_lookup(rfl, "int[2][3]");
+	ck_assert_ptr_ne(ti, NULL);
+	ck_assert_uint_eq(fy_type_info_get_size(ti), 6 * sizeof(int));
+
+	fy_reflection_destroy(rfl);
+}
+END_TEST
+
 /* Test: look up unsigned int from null backend */
 START_TEST(reflection_null_backend_uint_info)
 {
@@ -492,6 +523,7 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 
 	fy_check_testcase_add_test(ctc, reflection_null_backend_int_info);
 	fy_check_testcase_add_test(ctc, reflection_null_backend_uint_info);
+	fy_check_testcase_add_test(ctc, reflection_array_size_overflow);
 	fy_check_testcase_add_test(ctc, reflection_parse_int);
 	fy_check_testcase_add_test(ctc, reflection_parse_uint);
 	fy_check_testcase_add_test(ctc, reflection_parse_int_ptr);
