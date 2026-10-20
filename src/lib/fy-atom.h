@@ -262,6 +262,7 @@ struct fy_atom_iter_line_info {
 	bool indented : 1;
 	bool lb_end : 1;
 	bool need_nl : 1;
+	bool need_extra_nl : 1;	/* folded: restore a break folded before empty lines */
 	bool need_sep : 1;
 	bool ends_with_backslash : 1;	/* last ended in \\ */
 	size_t trailing_ws;
@@ -297,6 +298,7 @@ struct fy_atom_iter {
 	bool empty : 1;
 	bool current : 1;
 	bool done : 1;	/* last iteration (for block styles) */
+	bool folded_break : 1;	/* folded: a text line's break was folded before empty lines */
 	struct fy_atom_iter_line_info li[2];
 	/* Saved trailing whitespace and line-break scan. */
 	const char *tb_scan_pos;	/* Start position for tb_scan_breaks. */
