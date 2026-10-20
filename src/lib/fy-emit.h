@@ -136,6 +136,14 @@ struct fy_emitter {
 	struct fy_emit_json_expand *json_expand;
 
 	/*
+	 * JSON events: the events of each anchored node of the document, so an
+	 * alias event is written as them, e.g. *x as {"k": "v"}
+	 */
+	struct fy_emit_json_rec **json_recs;
+	unsigned int json_rec_count;
+	unsigned int json_rec_alloc;
+
+	/*
 	 * JSON has no aliases, so the direct generic emitter writes the value
 	 * an alias names, e.g. [&x {k: v}, *x] is [{"k": "v"}, {"k": "v"}];
 	 * these are the anchors of the document, and how deep in an alias

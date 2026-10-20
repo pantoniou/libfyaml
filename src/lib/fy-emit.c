@@ -3310,6 +3310,7 @@ void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *
 
 static void fy_emit_auto_anchor_free(struct fy_emitter *emit);
 static void fy_emit_json_anchors_free(struct fy_emitter *emit);
+static void fy_emit_json_recs_free(struct fy_emitter *emit);
 
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
@@ -3348,6 +3349,7 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 
 	fy_emit_auto_anchor_free(emit);
 	fy_emit_json_anchors_free(emit);
+	fy_emit_json_recs_free(emit);
 
 	if (emit->owned_output_fp)
 		fclose(emit->owned_output_fp);
@@ -4669,6 +4671,14 @@ static int fy_emit_handle_mapping_key(struct fy_emitter *emit, struct fy_parser 
 		return -1;
 	}
 
+	/* JSON keys are scalars, e.g. not the [1] of {[1]: 2} */
+	if (fy_emit_is_json_mode(emit) &&
+	    (fye->type == FYET_SEQUENCE_START || fye->type == FYET_MAPPING_START)) {
+		fy_error(emit->diag, "JSON does not allow %s as keys",
+			 fye->type == FYET_SEQUENCE_START ? "sequences" : "mappings");
+		return -1;
+	}
+
 	ret = fy_emit_push_state(emit, FYES_MAPPING_VALUE);
 	if (ret)
 		return ret;
@@ -4771,6 +4781,193 @@ static int fy_emit_handle_mapping_value(struct fy_emitter *emit,
 	return ret;
 }
 
+/* the events of an anchored node, recorded while it is written */
+struct fy_emit_json_rec {
+	struct fy_token *anchor;
+	struct fy_eventp **events;
+	unsigned int count;
+	unsigned int alloc;
+	int nest;		/* open collections while collecting */
+	bool collecting;	/* its end isn't here yet */
+};
+
+static void fy_emit_json_rec_free(struct fy_emit_json_rec *rec)
+{
+	unsigned int i;
+
+	for (i = 0; i < rec->count; i++)
+		fy_eventp_free(rec->events[i]);
+	free(rec->events);
+	fy_token_unref(rec->anchor);
+	free(rec);
+}
+
+/* drop the recordings, e.g. at the end of a document */
+static void fy_emit_json_recs_free(struct fy_emitter *emit)
+{
+	unsigned int i;
+
+	for (i = 0; i < emit->json_rec_count; i++)
+		fy_emit_json_rec_free(emit->json_recs[i]);
+	free(emit->json_recs);
+	emit->json_recs = NULL;
+	emit->json_rec_count = 0;
+	emit->json_rec_alloc = 0;
+}
+
+/* the last recording of the anchor named by @fyt, collecting or not */
+static struct fy_emit_json_rec *
+fy_emit_json_rec_lookup(struct fy_emitter *emit, struct fy_token *fyt)
+{
+	struct fy_emit_json_rec *rec;
+	const char *name, *rname;
+	size_t len, rlen;
+	unsigned int i;
+
+	name = fy_token_get_text(fyt, &len);
+	if (!name)
+		return NULL;
+	for (i = emit->json_rec_count; i > 0; i--) {
+		rec = emit->json_recs[i - 1];
+		rname = fy_token_get_text(rec->anchor, &rlen);
+		if (rname && rlen == len && !memcmp(rname, name, len))
+			return rec;
+	}
+	return NULL;
+}
+
+static int fy_emit_json_rec_start(struct fy_emitter *emit, struct fy_token *fyt_anchor)
+{
+	struct fy_emit_json_rec *rec, **recs;
+	unsigned int alloc;
+
+	if (emit->json_rec_count >= emit->json_rec_alloc) {
+		alloc = emit->json_rec_alloc ? emit->json_rec_alloc * 2 : 16;
+		recs = realloc(emit->json_recs, alloc * sizeof(*recs));
+		if (!recs)
+			return -1;
+		emit->json_recs = recs;
+		emit->json_rec_alloc = alloc;
+	}
+	rec = malloc(sizeof(*rec));
+	if (!rec)
+		return -1;
+	memset(rec, 0, sizeof(*rec));
+	rec->anchor = fy_token_ref(fyt_anchor);
+	rec->collecting = true;
+	emit->json_recs[emit->json_rec_count++] = rec;
+	return 0;
+}
+
+static int fy_emit_json_rec_add(struct fy_emit_json_rec *rec, struct fy_eventp *fyep)
+{
+	struct fy_eventp **events, *fyep_copy;
+	unsigned int alloc;
+
+	if (rec->count >= rec->alloc) {
+		alloc = rec->alloc ? rec->alloc * 2 : 16;
+		events = realloc(rec->events, alloc * sizeof(*events));
+		if (!events)
+			return -1;
+		rec->events = events;
+		rec->alloc = alloc;
+	}
+	fyep_copy = fy_eventp_clone(fyep, true);
+	if (!fyep_copy)
+		return -1;
+	rec->events[rec->count++] = fyep_copy;
+
+	switch (fyep->e.type) {
+	case FYET_SEQUENCE_START:
+	case FYET_MAPPING_START:
+		rec->nest++;
+		break;
+	case FYET_SEQUENCE_END:
+	case FYET_MAPPING_END:
+		rec->nest--;
+		break;
+	default:
+		break;
+	}
+	if (!rec->nest)
+		rec->collecting = false;
+	return 0;
+}
+
+/*
+ * queue an event, adding it to every recording that is collecting; an
+ * anchor starts a new one, but not in a replay: an alias names the last
+ * anchor before it, e.g. the *b of [&x [&b 1], &b 2, *x, *b] is 2
+ */
+static int fy_emit_json_queue(struct fy_emitter *emit, struct fy_eventp *fyep, bool replay)
+{
+	struct fy_token *fyt_anchor;
+	unsigned int i;
+
+	fyt_anchor = replay ? NULL : fy_event_get_anchor_token(&fyep->e);
+	if (fyt_anchor && fy_emit_json_rec_start(emit, fyt_anchor))
+		goto err_out;
+
+	for (i = 0; i < emit->json_rec_count; i++) {
+		if (emit->json_recs[i]->collecting &&
+		    fy_emit_json_rec_add(emit->json_recs[i], fyep))
+			goto err_out;
+	}
+
+	/* an alias names an anchor of its own document */
+	if (fyep->e.type == FYET_DOCUMENT_END)
+		fy_emit_json_recs_free(emit);
+
+	fy_eventp_list_add_tail(&emit->queued_events, fyep);
+	return 0;
+
+err_out:
+	fy_eventp_free(fyep);
+	return -1;
+}
+
+/* JSON has no aliases: queue the events of the node an alias names */
+static int fy_emit_json_event(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_eventp *fyep)
+{
+	struct fy_emit_json_rec *rec;
+	struct fy_eventp *fyep_copy;
+	const char *name;
+	size_t len;
+	unsigned int i;
+
+	if (fyep->e.type != FYET_ALIAS)
+		return fy_emit_json_queue(emit, fyep, false);
+
+	rec = fy_emit_json_rec_lookup(emit, fyep->e.alias.anchor);
+	if (!rec || rec->collecting) {
+		/* e.g. &a [*a]; the node isn't recorded until its end */
+		name = fy_token_get_text(fyep->e.alias.anchor, &len);
+		fy_error(emit->diag, "JSON can't write alias *%.*s, no node is anchored before it",
+			 name ? (int)len : 0, name ? name : "");
+		goto err_out;
+	}
+
+	for (i = 0; i < rec->count; i++) {
+		fyep_copy = fy_eventp_clone(rec->events[i], true);
+		if (!fyep_copy || fy_emit_json_queue(emit, fyep_copy, true))
+			goto err_out;
+	}
+
+	if (!fyp)
+		fy_eventp_release(fyep);
+	else
+		fy_parse_eventp_recycle(fyp, fyep);
+	return 0;
+
+err_out:
+	if (!fyp)
+		fy_eventp_release(fyep);
+	else
+		fy_parse_eventp_recycle(fyp, fyep);
+	emit->emit_error = true;
+	return -1;
+}
+
 int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, struct fy_event *fye)
 {
 	struct fy_eventp *fyep;
@@ -4794,7 +4991,11 @@ int fy_emit_event_from_parser(struct fy_emitter *emit, struct fy_parser *fyp, st
 
 	fyep = container_of(fye, struct fy_eventp, e);
 
-	fy_eventp_list_add_tail(&emit->queued_events, fyep);
+	if (fy_emit_is_json_mode(emit)) {
+		if (fy_emit_json_event(emit, fyp, fyep))
+			return -1;
+	} else
+		fy_eventp_list_add_tail(&emit->queued_events, fyep);
 
 	ret = 0;
 	while ((fyep = fy_emit_next_event(emit)) != NULL) {
