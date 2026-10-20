@@ -609,7 +609,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 	char first_mark;
 	char *rowbuf = NULL, *rbs = NULL, *rbe = NULL;
 	const char *s, *e;
-	int col8, c, w;
+	int col8, c, w, err;
 	int tab8_len, tilde_start, tilde_width, tilde_width_m1;
 	size_t rowbufsz;
 
@@ -721,7 +721,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 					s = e;
 
 				col8 = l->content_end_col8;
-				while ((c = fy_utf8_get(s, (e - s), &w)) >= 0) {
+				while ((c = fy_utf8_get_bytes(s, (e - s), &w, &err)) >= 0) {
 					s += w;
 					if (fy_is_tab(c))
 						col8 += 8 - (col8 % 8);
@@ -746,7 +746,7 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 			s = l->line_start;
 			e = s + l->line_len;
 			col8 = 0;
-			while (col8 < line_shift && (c = fy_utf8_get(s, (e - s), &w)) >= 0) {
+			while (col8 < line_shift && (c = fy_utf8_get_bytes(s, (e - s), &w, &err)) >= 0) {
 				if (fy_is_tab(c))
 					col8 += 8 - (col8 % 8);
 				else
@@ -770,8 +770,17 @@ void fy_diag_error_atom_display(struct fy_diag *diag, enum fy_error_type type, s
 			}
 
 			/* go forward until end of line or cols */
-			while (col8 < (line_shift + cols) && (c = fy_utf8_get(s, (e - s), &w)) >= 0 && rbs < rbe) {
-				if (fy_is_tab(c)) {
+			while (col8 < (line_shift + cols) && (c = fy_utf8_get_bytes(s, (e - s), &w, &err)) >= 0 && rbs < rbe) {
+				if (fy_utf8_is_byte_mark(c)) {
+					/* a bad byte shows as U+FFFD, e.g. b\x89c as b\ufffdc */
+					s++;
+					col8++;
+					if (rbe - rbs >= 3) {
+						*rbs++ = (char)0xef;
+						*rbs++ = (char)0xbf;
+						*rbs++ = (char)0xbd;
+					}
+				} else if (fy_is_tab(c)) {
 					s++;
 					tab8_len = 8 - (col8 % 8);
 					col8 += tab8_len;

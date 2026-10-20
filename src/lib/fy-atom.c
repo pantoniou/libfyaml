@@ -1887,11 +1887,26 @@ int fy_atom_cmp(struct fy_atom *atom1, struct fy_atom *atom2)
 	return c2 > c1 ? -1 : 1;
 }
 
+/*
+ * like fy_utf8_get_right(), but a bad byte is one byte, as going forward,
+ * so a line with e.g. "b\x89c" in it is still a whole line
+ */
+static int fy_atom_raw_get_right(const char *start, size_t left, int *widthp)
+{
+	int c;
+
+	c = fy_utf8_get_right(start, left, widthp);
+	if (c >= 0 || !left)
+		return c;
+	*widthp = 1;
+	return fy_utf8_byte_mark((uint8_t)start[left - 1]);
+}
+
 const struct fy_raw_line *
 fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 {
 	struct fy_raw_line *l;
-	int c, w, col, col8, count;
+	int c, w, col, col8, count, err;
 	unsigned int ts;
 	const char *s;
 
@@ -1915,7 +1930,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	c = -1;
 	while (s > iter->is) {
-		c = fy_utf8_get_right(iter->is, (size_t)(s - iter->is), &w);
+		c = fy_atom_raw_get_right(iter->is, (size_t)(s - iter->is), &w);
 		if (c <= 0 || fy_is_lb_m(c, iter->atom->lb_mode))
 			break;
 		s -= w;
@@ -1929,7 +1944,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	/* track until the start of the content */
 	while (s < iter->as) {
-		c = fy_utf8_get(s, (size_t)(iter->ae - s), &w);
+		c = fy_utf8_get_bytes(s, (size_t)(iter->ae - s), &w, &err);
 		/* we should never hit that */
 		if (c <= 0)
 			return NULL;
@@ -1956,7 +1971,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 
 	/* track until the end of the content (or lb) */
 	while (s < iter->ae) {
-		c = fy_utf8_get(s, (size_t)(iter->ae - s), &w);
+		c = fy_utf8_get_bytes(s, (size_t)(iter->ae - s), &w, &err);
 		/* we should never hit that */
 		if (c <= 0)
 			return NULL;
@@ -1984,7 +1999,7 @@ fy_atom_raw_line_iter_next(struct fy_atom_raw_line_iter *iter)
 	/* if the stop was due to end of the atom */
 	if (s >= iter->ae) {
 		while (s < iter->ie) {
-			c = fy_utf8_get(s, (size_t)(iter->ie - s), &w);
+			c = fy_utf8_get_bytes(s, (size_t)(iter->ie - s), &w, &err);
 			/* just end of input */
 			if (c <= 0)
 				break;
