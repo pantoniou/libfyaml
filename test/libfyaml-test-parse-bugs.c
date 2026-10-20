@@ -440,6 +440,31 @@ START_TEST(parse_bug_nested_explicit_key)
 }
 END_TEST
 
+START_TEST(parse_bug_folded_empty_lines_before_more_indented)
+{
+	/* the break before empty lines is kept when the next text line is more indented */
+	static const struct {
+		const char *input;
+		const char *expected;
+	} cases[] = {
+		{ ">\n a\n\n  b\n", "a\n\n b\n" },
+		{ ">\n a\n\n\n  b\n", "a\n\n\n b\n" },
+		{ ">\n a\n b\n\n  c\n d\n", "a b\n\n c\nd\n" },
+		{ ">-\n a\n\n  b\n\n c\n", "a\n\n b\n\nc" },
+		{ ">\n a\n\n b\n", "a\nb\n" },
+	};
+	struct fy_document *fyd;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		fyd = fy_document_build_from_string(NULL, cases[i].input, FY_NT);
+		ck_assert_ptr_ne(fyd, NULL);
+		ck_assert_str_eq(fy_node_get_scalar0(fy_document_root(fyd)), cases[i].expected);
+		fy_document_destroy(fyd);
+	}
+}
+END_TEST
+
 /* ═══════════════════════════════════════════════════════════════════
  * Bug 16: escaped space (\ ) followed by newline in double-quoted scalar
  *
@@ -738,6 +763,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	/* extra parse bugs */
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
 	fy_check_testcase_add_test(ctc, parse_bug_nested_explicit_key);
+	fy_check_testcase_add_test(ctc, parse_bug_folded_empty_lines_before_more_indented);
 
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
 	fy_check_testcase_add_test(ctc, parse_bug_escaped_space_before_newline_only);

@@ -837,6 +837,7 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 
 	/* we never fold LS or PS linebreaks (on yaml 1.1) */
 	li->need_nl = fy_is_lb_LS_PS(li->actual_lb) && fy_is_lb_m(li->actual_lb, iter->atom->lb_mode) && !li->ends_with_backslash;
+	li->need_extra_nl = false;
 	li->need_sep = false;
 
 #ifdef DEBUG_CHUNK
@@ -886,6 +887,14 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 		break;
 	case FYAS_FOLDED:
 		li->need_nl = !li->last && (li->empty || li->indented || li->trailing_breaks_ws || (nli && nli->indented));
+		/* a break is only folded between two text lines that are not more indented,
+		 * so restore it when empty lines lead to a more indented line */
+		if (!li->empty) {
+			iter->folded_break = !li->need_nl && nli && nli->empty;
+		} else if (nli && !nli->empty) {
+			li->need_extra_nl = li->need_nl && iter->folded_break && nli->indented;
+			iter->folded_break = false;
+		}
 		if (li->need_nl)
 			break;
 		li->need_sep = nli && !nli->indented && !nli->empty;
@@ -1220,6 +1229,11 @@ fy_atom_iter_format(struct fy_atom_iter *iter)
 
 		if (li->need_nl) {
 			ret = fy_atom_iter_add_lb(iter, li->actual_lb > 0 ? li->actual_lb : '\n');
+			if (ret)
+				goto out;
+		}
+		if (li->need_extra_nl) {
+			ret = fy_atom_iter_add_lb(iter, '\n');
 			if (ret)
 				goto out;
 		}
