@@ -9531,7 +9531,9 @@ fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
  * The magic encodes FY_GENERIC_IMAGE_VERSION, byte order, and 32-bit or
  * 64-bit word size. The remaining fields are a 32-bit header checksum, the
  * native-size arena length, and the root word. The arena starts immediately
- * after the header, rounded up to FY_GENERIC_CONTAINER_ALIGN.
+ * after the header, rounded up to FY_GENERIC_CONTAINER_ALIGN. An inline
+ * value, e.g. 7 or the null of an empty stream, has no arena: its image is
+ * the header, with the value in the root word.
  *
  * Images require the native byte order and word size of the loader. The
  * version changes when the image layout or generic encoding changes. Loading
@@ -9553,7 +9555,7 @@ fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
  * Copy @v and its referenced data. Preserve shared values and encode pointers
  * relative to the image base.
  *
- * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @v:     The value; an inline value, e.g. 7, is the header alone
  * @sizep: Receives the size of the image in bytes
  *
  * Returns:
@@ -9573,7 +9575,7 @@ fy_generic_image_create(fy_generic v, size_t *sizep)
  * fit. A zero hint uses the default initial capacity. The returned size is
  * the image size, which can be smaller than the allocated capacity.
  *
- * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @v:     The value; an inline value, e.g. 7, is the header alone
  * @hint:  Estimated image size in bytes, or zero for the default
  * @sizep: Receives the size of the image in bytes
  *
@@ -9608,7 +9610,7 @@ fy_generic_image_destroy(void *image)
  * size, then free the temporary image before returning. The caller retains
  * ownership of @buf and must release it with its matching deallocator.
  *
- * @v:     The value; a sequence, a mapping, or an out-of-line scalar
+ * @v:     The value; an inline value, e.g. 7, is the header alone
  * @buf:   The buffer, aligned to FY_GENERIC_IMAGE_ALIGN
  * @size:  Size of the buffer in bytes
  * @sizep: Receives the size of the image in bytes; when the buffer is too
