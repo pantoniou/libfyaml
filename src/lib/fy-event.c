@@ -1036,20 +1036,10 @@ fy_event_get_node_style(struct fy_event *fye)
 	return FYNS_ANY;
 }
 
-struct fy_eventp *fy_parse_eventp_clone(struct fy_parser *fyp, struct fy_eventp *fyep_src, bool strip_anchors)
+/* fill @fyep with a copy of @fyep_src that holds its own token references */
+static void fy_eventp_copy(struct fy_eventp *fyep, struct fy_eventp *fyep_src, bool strip_anchors)
 {
-	struct fy_eventp *fyep = NULL;
 	struct fy_event *fye, *fye_src;
-
-	if (!fyp || !fyep_src)
-		return NULL;
-
-	if (fyp->recycled_eventp_list)
-		fyep = fy_eventp_list_pop(fyp->recycled_eventp_list);
-	if (!fyep)
-		fyep = fy_eventp_alloc();
-	if (!fyep)
-		return NULL;
 
 	fye_src = &fyep_src->e;
 	fye = &fyep->e;
@@ -1107,6 +1097,38 @@ struct fy_eventp *fy_parse_eventp_clone(struct fy_parser *fyp, struct fy_eventp 
 		fye->alias.anchor = fy_token_ref(fye_src->alias.anchor);
 		break;
 	}
+}
+
+struct fy_eventp *fy_parse_eventp_clone(struct fy_parser *fyp, struct fy_eventp *fyep_src, bool strip_anchors)
+{
+	struct fy_eventp *fyep = NULL;
+
+	if (!fyp || !fyep_src)
+		return NULL;
+
+	if (fyp->recycled_eventp_list)
+		fyep = fy_eventp_list_pop(fyp->recycled_eventp_list);
+	if (!fyep)
+		fyep = fy_eventp_alloc();
+	if (!fyep)
+		return NULL;
+
+	fy_eventp_copy(fyep, fyep_src, strip_anchors);
+	return fyep;
+}
+
+struct fy_eventp *fy_eventp_clone(struct fy_eventp *fyep_src, bool strip_anchors)
+{
+	struct fy_eventp *fyep;
+
+	if (!fyep_src)
+		return NULL;
+
+	fyep = fy_eventp_alloc();
+	if (!fyep)
+		return NULL;
+
+	fy_eventp_copy(fyep, fyep_src, strip_anchors);
 	return fyep;
 }
 
