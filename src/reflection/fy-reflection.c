@@ -1332,6 +1332,10 @@ struct fy_type *fy_type_create(struct fy_reflection *rfl, enum fy_type_kind type
 	/* for an array, the dependency must be there */
 	if (type_kind == FYTK_CONSTARRAY && !ft_dep)
 		return NULL;
+	/* Synthetic arrays skip fixup, so validate before multiplying here too. */
+	if (type_kind == FYTK_CONSTARRAY &&
+	    element_count > (uintmax_t)PTRDIFF_MAX / (ft_dep->size ? ft_dep->size : 1))
+		return NULL;
 
 	/* guard against rollover */
 	if (rfl->next_type_id + 1 <= 0)
