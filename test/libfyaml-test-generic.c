@@ -7766,10 +7766,9 @@ START_TEST(generic_image_refusals)
 	image = fy_generic_image_create(v, &size);
 	ck_assert_ptr_ne(image, NULL);
 
-	/* reject inline values */
-	ck_assert_ptr_eq(fy_generic_image_create(fy_value(gb, 7), &other), NULL);
-	ck_assert_uint_eq(other, 0);
+	/* reject an invalid value */
 	ck_assert_ptr_eq(fy_generic_image_create(fy_invalid, &other), NULL);
+	ck_assert_uint_eq(other, 0);
 
 	/* reject a one-bit change in each header byte */
 	copy = generic_test_image_copy(image, size);
@@ -7813,19 +7812,76 @@ START_TEST(generic_image_refusals)
 }
 END_TEST
 
+/* An inline root, e.g. 7 or the null of an empty stream, is the header alone. */
+START_TEST(generic_image_inline_root)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic values[5], root, other;
+	unsigned char *image;
+	const size_t header_size = 2 * sizeof(uint32_t) + sizeof(size_t) + sizeof(fy_generic_value);
+	fy_generic_value word;
+	uint32_t hash;
+	size_t size, first_size, i;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	values[0] = fy_value(gb, 7);
+	values[1] = fy_null;
+	values[2] = fy_true;
+	values[3] = fy_seq_empty;
+	values[4] = fy_value(gb, "abc");
+	first_size = 0;
+	for (i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+		ck_assert(fy_generic_is_in_place(values[i]));
+		image = fy_generic_image_create(values[i], &size);
+		ck_assert_ptr_ne(image, NULL);
+		if (!first_size)
+			first_size = size;
+		/* no arena, all images of an inline value are the same size */
+		ck_assert_uint_eq(size, first_size);
+		ck_assert_uint_le(size, FY_GENERIC_CONTAINER_ALIGN * 2);
+		root = fy_invalid;
+		ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+		ck_assert(fy_equal(root, values[i]));
+		fy_generic_image_destroy(image);
+	}
+
+	/* an image with no arena whose root isn't inline is refused */
+	other = generic_test_relocate_value(gb);
+	ck_assert(!fy_generic_is_in_place(other));
+	image = fy_generic_image_create(fy_value(gb, 7), &size);
+	ck_assert_ptr_ne(image, NULL);
+	word = other.v;
+	memcpy(image + header_size - sizeof(word), &word, sizeof(word));
+	memset(image + sizeof(uint32_t), 0, sizeof(hash));
+	hash = (uint32_t)XXH64(image, header_size, 0);
+	memcpy(image + sizeof(uint32_t), &hash, sizeof(hash));
+	root = fy_invalid;
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), -1);
+	ck_assert(fy_generic_is_invalid(root));
+	fy_generic_image_destroy(image);
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 START_TEST(generic_image_in_place)
 {
 	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
 	struct fy_generic_builder *gb, *ref;
 	fy_generic v, root = fy_invalid, expect;
-	void *image, *buf = NULL;
-	size_t size, need, cap = 64 * 1024;
+	void *image, *image_inline, *buf = NULL;
+	size_t size, size_inline, need, cap = 64 * 1024;
 
 	gb = fy_generic_builder_create(&gbcfg);
 	ck_assert_ptr_ne(gb, NULL);
 	v = generic_test_relocate_value(gb);
 	image = fy_generic_image_create(v, &size);
 	ck_assert_ptr_ne(image, NULL);
+	image_inline = fy_generic_image_create(fy_value(gb, 7), &size_inline);
+	ck_assert_ptr_ne(image_inline, NULL);
+	fy_generic_image_destroy(image_inline);
 
 	/* accept a nonzero buffer larger than the image */
 	buf = fy_align_alloc(FY_GENERIC_IMAGE_ALIGN, cap);
@@ -7850,12 +7906,21 @@ START_TEST(generic_image_in_place)
 	ck_assert_int_eq(errno, ENOSPC);
 	ck_assert_uint_eq(need, size);
 
-	/* reject an unaligned buffer, an inline value, and a null size pointer */
+	/* an inline value needs only the header */
+	ck_assert_int_eq(fy_generic_image_create_in_place(fy_value(gb, 7), buf, cap, &need), 0);
+	ck_assert_int_eq(fy_generic_image_load(buf, need, &root), 0);
+	ck_assert(fy_equal(root, 7));
+	errno = 0;
+	ck_assert_int_eq(fy_generic_image_create_in_place(fy_value(gb, 7), buf, 8, &need), -1);
+	ck_assert_int_eq(errno, ENOSPC);
+	ck_assert_uint_eq(need, size_inline);
+
+	/* reject an unaligned buffer, an invalid value, and a null size pointer */
 	errno = 0;
 	ck_assert_int_eq(fy_generic_image_create_in_place(v, (char *)buf + 16, cap - 16, &need), -1);
 	ck_assert_int_eq(errno, EINVAL);
 	errno = 0;
-	ck_assert_int_eq(fy_generic_image_create_in_place(fy_value(gb, 7), buf, cap, &need), -1);
+	ck_assert_int_eq(fy_generic_image_create_in_place(fy_invalid, buf, cap, &need), -1);
 	ck_assert_int_eq(errno, EINVAL);
 	ck_assert_int_eq(fy_generic_image_create_in_place(v, buf, cap, NULL), -1);
 
@@ -8515,6 +8580,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_image_hint);
 	fy_check_testcase_add_test(ctc, generic_image_large);
 	fy_check_testcase_add_test(ctc, generic_image_refusals);
+	fy_check_testcase_add_test(ctc, generic_image_inline_root);
 	fy_check_testcase_add_test(ctc, generic_image_in_place);
 	fy_check_testcase_add_test(ctc, generic_image_yaml_features);
 
