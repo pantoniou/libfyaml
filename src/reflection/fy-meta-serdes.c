@@ -2196,9 +2196,10 @@ array_dtor(struct array_info *info)
 	size_t item_size;
 	bool is_terminator;
 
-	if (array_type_is_dynamic(info->type))
+	if (array_type_is_dynamic(info->type)) {
 		data = *(void **)info->rw->data;
-	else
+		*(void **)info->rw->data = NULL;
+	} else
 		data = info->rw->data;
 
 	if (!data)
