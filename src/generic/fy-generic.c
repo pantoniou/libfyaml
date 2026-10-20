@@ -3674,10 +3674,11 @@ int fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
 	    ((uintptr_t)image & (FY_GENERIC_IMAGE_ALIGN - 1)))
 		return -1;
 	memcpy(&hdr, image, sizeof(hdr));
+	/* the root isn't relocated yet, so only its bits can be looked at */
 	root.v = hdr.root;
 	if (hdr.magic != FY_GENERIC_IMAGE_MAGIC ||
 	    hdr.hash != fy_generic_image_header_hash(&hdr) ||
-	    fy_generic_is_invalid(root) ||
+	    hdr.root == fy_invalid_value ||
 	    hdr.size != size - FY_GENERIC_IMAGE_ARENA_OFFSET)
 		return -1;
 	/* only an inline root has no arena */
