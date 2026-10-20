@@ -503,6 +503,67 @@ START_TEST(parse_bug_escaped_space_before_newline_with_content)
 }
 END_TEST
 
+struct diag_text {
+	char buf[1024];
+	size_t len;
+};
+
+static void diag_text_output(struct fy_diag *diag, void *user, const char *buf, size_t len)
+{
+	struct diag_text *dt = user;
+
+	(void)diag;
+	if (len > sizeof(dt->buf) - 1 - dt->len)
+		len = sizeof(dt->buf) - 1 - dt->len;
+	memcpy(dt->buf + dt->len, buf, len);
+	dt->len += len;
+	dt->buf[dt->len] = '\0';
+}
+
+/* The line of an error shows each bad byte as U+FFFD, and all of the line. */
+START_TEST(parse_bug_invalid_utf8_context_line)
+{
+	static const struct {
+		const char *yaml;
+		const char *line;
+	} cases[] = {
+		{ "a: b\x89" "c\n", "\na: b\xef\xbf\xbd" "c\n" },
+		{ "a: \"b\x89" "c\"\n", "\na: \"b\xef\xbf\xbd" "c\"\n" },
+		{ "# b\x89" "c\na: 1\n", "\n# b\xef\xbf\xbd" "c\n" },
+		{ "a: |\n  b\x89" "c\n", "\n  b\xef\xbf\xbd" "c\n" },
+		/* a surrogate in UTF-8 is three bad bytes */
+		{ "a: \xed\xa0\x80 x\n", "\na: \xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd x\n" },
+		{ "\x80\n", "\xef\xbf\xbd\n" },
+	};
+	struct fy_diag_cfg dcfg;
+	struct fy_parse_cfg cfg;
+	struct diag_text dt;
+	struct fy_document *fyd;
+	struct fy_diag *diag;
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
+		memset(&dt, 0, sizeof(dt));
+		fy_diag_cfg_default(&dcfg);
+		dcfg.fp = NULL;
+		dcfg.output_fn = diag_text_output;
+		dcfg.user = &dt;
+		dcfg.colorize = false;
+		diag = fy_diag_create(&dcfg);
+		ck_assert_ptr_ne(diag, NULL);
+
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.diag = diag;
+		fyd = fy_document_build_from_string(&cfg, cases[i].yaml, FY_NT);
+		ck_assert_ptr_eq(fyd, NULL);
+		ck_assert_msg(strstr(dt.buf, cases[i].line),
+			      "case %zu: no whole line in:\n%s", i, dt.buf);
+
+		fy_diag_destroy(diag);
+	}
+}
+END_TEST
+
 #if defined(__linux__)
 START_TEST(parse_bug_ypath_alias_path_key_at_eof)
 {
@@ -621,7 +682,7 @@ START_TEST(parse_bug_block_scalar_after_properties)
 	int idx;
 	bool found;
 
-	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(cases); i++) {
 		fyp = fy_parser_create(&cfg);
 		ck_assert_ptr_ne(fyp, NULL);
 		ck_assert_int_eq(fy_parser_set_string(fyp, cases[i].yaml, FY_NT), 0);
@@ -672,6 +733,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_ff);
 	fy_check_testcase_add_test(ctc, parse_valid_utf8_ok);
 	fy_check_testcase_add_test(ctc, parse_bug_partial_utf8_at_eof);
+	fy_check_testcase_add_test(ctc, parse_bug_invalid_utf8_context_line);
 
 	/* extra parse bugs */
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
