@@ -1976,7 +1976,7 @@ static int do_durable_dump(const char *dir, const struct generic_config *gcfg)
 	struct fy_generic_builder_cfg gb_cfg;
 	struct fy_generic_builder *gb;
 	enum fy_op_emit_flags emit_flags;
-	fy_generic head;
+	fy_generic head, emitted;
 
 	a = open_durable_ro(dir);
 	if (!a) {
@@ -2006,11 +2006,12 @@ static int do_durable_dump(const char *dir, const struct generic_config *gcfg)
 
 	/* the refs head is a document directory (a sequence of vds); the emitter
 	 * walks its documents and adds the document separator markers */
-	fy_emit(gb, head, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
+	/* e.g. an alias that JSON output can't write */
+	emitted = fy_emit(gb, head, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
 
 	fy_generic_builder_destroy(gb);
 	fy_allocator_destroy(a);
-	return 0;
+	return fy_generic_is_invalid(emitted) ? -1 : 0;
 }
 
 /*
@@ -2360,9 +2361,12 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 
 			if (!gcfg->testsuite && !gcfg->parse_dump) {
 
-				if (!gcfg->dump_primitives)
-					fy_emit(gb, v, emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL);
-				else
+				if (!gcfg->dump_primitives) {
+					/* e.g. an alias that JSON output can't write */
+					if (fy_generic_is_invalid(fy_emit(gb, v,
+							emit_flags | FYOPEF_OUTPUT_TYPE_STDOUT, NULL)))
+						had_error = true;
+				} else
 					fy_generic_dump_primitive(stdout, 0, v);
 			} else {
 				/* Create iterator */
