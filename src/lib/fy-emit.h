@@ -131,6 +131,16 @@ struct fy_emitter {
 
 	/* auto-anchor state for the direct generic emitter (NULL = disabled) */
 	struct fy_emit_auto_anchor *aa;
+
+	/*
+	 * JSON has no aliases, so the direct generic emitter writes the value
+	 * an alias names, e.g. [&x {k: v}, *x] is [{"k": "v"}, {"k": "v"}];
+	 * these are the anchors of the document, and how deep in an alias
+	 */
+	struct fy_emit_json_anchor *json_anchors;
+	unsigned int json_anchor_count;
+	unsigned int json_anchor_alloc;
+	unsigned int json_alias_depth;
 };
 
 int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg);

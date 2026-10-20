@@ -3247,6 +3247,7 @@ void fy_emit_save_ctx_cleanup(struct fy_emitter *emit, struct fy_emit_save_ctx *
 }
 
 static void fy_emit_auto_anchor_free(struct fy_emitter *emit);
+static void fy_emit_json_anchors_free(struct fy_emitter *emit);
 
 void fy_emit_cleanup(struct fy_emitter *emit)
 {
@@ -3284,6 +3285,7 @@ void fy_emit_cleanup(struct fy_emitter *emit)
 	fy_diag_unref(emit->diag);
 
 	fy_emit_auto_anchor_free(emit);
+	fy_emit_json_anchors_free(emit);
 
 	if (emit->owned_output_fp)
 		fclose(emit->owned_output_fp);
@@ -5936,6 +5938,92 @@ fy_emit_generic_auto_anchor(struct fy_emitter *emit, fy_generic v, const char **
 	return rc;
 }
 
+/* an anchor of the document and the value it names */
+struct fy_emit_json_anchor {
+	fy_generic name;	/* a string, may be inline, e.g. "x" */
+	fy_generic v;
+};
+
+static void fy_emit_json_anchors_free(struct fy_emitter *emit)
+{
+	free(emit->json_anchors);
+	emit->json_anchors = NULL;
+	emit->json_anchor_count = 0;
+	emit->json_anchor_alloc = 0;
+	emit->json_alias_depth = 0;
+}
+
+static struct fy_emit_json_anchor *
+fy_emit_json_anchor_lookup(struct fy_emitter *emit, fy_generic_sized_string name)
+{
+	struct fy_emit_json_anchor *ja;
+	fy_generic_sized_string jname;
+	unsigned int i;
+
+	for (i = 0; i < emit->json_anchor_count; i++) {
+		ja = &emit->json_anchors[i];
+		jname = fy_castp(&ja->name, fy_szstr_empty);
+		if (jname.size == name.size && !memcmp(jname.data, name.data, name.size))
+			return ja;
+	}
+	return NULL;
+}
+
+/*
+ * record the value of an anchor once it is written; a later anchor of the
+ * same name replaces it, as an alias names the last one before it
+ */
+static int fy_emit_json_anchor_add(struct fy_emitter *emit, fy_generic name,
+				   fy_generic v)
+{
+	struct fy_emit_json_anchor *ja;
+	unsigned int alloc;
+
+	ja = fy_emit_json_anchor_lookup(emit, fy_castp(&name, fy_szstr_empty));
+	if (ja) {
+		ja->v = v;
+		return 0;
+	}
+	if (emit->json_anchor_count >= emit->json_anchor_alloc) {
+		alloc = emit->json_anchor_alloc ? emit->json_anchor_alloc * 2 : 16;
+		ja = realloc(emit->json_anchors, alloc * sizeof(*ja));
+		if (!ja)
+			return -1;
+		emit->json_anchors = ja;
+		emit->json_anchor_alloc = alloc;
+	}
+	ja = &emit->json_anchors[emit->json_anchor_count++];
+	ja->name = name;
+	ja->v = v;
+	return 0;
+}
+
+/* write the value that an alias names, e.g. *x as {"k": "v"} */
+static int fy_emit_generic_json_alias(struct fy_emitter *emit, fy_generic v,
+				      int flags, int indent, bool is_key)
+{
+	struct fy_emit_json_anchor *ja;
+	fy_generic_sized_string name;
+	fy_generic vname;
+	int rc;
+
+	vname = fy_convert(v, FYGT_STRING);
+	name = fy_castp(&vname, fy_szstr_empty);
+	ja = fy_emit_json_anchor_lookup(emit, name);
+	if (!ja) {
+		/* e.g. &a [*a]; its anchor isn't recorded until it is written */
+		fy_error(emit->diag, "JSON can't write alias *%.*s, no value is anchored before it",
+			 (int)name.size, name.data);
+		emit->emit_error = true;
+		return -1;
+	}
+
+	emit->json_alias_depth++;
+	rc = fy_emit_generic_internal(emit, ja->v, flags, indent, is_key, NULL, NULL);
+	emit->json_alias_depth--;
+	return rc;
+}
+
 /* emit a synthesized alias (a generated name, not derived from a generic) */
 static void
 fy_emit_generic_alias_name(struct fy_emitter *emit, const char *name,
@@ -5969,6 +6057,8 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 	case FYGT_INVALID:
 		goto err_out;
 	case FYGT_ALIAS:
+		if (fy_emit_is_json_mode(emit))
+			return fy_emit_generic_json_alias(emit, v, flags, indent, is_key);
 		style = FYNS_ALIAS;
 		/* fall-through */
 	case FYGT_NULL:
@@ -6074,6 +6164,12 @@ fy_emit_generic_internal(struct fy_emitter *emit, fy_generic v, int flags, int i
 	default:
 		break;
 	}
+
+	/* not inside an alias: its anchors were recorded when first written */
+	if (fy_emit_is_json_mode(emit) && fy_generic_is_string(vanchor) &&
+	    !emit->json_alias_depth && fy_emit_json_anchor_add(emit, vanchor, v))
+		goto err_out;
+
 	return 0;
 
 err_out:
@@ -6146,6 +6242,9 @@ fy_emit_generic_vdir(struct fy_emitter *emit, fy_generic vdir)
 
 		vroot = fy_generic_vds_get_root(vds);
 
+		/* an alias names an anchor of its own document */
+		emit->json_anchor_count = 0;
+
 		/* auto-anchor: find the per-document duplicates up front */
 		if (emit->aa) {
 			emit->aa->counter = 0;
@@ -6181,6 +6280,10 @@ err_out:
 #else
 
 static void fy_emit_auto_anchor_free(struct fy_emitter *emit FY_UNUSED)
+{
+}
+
+static void fy_emit_json_anchors_free(struct fy_emitter *emit FY_UNUSED)
 {
 }
 
