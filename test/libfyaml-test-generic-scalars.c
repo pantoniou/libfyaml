@@ -979,7 +979,7 @@ static void lookalike_check(struct fy_generic_builder *gb, const char *str, fy_g
 	enum fy_op_emit_flags emit;
 	size_t i, ev;
 
-	for (i = 0; i < sizeof(lookalike_modes) / sizeof(lookalike_modes[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(lookalike_modes); i++) {
 		for (ev = 0; ev < 2; ev++) {
 			emit = lookalike_modes[i].emit | FYOPEF_DISABLE_DIRECTORY;
 			if (ev)
@@ -1008,7 +1008,7 @@ START_TEST(scalar_emit_quotes_lookalikes)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(lookalike_strings) / sizeof(lookalike_strings[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(lookalike_strings); i++) {
 		v = fy_value(gb, lookalike_strings[i]);
 		ck_assert(fy_is_string(v));
 
@@ -1047,7 +1047,7 @@ START_TEST(scalar_emit_plain_strings)
 	gb = fy_generic_builder_create(NULL);
 	ck_assert_ptr_nonnull(gb);
 
-	for (i = 0; i < sizeof(strs) / sizeof(strs[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(strs); i++) {
 		for (ev = 0; ev < 2; ev++) {
 			emitted = fy_emit(gb, fy_mapping(gb, "k", strs[i]),
 					  FYOPEF_DISABLE_DIRECTORY | FYOPEF_STYLE_BLOCK |
@@ -1119,6 +1119,73 @@ START_TEST(scalar_plain_string_changes_type)
 }
 END_TEST
 
+/* what fy_generic_plain_string_changes_type() must say, from the full resolver */
+static void changes_type_check(enum fy_generic_schema schema, const char *str)
+{
+	bool slow;
+
+	if (schema == FYGS_AUTO)
+		slow = fy_generic_schema_plain_type(FYGS_YAML1_2_CORE, str, FY_NT) != FYGT_STRING ||
+		       fy_generic_schema_plain_type(FYGS_YAML1_1, str, FY_NT) != FYGT_STRING;
+	else
+		slow = fy_generic_schema_plain_type(schema, str, FY_NT) != FYGT_STRING;
+	ck_assert_msg(fy_generic_plain_string_changes_type(schema, str, FY_NT) == slow,
+		      "schema %d: \"%s\" changes type is %s", (int)schema, str,
+		      slow ? "true" : "false");
+}
+
+/* the quick filters of fy_generic_plain_string_changes_type() never change its answer */
+START_TEST(scalar_plain_string_changes_type_filters)
+{
+	static const struct {
+		const struct scalar_test *tests;
+		size_t count;
+	} tables[] = {
+		{ boolean_tests, ARRAY_SIZE(boolean_tests) },
+		{ null_tests, ARRAY_SIZE(null_tests) },
+		{ int_decimal_tests, ARRAY_SIZE(int_decimal_tests) },
+		{ int_octal_tests, ARRAY_SIZE(int_octal_tests) },
+		{ int_octal_0o_tests, ARRAY_SIZE(int_octal_0o_tests) },
+		{ int_hex_tests, ARRAY_SIZE(int_hex_tests) },
+		{ int_binary_tests, ARRAY_SIZE(int_binary_tests) },
+		{ int_underscore_tests, ARRAY_SIZE(int_underscore_tests) },
+		{ int_sexagesimal_tests, ARRAY_SIZE(int_sexagesimal_tests) },
+		{ float_basic_tests, ARRAY_SIZE(float_basic_tests) },
+		{ float_dot_prefix_tests, ARRAY_SIZE(float_dot_prefix_tests) },
+		{ float_trailing_dot_tests, ARRAY_SIZE(float_trailing_dot_tests) },
+		{ float_scientific_tests, ARRAY_SIZE(float_scientific_tests) },
+		{ float_underscore_tests, ARRAY_SIZE(float_underscore_tests) },
+		{ float_sexagesimal_tests, ARRAY_SIZE(float_sexagesimal_tests) },
+		{ float_infinity_tests, ARRAY_SIZE(float_infinity_tests) },
+		{ float_nan_tests, ARRAY_SIZE(float_nan_tests) },
+		{ string_plain_tests, ARRAY_SIZE(string_plain_tests) },
+		{ edge_case_tests, ARRAY_SIZE(edge_case_tests) },
+		{ special_tests, ARRAY_SIZE(special_tests) },
+		{ json_specific_tests, ARRAY_SIZE(json_specific_tests) },
+	};
+	static const char * const extra[] = {
+		"nothing", "nullify", "trueish", "falsey", "yesterday", "offset", "online",
+		"Nope", "~~~~~~", "tilde~", "123456", "-123456", "+123456", "1234567.5",
+		".123456", "-.Infinity", "0x1F2A3B4C", "0o1234567", "0b10101010",
+		"1_000_000", "190:20:30", "-1.5e+100", "2001-12-14", "1e10000",
+	};
+	static const enum fy_generic_schema schemas[] = {
+		FYGS_AUTO, FYGS_YAML1_2_CORE, FYGS_YAML1_2_JSON, FYGS_YAML1_1,
+		FYGS_YAML1_1_PYYAML, FYGS_JSON,
+	};
+	size_t t, i, k;
+
+	for (k = 0; k < ARRAY_SIZE(schemas); k++) {
+		for (t = 0; t < ARRAY_SIZE(tables); t++) {
+			for (i = 0; i < tables[t].count; i++)
+				changes_type_check(schemas[k], tables[t].tests[i].input);
+		}
+		for (i = 0; i < ARRAY_SIZE(extra); i++)
+			changes_type_check(schemas[k], extra[i]);
+	}
+}
+END_TEST
+
 /* =========================================================================
  * Register all scalar tests
  * ========================================================================= */
@@ -1171,6 +1238,7 @@ void libfyaml_case_generic_scalars(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, scalar_emit_plain_strings);
 	fy_check_testcase_add_test(ctc, scalar_emit_failsafe_plain);
 	fy_check_testcase_add_test(ctc, scalar_plain_string_changes_type);
+	fy_check_testcase_add_test(ctc, scalar_plain_string_changes_type_filters);
 }
 
 FY_DIAG_POP
