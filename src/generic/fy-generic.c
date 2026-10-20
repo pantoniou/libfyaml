@@ -2682,6 +2682,13 @@ bool fy_generic_plain_string_changes_type(enum fy_generic_schema schema,
 	if (len > 0 && !strchr("0123456789+-.~nNtTfFyYoO", text[0]))
 		return false;
 
+	/*
+	 * a word that isn't a number is at most 5 bytes, e.g. "false", and a
+	 * number starts with a digit, a sign or a dot, so "nothing" stays
+	 */
+	if (len > 5 && !strchr("0123456789+-.", text[0]))
+		return false;
+
 	switch (schema) {
 	case FYGS_YAML1_2_FAILSAFE:
 	case FYGS_YAML1_1_FAILSAFE:
