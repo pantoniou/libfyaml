@@ -757,24 +757,33 @@ if(HAVE_ASAN)
 endif()
 
 # Some older toolchains need libatomic for 8-byte atomics.
+# Exercise every 8-byte atomic operation libfyaml uses; on targets without
+# native 64-bit atomics each one becomes its own __atomic_*_8 library call,
+# and all of them must resolve.
 set(ATOMIC_LIBS "")
 if(NOT WIN32 AND NOT MSVC)
-    set(CMAKE_REQUIRED_LIBRARIES_SAVE "${CMAKE_REQUIRED_LIBRARIES}")
-    set(CMAKE_REQUIRED_LIBRARIES "")
-    check_c_source_compiles("
+    set(ATOMIC64_TEST_SOURCE "
         volatile unsigned long long v = 1;
         int main(void) {
-            return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+            unsigned long long e = 1;
+
+            __atomic_store_n(&v, 1, __ATOMIC_SEQ_CST);
+            __atomic_compare_exchange_n(&v, &e, 2, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+            e += __atomic_exchange_n(&v, 3, __ATOMIC_SEQ_CST);
+            e += __atomic_fetch_add(&v, 1, __ATOMIC_SEQ_CST);
+            e += __atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
+            e += __atomic_fetch_or(&v, 1, __ATOMIC_SEQ_CST);
+            e += __atomic_fetch_xor(&v, 1, __ATOMIC_SEQ_CST);
+            e += __atomic_fetch_and(&v, 1, __ATOMIC_SEQ_CST);
+            return (int)(e + __atomic_load_n(&v, __ATOMIC_SEQ_CST));
         }
-    " ATOMIC_LINKS_WITHOUT_LIBATOMIC)
+    ")
+    set(CMAKE_REQUIRED_LIBRARIES_SAVE "${CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_LIBRARIES "")
+    check_c_source_compiles("${ATOMIC64_TEST_SOURCE}" ATOMIC_LINKS_WITHOUT_LIBATOMIC)
     if(NOT ATOMIC_LINKS_WITHOUT_LIBATOMIC)
         set(CMAKE_REQUIRED_LIBRARIES "atomic")
-        check_c_source_compiles("
-            volatile unsigned long long v = 1;
-            int main(void) {
-                return (int)__atomic_fetch_sub(&v, 1, __ATOMIC_SEQ_CST);
-            }
-        " ATOMIC_LINKS_WITH_LIBATOMIC)
+        check_c_source_compiles("${ATOMIC64_TEST_SOURCE}" ATOMIC_LINKS_WITH_LIBATOMIC)
         if(ATOMIC_LINKS_WITH_LIBATOMIC)
             set(ATOMIC_LIBS "-latomic")
         else()
