@@ -7853,6 +7853,50 @@ START_TEST(generic_emit_json_alias)
 }
 END_TEST
 
+/* A root with a tag, e.g. !t {a: 1}, is an indirect; its word is relocated too. */
+START_TEST(generic_image_indirect_root)
+{
+	static const char * const docs[] = {
+		"!t {a: 1}",
+		"!t x",
+		"&a [1, 2]",
+	};
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic v, root, va, ra;
+	bool same_value, same_tag, same_anchor;
+	void *image;
+	size_t size, i;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	for (i = 0; i < ARRAY_SIZE(docs); i++) {
+		v = fy_parse(gb, fy_value(gb, docs[i]),
+			     FYOPPF_DISABLE_DIRECTORY | FYOPPF_DONT_RESOLVE |
+			     FYOPPF_MODE_YAML_1_2 | FYOPPF_INPUT_TYPE_STRING, NULL);
+		ck_assert(fy_generic_is_indirect(v));
+		image = fy_generic_image_create(v, &size);
+		ck_assert_ptr_ne(image, NULL);
+		root = fy_invalid;
+		ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+		ck_assert(fy_generic_is_indirect(root));
+		same_value = fy_equal(root, v);
+		/* no tag or anchor is fy_invalid on both sides, which fy_equal() never matches */
+		va = fy_generic_get_tag(v);
+		ra = fy_generic_get_tag(root);
+		same_tag = fy_generic_is_invalid(va) ? fy_generic_is_invalid(ra) : fy_equal(ra, va);
+		va = fy_generic_get_anchor(v);
+		ra = fy_generic_get_anchor(root);
+		same_anchor = fy_generic_is_invalid(va) ? fy_generic_is_invalid(ra) : fy_equal(ra, va);
+		ck_assert_msg(same_value, "%s: value", docs[i]);
+		ck_assert_msg(same_tag, "%s: tag", docs[i]);
+		ck_assert_msg(same_anchor, "%s: anchor", docs[i]);
+		fy_generic_image_destroy(image);
+	}
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* An inline root, e.g. 7 or the null of an empty stream, is the header alone. */
 START_TEST(generic_image_inline_root)
 {
@@ -8623,6 +8667,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_image_refusals);
 	fy_check_testcase_add_test(ctc, generic_emit_json_alias);
 	fy_check_testcase_add_test(ctc, generic_image_inline_root);
+	fy_check_testcase_add_test(ctc, generic_image_indirect_root);
 	fy_check_testcase_add_test(ctc, generic_image_in_place);
 	fy_check_testcase_add_test(ctc, generic_image_yaml_features);
 
