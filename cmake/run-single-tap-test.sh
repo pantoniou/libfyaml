@@ -59,6 +59,8 @@ function run_tool() {
 function emitter_subtest() {
     local dump_args="$1"
     local parse_args="$2"
+    # what reads the dump back, if not the same as the parse
+    local load_args="${EMITTER_LOAD_ARGS:-$2}"
     local f="${TEST_DIR}/emitter-examples/${test_id}"
     local t1
     local t2
@@ -75,7 +77,7 @@ function emitter_subtest() {
     run_tool "${FY_TOOL}" ${parse_args} "$f" >"$t1"
     if [ $? -eq 0 ]; then
         run_tool "${FY_TOOL}" ${dump_args} "$f" | \
-            run_tool "${FY_TOOL}" ${parse_args} - >"$t2"
+            run_tool "${FY_TOOL}" ${load_args} - >"$t2"
         if [ $? -eq 0 ]; then
             pass_parse=1
         fi

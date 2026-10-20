@@ -149,6 +149,7 @@ if HAVE_GENERIC
 TESTS += testemitter-generic-failsafe.test
 TESTS += testemitter-generic.test
 TESTS += testemitter-generic-binary.test
+TESTS += testemitter-generic-image.test
 endif
 
 if HAVE_LIBCLANG

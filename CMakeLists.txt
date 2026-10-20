@@ -1714,6 +1714,11 @@ if(CAN_TEST)
             SUITE_NAME testemitter
             EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --binary-base64" "EMITTER_PARSE_ARGS=--generic-testsuite"
         )
+        # a generic image read back gives the same events as the parse
+        add_testemitter_tests(testemitter-generic-image ""
+            SUITE_NAME testemitter
+            EXTRA_ENV "EMITTER_DUMP_ARGS=--generic --write-image -" "EMITTER_PARSE_ARGS=--generic-testsuite" "EMITTER_LOAD_ARGS=--generic-testsuite --read-image"
+        )
     endif()
 
     # Network-dependent tests using FetchContent
@@ -1776,6 +1781,7 @@ if(CAN_TEST)
             testemitter-generic-failsafe.test
             testemitter-generic.test
             testemitter-generic-binary.test
+            testemitter-generic-image.test
         )
     endif()
     if(HAVE_JQ)

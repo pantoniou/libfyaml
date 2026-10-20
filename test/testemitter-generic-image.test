@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+EMITTER_DUMP_ARGS="--generic --write-image -" \
+EMITTER_PARSE_ARGS="--generic-testsuite" \
+EMITTER_LOAD_ARGS="--generic-testsuite --read-image" \
+${SRCDIR}/testemitter.test

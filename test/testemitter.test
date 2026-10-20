@@ -3,6 +3,8 @@
 EXTRA_DUMP_ARGS="${EXTRA_DUMP_ARGS:-}"
 EMITTER_DUMP_ARGS="${EMITTER_DUMP_ARGS:---dump}"
 EMITTER_PARSE_ARGS="${EMITTER_PARSE_ARGS:---testsuite --disable-flow-markers}"
+# what reads the dump back, if not the same as the parse
+EMITTER_LOAD_ARGS="${EMITTER_LOAD_ARGS:-$EMITTER_PARSE_ARGS}"
 
 if [ "x$1" = "x--streaming" ]; then
 	EXTRA_DUMP_ARGS="$EXTRA_DUMP_ARGS --streaming"
@@ -34,7 +36,7 @@ run_one() {
 	${TOP_BUILDDIR}/src/fy-tool ${EMITTER_PARSE_ARGS} "$f" >"$t1"
 	if [ $? -eq 0 ]; then
 		${TOP_BUILDDIR}/src/fy-tool ${EMITTER_DUMP_ARGS} ${EXTRA_DUMP_ARGS} "$f" | \
-			${TOP_BUILDDIR}/src/fy-tool ${EMITTER_PARSE_ARGS} - >"$t2"
+			${TOP_BUILDDIR}/src/fy-tool ${EMITTER_LOAD_ARGS} - >"$t2"
 		if [ $? -eq 0 ]; then
 			pass_parse=1
 		fi
