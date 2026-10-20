@@ -7812,6 +7812,47 @@ START_TEST(generic_image_refusals)
 }
 END_TEST
 
+/* JSON has no aliases: an alias is written as the value its anchor names. */
+START_TEST(generic_emit_json_alias)
+{
+	static const struct {
+		const char *yaml;
+		const char *json;	/* NULL: can't be written */
+	} cases[] = {
+		{ "[&x {k: v}, *x, &y [1, *x], *y]",
+		  "[{\"k\": \"v\"}, {\"k\": \"v\"}, [1, {\"k\": \"v\"}], [1, {\"k\": \"v\"}]]" },
+		/* an alias names the last anchor before it, not one inside another alias */
+		{ "[&x [&b 1], &b 2, *x, *b]", "[[1], 2, [1], 2]" },
+		{ "{a: &k key, *k : 1}", "{\"a\": \"key\", \"key\": 1}" },
+		{ "[&a-long-anchor-name {x: 1}, *a-long-anchor-name]", "[{\"x\": 1}, {\"x\": 1}]" },
+		/* the anchor isn't written yet when its own alias is */
+		{ "&a [*a]", NULL },
+	};
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic v, emitted;
+	size_t i;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		v = fy_parse(gb, fy_value(gb, cases[i].yaml),
+			     FYOPPF_DISABLE_DIRECTORY | FYOPPF_DONT_RESOLVE |
+			     FYOPPF_MODE_YAML_1_2 | FYOPPF_INPUT_TYPE_STRING, NULL);
+		ck_assert(fy_generic_is_valid(v));
+		emitted = fy_emit(gb, v, FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_JSON |
+				  FYOPEF_STYLE_ONELINE | FYOPEF_NO_ENDING_NEWLINE, NULL);
+		if (!cases[i].json) {
+			ck_assert(fy_generic_is_invalid(emitted));
+			continue;
+		}
+		ck_assert(fy_generic_is_string(emitted));
+		ck_assert_str_eq(fy_castp(&emitted, ""), cases[i].json);
+	}
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* An inline root, e.g. 7 or the null of an empty stream, is the header alone. */
 START_TEST(generic_image_inline_root)
 {
@@ -8580,6 +8621,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_image_hint);
 	fy_check_testcase_add_test(ctc, generic_image_large);
 	fy_check_testcase_add_test(ctc, generic_image_refusals);
+	fy_check_testcase_add_test(ctc, generic_emit_json_alias);
 	fy_check_testcase_add_test(ctc, generic_image_inline_root);
 	fy_check_testcase_add_test(ctc, generic_image_in_place);
 	fy_check_testcase_add_test(ctc, generic_image_yaml_features);
