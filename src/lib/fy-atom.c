@@ -843,8 +843,11 @@ fy_atom_iter_line(struct fy_atom_iter *iter)
 #ifdef DEBUG_CHUNK
 	fprintf(stderr, "%s:%d need_nl=%s\n", __FILE__, __LINE__, li->need_nl ? "true" : "false");
 #endif
-	if (li->need_nl)
+	if (li->need_nl) {
+		/* a preserved separator ends any folded break run */
+		iter->folded_break = false;
 		return li;
+	}
 
 	switch (atom->style) {
 	case FYAS_PLAIN:
