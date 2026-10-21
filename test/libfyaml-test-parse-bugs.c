@@ -452,6 +452,8 @@ START_TEST(parse_bug_folded_empty_lines_before_more_indented)
 		{ ">\n a\n b\n\n  c\n d\n", "a b\n\n c\nd\n" },
 		{ ">-\n a\n\n  b\n\n c\n", "a\n\n b\n\nc" },
 		{ ">\n a\n\n b\n", "a\nb\n" },
+		/* a preserved YAML 1.1 line separator ends the folded break */
+		{ "%YAML 1.1\n---\n>\n a\n\xe2\x80\xa8 b\xe2\x80\xa8\n  c\n", "a\xe2\x80\xa8" "b\xe2\x80\xa8\n c\n" },
 	};
 	struct fy_document *fyd;
 	unsigned int i;
