@@ -440,6 +440,36 @@ START_TEST(parse_bug_nested_explicit_key)
 }
 END_TEST
 
+/* a shorthand tag needs a suffix and a verbatim tag needs a URI */
+START_TEST(parse_bug_tag_without_suffix)
+{
+	static const char * const invalid[] = {
+		"!!\n",
+		"!! a\n",
+		"key: !! value\n",
+		"- !!\n",
+		"%TAG !e! tag:example.com,2000:\n--- !e! a\n",
+		"!<> a\n",
+	};
+	static const char * const valid[] = {
+		"! a\n",
+		"!!str a\n",
+		"!local a\n",
+		"%TAG !e! tag:example.com,2000:\n--- !e!x a\n",
+		"!<tag:yaml.org,2002:str> a\n",
+	};
+	unsigned int i;
+
+	for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++)
+		ck_assert_msg(try_parse(invalid[i], strlen(invalid[i]), 0) != 0,
+			      "accepted invalid input #%u", i);
+
+	for (i = 0; i < sizeof(valid) / sizeof(valid[0]); i++)
+		ck_assert_msg(try_parse(valid[i], strlen(valid[i]), 0) == 0,
+			      "rejected valid input #%u", i);
+}
+END_TEST
+
 START_TEST(parse_bug_folded_empty_lines_before_more_indented)
 {
 	/* the break before empty lines is kept when the next text line is more indented */
@@ -763,6 +793,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	/* extra parse bugs */
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
 	fy_check_testcase_add_test(ctc, parse_bug_nested_explicit_key);
+	fy_check_testcase_add_test(ctc, parse_bug_tag_without_suffix);
 	fy_check_testcase_add_test(ctc, parse_bug_folded_empty_lines_before_more_indented);
 
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
