@@ -3576,6 +3576,11 @@ int fy_fetch_tag(struct fy_parser *fyp, int c)
 		}
 	}
 
+	/* a shorthand tag needs a suffix and a verbatim tag needs a URI */
+	FYP_PARSE_ERROR_CHECK(fyp, 0, prefix_length + handle_length + suffix_length, FYEM_SCAN,
+			uri_length > 0 || (!prefix_length && handle_length == 1), err_out,
+			"missing tag suffix");
+
 	is_valid = fy_scan_tag_uri_is_valid(fyp, prefix_length + handle_length, uri_length);
 	fyp_error_check(fyp, is_valid, err_out,
 			"tag URI is invalid");
