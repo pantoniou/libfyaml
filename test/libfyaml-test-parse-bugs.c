@@ -621,6 +621,37 @@ START_TEST(parse_bug_invalid_utf8_context_line)
 }
 END_TEST
 
+/* a node on the last line at the indentation of its block collection is not a value */
+START_TEST(parse_bug_unindented_value_at_end)
+{
+	static const char * const invalid[] = {
+		"key:\nvalue\n",
+		"key:\nvalue",
+		"key:\n'value'\n",
+		"key:\n[1]\n",
+		"parent:\n  child:\n  value\n",
+		"- a\n-\nb\n",
+		"key:\nvalue\n---\nx\n",
+		"key:\nvalue\n...\n",
+	};
+	static const char * const valid[] = {
+		"key:\n  value\n",
+		"key:\n- a\n",
+		"- a\n-\n  b\n",
+		"key: value\n---\nx\n",
+	};
+	unsigned int i;
+
+	for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++)
+		ck_assert_msg(try_parse(invalid[i], strlen(invalid[i]), 0) != 0,
+			      "accepted invalid input #%u", i);
+
+	for (i = 0; i < sizeof(valid) / sizeof(valid[0]); i++)
+		ck_assert_msg(try_parse(valid[i], strlen(valid[i]), 0) == 0,
+			      "rejected valid input #%u", i);
+}
+END_TEST
+
 #if defined(__linux__)
 START_TEST(parse_bug_ypath_alias_path_key_at_eof)
 {
@@ -812,6 +843,9 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 
 	/* a block scalar with a tag or anchor in front */
 	fy_check_testcase_add_test(ctc, parse_bug_block_scalar_after_properties);
+
+	/* a node on the last line at the indentation of its block collection */
+	fy_check_testcase_add_test(ctc, parse_bug_unindented_value_at_end);
 
 #if defined(__linux__)
 	/* Issue #309: path key duplication must not read past direct token text */
