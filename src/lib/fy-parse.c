@@ -2106,12 +2106,20 @@ err_out:
 
 int fy_fetch_stream_end(struct fy_parser *fyp)
 {
+	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
 	int rc;
 
 	/* only reset the stream in regular mode */
 	if (!fyp->parse_flow_only && !fyp->parse_block_only)
 		fy_reader_stream_end(fyp->reader);
+
+	/* a required simple key must be completed by a ':' */
+	fysk = fy_would_remove_required_simple_key(fyp);
+	if (fysk) {
+		fy_purge_required_simple_key_report(fyp, fysk->token, FYTT_STREAM_END);
+		goto err_out;
+	}
 
 	fy_remove_all_simple_keys(fyp);
 
@@ -2575,7 +2583,15 @@ err_out_rc:
 int fy_fetch_document_indicator(struct fy_parser *fyp, enum fy_token_type type)
 {
 	int rc, c;
+	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
+
+	/* a required simple key must be completed by a ':' */
+	fysk = fy_would_remove_required_simple_key(fyp);
+	if (fysk) {
+		fy_purge_required_simple_key_report(fyp, fysk->token, type);
+		goto err_out;
+	}
 
 	fy_remove_all_simple_keys(fyp);
 
