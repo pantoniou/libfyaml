@@ -150,6 +150,11 @@ jobs:
                 row["generator"] = "-G Ninja"
                 row["cmake_args"] = f"-DCMAKE_C_COMPILER={cc} -DENABLE_ASAN={asan} -DBUILD_TESTING={testing}"
 
+            # gcc 13's libasan on arm64 makes every fake stack frame ~40x slower
+            # than a real one, and the heavy tests time out; skip use-after-return there
+            if asan == "ON" and os_name == "ubuntu-24.04-arm" and compiler == "gcc":
+                row["asan_options"] = "detect_stack_use_after_return=0"
+
             # Apply filters
             if job_filter and job_filter != job_name: return
             if any(row.get(k) != v for k, v in f.items()): return
@@ -249,6 +254,8 @@ jobs:
     - name: "Test"
       if: matrix.testing == 'ON'
       working-directory: build
+      env:
+        ASAN_OPTIONS: ${{ matrix.asan_options }}
       run: |
         ctest -C ${{ matrix.build_type }} --output-on-failure ${{ inputs.ctest_args }}
 
