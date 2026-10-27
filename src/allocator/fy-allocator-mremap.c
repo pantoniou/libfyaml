@@ -976,8 +976,8 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_mremap_allocator *mra;
 	struct fy_mremap_arena *mran;
-	fy_id_bits *ids = NULL;
-	struct fy_mremap_tag *mrt, *mrt_new, *tags = NULL;
+	fy_id_bits *ids = NULL, *old_ids;
+	struct fy_mremap_tag *mrt, *mrt_new, *tags = NULL, *old_tags;
 	unsigned int i, tag_count, tag_id_count;
 	size_t tmpsz;
 
@@ -1028,7 +1028,7 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 			fy_mremap_tag_setup(mra, mrt_new);
 			do {
 				mran = fy_atomic_load(&mrt->arenas);
-			} while (fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, NULL));
+			} while (!fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, NULL));
 			fy_atomic_store(&mrt_new->arenas, mran);
 			fy_atomic_store(&mrt_new->next_arena_sz, fy_atomic_load(&mrt->next_arena_sz));
 			fy_atomic_store(&mrt_new->allocations, fy_atomic_load(&mrt->allocations));
@@ -1036,20 +1036,20 @@ static int fy_mremap_set_tag_count(struct fy_allocator *a, unsigned int count)
 			fy_atomic_store(&mrt_new->stores, fy_atomic_load(&mrt->stores));
 			fy_atomic_store(&mrt_new->stored, fy_atomic_load(&mrt->stored));
 
-			/* clean the old entry */
-			fy_mremap_tag_cleanup(mra, mrt);
-
 			fy_id_set_used(ids, tag_id_count, i);
 		}
 	}
 
-	if (mra->tags != tags) {
+	/* switch, freeing the old arrays */
+	old_tags = mra->tags;
+	if (old_tags != tags) {
 		mra->tags = tags;
-		fy_parent_allocator_free(&mra->a, mra->tags);
+		fy_parent_allocator_free(&mra->a, old_tags);
 	}
-	if (mra->ids != ids) {
+	old_ids = mra->ids;
+	if (old_ids != ids) {
 		mra->ids = ids;
-		fy_parent_allocator_free(&mra->a, (void *)mra->ids);
+		fy_parent_allocator_free(&mra->a, (void *)old_ids);
 	}
 	mra->tag_count = tag_count;
 	mra->tag_id_count = tag_id_count;

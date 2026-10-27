@@ -1504,8 +1504,8 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 {
 	struct fy_dedup_allocator *da;
 	struct fy_dedup_tag_data *dtd;
-	fy_id_bits *ids = NULL, *alloc_ids = NULL;
-	struct fy_dedup_tag *dt, *dt_new, *tags = NULL, *alloc_tags = NULL;
+	fy_id_bits *ids = NULL, *alloc_ids = NULL, *old_ids;
+	struct fy_dedup_tag *dt, *dt_new, *tags = NULL, *alloc_tags = NULL, *old_tags;
 	unsigned int i, tag_count, tag_id_count;
 	size_t tmpsz;
 	int rc;
@@ -1514,6 +1514,10 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 		return -1;
 
 	da = container_of(a, struct fy_dedup_allocator, a);
+
+	/* an external index has a single tag, shared through its root */
+	if (da->external)
+		return -1;
 
 	if (count == da->tag_count)
 		return 0;
@@ -1569,22 +1573,20 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 
 			dt_new = &tags[i];
 
-			fy_dedup_tag_setup(da, dt_new);
+			/* not fy_dedup_tag_setup(); the parent tags move over too */
+			memset(dt_new, 0, sizeof(*dt_new));
+			fy_atomic_flag_clear(&dt_new->growing);
 
 			/* move the old entries over */
 			do {
 				dtd = fy_atomic_load(&dt->tag_datas);
-			} while (fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, NULL));
+			} while (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, NULL));
 			fy_atomic_store(&dt_new->tag_datas, dtd);
 			dt_new->content_tag = dt->content_tag;
 			dt_new->entries_tag = dt->entries_tag;
-			fy_atomic_flag_clear(&dt_new->growing);
 			fy_atomic_store(&dt_new->unique_stores, fy_atomic_load(&dt->unique_stores));
 			fy_atomic_store(&dt_new->dup_stores, fy_atomic_load(&dt->dup_stores));
 			fy_atomic_store(&dt_new->collisions, fy_atomic_load(&dt->collisions));
-
-			/* clean the old entry */
-			fy_dedup_tag_cleanup(da, dt);
 
 			fy_id_set_used(ids, tag_id_count, i);
 		}
@@ -1595,15 +1597,17 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 	if (rc)
 		goto err_out;
 
-	/* switch */
-	if (da->tags != tags) {
+	/* switch, freeing the old arrays */
+	old_tags = da->tags;
+	if (old_tags != tags) {
 		da->tags = tags;
-		fy_parent_allocator_free(&da->a, da->tags);
+		fy_parent_allocator_free(&da->a, old_tags);
 	}
 
-	if (da->ids != ids) {
+	old_ids = da->ids;
+	if (old_ids != ids) {
 		da->ids = ids;
-		fy_parent_allocator_free(&da->a, (void *)da->ids);
+		fy_parent_allocator_free(&da->a, (void *)old_ids);
 	}
 
 	da->tag_count = tag_count;
