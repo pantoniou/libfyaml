@@ -3021,9 +3021,11 @@ fy_generic fy_gb_to_bool(struct fy_generic_builder *gb, fy_generic v)
 	}
 }
 
+/* sequences order lexicographically: by the first differing item, and a
+ * sequence that is a prefix of another orders before it */
 static int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
 {
-	size_t i, counta, countb;
+	size_t i, counta, countb, count;
 	const fy_generic *itemsa, *itemsb;
 	int ret;
 
@@ -3033,34 +3035,25 @@ static int fy_generic_sequence_compare(fy_generic seqa, fy_generic seqb)
 	itemsa = fy_generic_sequence_get_items(seqa, &counta);
 	itemsb = fy_generic_sequence_get_items(seqb, &countb);
 
-	if (counta != countb)
-		goto out;
+	/* an empty sequence has no items pointer, so the counts must be
+	 * tested before the pointers */
+	count = counta < countb ? counta : countb;
+	if (count) {
+		if (!itemsa || !itemsb)
+			return seqa.v > seqb.v ? 1 : -1;	/* malformed; keep some order */
 
-	/* empty? just fine - an empty sequence has no items pointer, so the
-	 * count must be tested before the pointers, or two empty sequences
-	 * that are not the same word compare on their addresses */
-	if (!counta)
-		return 0;
+		/* try to cheat by comparing contents */
+		if (counta == countb && !memcmp(itemsa, itemsb, count * sizeof(*itemsa)))
+			return 0;	/* great! binary match */
 
-	if (!itemsa || !itemsb)
-		goto out;
-
-	/* try to cheat by comparing contents */
-	ret = memcmp(itemsa, itemsb, counta * sizeof(*itemsa));
-	if (!ret)
-		return 0;	/* great! binary match */
-
-	/* have to do it the hard way */
-	for (i = 0; i < counta; i++) {
-		ret = fy_generic_compare(itemsa[i], itemsb[i]);
-		if (ret)
-			goto out;
+		for (i = 0; i < count; i++) {
+			ret = fy_generic_compare(itemsa[i], itemsb[i]);
+			if (ret)
+				return ret;
+		}
 	}
 
-	/* exhaustive check */
-	return 0;
-out:
-	return seqa.v > seqb.v ? 1 : -1;	/* keep order, but it's just address based */
+	return counta < countb ? -1 : counta > countb ? 1 : 0;
 }
 
 static int fy_generic_mapping_compare(fy_generic mapa, fy_generic mapb)
