@@ -988,18 +988,6 @@ fy_durable_create(struct fy_allocator *parent, int parent_tag, const void *cfg)
 	struct fy_durable_allocator *da;
 	struct fy_allocator *top, *dedup;
 
-#ifdef __FILC__
-	/* The persistent dedup graph has its own pointer fields and has not
-	 * yet been converted to encoded references. Fail explicitly. */
-	if (!dcfg) {
-		errno = EINVAL;
-		return NULL;
-	}
-	if (dcfg->flags & FY_DURABLE_ARENA_DEDUP) {
-		errno = ENOTSUP;
-		return NULL;
-	}
-#endif
 
 	da = fy_early_parent_allocator_alloc(parent, parent_tag, sizeof(*da),
 					     _Alignof(struct fy_durable_allocator));
@@ -1701,13 +1689,6 @@ int fy_durable_arena_gc(const char *dir_in)
 	size_t est;
 	bool separate_index;
 	int lockfd = -1, rc = -1;
-
-#ifdef __FILC__
-	/* Graph compaction still uses context-free generic pointer casts. */
-	(void)dir_in;
-	errno = ENOTSUP;
-	return -1;
-#endif
 
 	if (!dir_in)
 		return -1;

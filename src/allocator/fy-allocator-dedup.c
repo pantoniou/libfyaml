@@ -27,6 +27,7 @@
 #include "xxhash.h"
 
 #include "fy-allocator-dedup.h"
+#include "fy-range-registry.h"
 
 // #define DEBUG_GROWS
 
@@ -153,6 +154,47 @@ static const unsigned int bit_to_chain_length_map[] = {
 
 void fy_dedup_tag_data_destroy(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd, int entries_tag);
 
+/*
+ * The index (tags, tag datas, buckets, entries) may live in a durable arena
+ * that other processes map, so its pointer fields go through the range
+ * registry slot accessors: they hold logical addresses there under FIL-C.
+ * Natively these are plain loads and stores.
+ */
+static inline struct fy_dedup_tag_data *fy_dt_head(struct fy_dedup_tag *dt)
+{
+	return FY_SLOT_ALOAD(&dt->tag_datas);
+}
+
+static inline struct fy_dedup_tag_data *fy_dtd_next(struct fy_dedup_tag_data *dtd)
+{
+	return FY_SLOT_LOAD(&dtd->next);
+}
+
+static inline fy_id_bits *fy_dtd_bloom(struct fy_dedup_tag_data *dtd)
+{
+	return FY_SLOT_LOAD(&dtd->bloom_id);
+}
+
+static inline FY_ATOMIC(struct fy_dedup_entry *) *fy_dtd_buckets(struct fy_dedup_tag_data *dtd)
+{
+	return FY_SLOT_LOAD(&dtd->buckets);
+}
+
+static inline struct fy_dedup_entry *fy_bucket_head(FY_ATOMIC(struct fy_dedup_entry *) *headp)
+{
+	return FY_SLOT_ALOAD(headp);
+}
+
+static inline struct fy_dedup_entry *fy_de_next(struct fy_dedup_entry *de)
+{
+	return FY_SLOT_ALOAD(&de->next);
+}
+
+static inline void *fy_de_mem(const struct fy_dedup_entry *de)
+{
+	return FY_SLOT_LOAD((void **)&de->mem);
+}
+
 static inline struct fy_dedup_tag *
 fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 {
@@ -172,8 +214,8 @@ fy_dedup_tag_from_tag(struct fy_dedup_allocator *da, int tag)
 static void fy_dedup_tag_data_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_tag_data *dtd,
 				      int entries_tag)
 {
-	fy_allocator_free(da->parent_allocator, entries_tag, (void *)dtd->buckets);
-	fy_allocator_free(da->parent_allocator, entries_tag, (void *)dtd->bloom_id);
+	fy_allocator_free(da->parent_allocator, entries_tag, (void *)fy_dtd_buckets(dtd));
+	fy_allocator_free(da->parent_allocator, entries_tag, (void *)fy_dtd_bloom(dtd));
 }
 
 static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
@@ -185,6 +227,8 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
 	size_t dedup_threshold;
 	size_t tmpsz;
 	unsigned int i;
+	fy_id_bits *bloom;
+	FY_ATOMIC(struct fy_dedup_entry *) *buckets;
 
 	assert(dtd);
 	assert(cfg);
@@ -219,21 +263,23 @@ static int fy_dedup_tag_data_setup(struct fy_dedup_allocator *da,
 
 	dtd->bloom_id_count = (((size_t)1 << dtd->bloom_filter_bits) + FY_ID_BITS_BITS - 1) / FY_ID_BITS_BITS;
 	assert(dtd->bloom_id_count > 0);
-	tmpsz = dtd->bloom_id_count * sizeof(*dtd->bloom_id);
-	dtd->bloom_id = fy_allocator_alloc_nocheck(da->parent_allocator, entries_tag, tmpsz, _Alignof(fy_id_bits));
-	if (!dtd->bloom_id)
+	tmpsz = dtd->bloom_id_count * sizeof(*bloom);
+	bloom = fy_allocator_alloc_nocheck(da->parent_allocator, entries_tag, tmpsz, _Alignof(fy_id_bits));
+	if (!bloom)
 		goto err_out;
-	fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
+	FY_SLOT_STORE(&dtd->bloom_id, bloom);
+	fy_id_reset(bloom, dtd->bloom_id_count);
 
 	dtd->bucket_count = (size_t)1 << dtd->bucket_count_bits;
 	assert(dtd->bucket_count);
 
-	tmpsz = sizeof(*dtd->buckets) * dtd->bucket_count;
-	dtd->buckets = fy_allocator_alloc_nocheck(da->parent_allocator, entries_tag, tmpsz, _Alignof(struct fy_dedup_entry *));
-	if (!dtd->buckets)
+	tmpsz = sizeof(*buckets) * dtd->bucket_count;
+	buckets = fy_allocator_alloc_nocheck(da->parent_allocator, entries_tag, tmpsz, _Alignof(struct fy_dedup_entry *));
+	if (!buckets)
 		goto err_out;
+	FY_SLOT_STORE(&dtd->buckets, buckets);
 	for (i = 0; i < dtd->bucket_count; i++)
-		atomic_store(&dtd->buckets[i], NULL);
+		FY_SLOT_ASTORE(&buckets[i], NULL);
 
 	return 0;
 
@@ -249,17 +295,17 @@ static void fy_dedup_tag_cleanup(struct fy_dedup_allocator *da, struct fy_dedup_
 	if (!da || !dt)
 		return;
 
-	while ((dtd = fy_atomic_load(&dt->tag_datas)) != NULL) {
+	while ((dtd = fy_dt_head(dt)) != NULL) {
 
 		/* only do it if you are the winner */
-		if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, dtd->next))
+		if (!FY_SLOT_CAS(&dt->tag_datas, &dtd, fy_dtd_next(dtd)))
 			continue;
 
 #ifdef DEBUG_GROWS
 		fprintf(stderr, "%s: dump of state at close\n", __func__);
 		fprintf(stderr, "%s: bloom count=%u used=%lu\n",
 				__func__, 1 << dtd->bloom_filter_bits,
-				fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count));
+				fy_id_count_used(fy_dtd_bloom(dtd), dtd->bloom_id_count));
 		fprintf(stderr, "%s: bucket count=%u\n",
 				__func__, 1 << dtd->bucket_count_bits);
 #endif
@@ -343,7 +389,7 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		dt->entries_tag = FY_ALLOC_TAG_DEFAULT;
 	}
 
-	fy_atomic_store(&dt->tag_datas, NULL);
+	FY_SLOT_ASTORE(&dt->tag_datas, NULL);
 
 	/* fully zero (padding included) so nothing uninitialised reaches the dtd */
 	memset(&dcfg, 0, sizeof(dcfg));
@@ -357,7 +403,7 @@ static int fy_dedup_tag_setup(struct fy_dedup_allocator *da, struct fy_dedup_tag
 		goto err_out;
 
 	/* start with this one */
-	fy_atomic_store(&dt->tag_datas, dtd);
+	FY_SLOT_ASTORE(&dt->tag_datas, dtd);
 
 	return 0;
 
@@ -426,7 +472,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 		return -1;
 	}
 
-	dtd = fy_atomic_load(&dt->tag_datas);
+	dtd = fy_dt_head(dt);
 	if (!dtd)
 		goto out;
 
@@ -449,7 +495,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	 */
 	if (da->cfg.minimum_bucket_occupancy > 0.0f) {
 		bloom_count = (size_t)1 << dtd->bloom_filter_bits;
-		bloom_used = fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count);
+		bloom_used = fy_id_count_used(fy_dtd_bloom(dtd), dtd->bloom_id_count);
 		occupancy_ratio = (float)((double)bloom_used / (double)bloom_count);
 		if (occupancy_ratio < da->cfg.minimum_bucket_occupancy) {
 #ifdef DEBUG_GROWS
@@ -479,7 +525,7 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 
 		bloom_count = 1U << dtd->bloom_filter_bits;
 		new_bloom_count = 1U << new_dtd->bloom_filter_bits;
-		bloom_used = fy_id_count_used(dtd->bloom_id, dtd->bloom_id_count);
+		bloom_used = fy_id_count_used(fy_dtd_bloom(dtd), dtd->bloom_id_count);
 		bucket_count = 1U << dtd->bucket_count_bits;
 		new_bucket_count = 1U << new_dtd->bucket_count_bits;
 
@@ -502,14 +548,14 @@ fy_dedup_tag_adjust(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt,
 	while ((fy_atomic_load(&dtd->in_flight_state) & FY_DEDUP_INFLIGHT_MASK) != 0)
 		fy_cpu_relax();
 
-	new_dtd->next = dtd;
+	FY_SLOT_STORE(&new_dtd->next, dtd);
 	/* The @growing mutex above serializes resize, so the tag_datas swap
 	 * below is uncontested by other resizers - the CAS therefore cannot
 	 * lose. An assert documents the invariant; if a future change allows
 	 * concurrent resizers, the swap will need a loser-path that unfreezes
 	 * @dtd before backing off. */
 	expected_dtd = dtd;
-	swapped = fy_atomic_compare_exchange_strong(&dt->tag_datas, &expected_dtd, new_dtd);
+	swapped = FY_SLOT_CAS(&dt->tag_datas, &expected_dtd, new_dtd);
 	assert(swapped);	/* @growing serializes resize; the swap is uncontested */
 
 	rc = 0;
@@ -552,11 +598,11 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 	/* pop the head which we will keep */
 
 	dtd_head = NULL;
-	while ((dtd = fy_atomic_load(&dt->tag_datas)) != NULL) {
-		if (!fy_atomic_compare_exchange_strong(&dt->tag_datas, &dtd, dtd->next))
+	while ((dtd = fy_dt_head(dt)) != NULL) {
+		if (!FY_SLOT_CAS(&dt->tag_datas, &dtd, fy_dtd_next(dtd)))
 			continue;
 
-		dtd->next = NULL;
+		FY_SLOT_STORE(&dtd->next, NULL);
 
 		/* keep the head as is */
 		if (!dtd_head)
@@ -568,11 +614,11 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 	if (dtd_head) {
 		dtd = dtd_head;
 
-		dtd->next = NULL;
-		fy_id_reset(dtd->bloom_id, dtd->bloom_id_count);
+		FY_SLOT_STORE(&dtd->next, NULL);
+		fy_id_reset(fy_dtd_bloom(dtd), dtd->bloom_id_count);
 		for (i = 0; i < dtd->bucket_count; i++)
-			atomic_store(&dtd->buckets[i], NULL);
-		fy_atomic_store(&dt->tag_datas, dtd);
+			FY_SLOT_ASTORE(&fy_dtd_buckets(dtd)[i], NULL);
+		FY_SLOT_ASTORE(&dt->tag_datas, dtd);
 	}
 }
 
@@ -784,13 +830,13 @@ struct fy_allocator *fy_dedup_create_external(struct fy_allocator *parent, int p
 	if (fy_dedup_setup_core(da, parent, parent_tag, cfg, true) != 0)
 		goto err_out;
 
-	dt = fy_atomic_load(root_slot);
+	dt = FY_SLOT_ALOAD(root_slot);
 	if (dt) {
 		/* attach to the existing shared index (single tag 0) */
 		da->tags = dt;
 		fy_id_set_used(da->ids, da->tag_id_count, 0);
 		/* adopt the persisted threshold so all attachers agree */
-		head = fy_atomic_load(&dt->tag_datas);
+		head = fy_dt_head(dt);
 		if (head)
 			da->dedup_threshold = da->cfg.dedup_threshold = head->dedup_threshold;
 	} else {
@@ -804,7 +850,7 @@ struct fy_allocator *fy_dedup_create_external(struct fy_allocator *parent, int p
 		if (fy_dedup_tag_setup(da, dt) != 0)
 			goto err_out;
 		/* publish the shared root for other processes to attach to */
-		fy_atomic_store(root_slot, dt);
+		FY_SLOT_ASTORE(root_slot, dt);
 	}
 
 	return &da->a;
@@ -835,7 +881,7 @@ struct fy_allocator *fy_dedup_restore(struct fy_allocator *parent, int parent_ta
 	if (!dt)
 		goto err_out;
 
-	head = fy_atomic_load(&dt->tag_datas);
+	head = fy_dt_head(dt);
 	if (!head)
 		goto err_out;
 
@@ -844,9 +890,9 @@ struct fy_allocator *fy_dedup_restore(struct fy_allocator *parent, int parent_ta
 		cfg->root->read_only = true;
 
 	/* and chain */
-	if (cfg->root->next)
-		cfg->root->next = NULL;
-	head->next = cfg->root;
+	if (fy_dtd_next(cfg->root))
+		FY_SLOT_STORE(&cfg->root->next, NULL);
+	FY_SLOT_STORE(&head->next, cfg->root);
 
 	return a;
 
@@ -956,8 +1002,8 @@ static inline bool fy_dedup_entry_match_after_hash(const struct fy_dedup_entry *
 					size_t size, size_t align)
 {
 	return size == de->size &&				/* size match */
-	       ((uintptr_t)de->mem & (align - 1)) == 0 &&	/* align match */
-	       !fy_iovec_cmp(iov, iovcnt, de->mem);		/* content match */
+	       ((uintptr_t)fy_de_mem(de) & (align - 1)) == 0 &&	/* align match */
+	       !fy_iovec_cmp(iov, iovcnt, fy_de_mem(de));	/* content match */
 }
 
 static inline bool fy_dedup_entry_match(const struct fy_dedup_entry *de,
@@ -983,7 +1029,7 @@ static void fy_dedup_trace(struct fy_allocator *a,
 	hash = fy_iovec_xxhash64(iov, iovcnt);
 
 	printf("%p: %s %p 0x%016"PRIx64" %zx:",
-			a, banner, de ? de->mem : NULL, hash, total_size);
+			a, banner, de ? fy_de_mem(de) : NULL, hash, total_size);
 	for (i = 0; i < iovcnt; i++) {
 		for (j = 0; j < iov[i].iov_len; j++) {
 			printf("%02x", (int)(((uint8_t *)iov[i].iov_base)[j]) & 0xff);
@@ -1142,14 +1188,14 @@ fy_dedup_tag_lookupv_internal(struct fy_dedup_tag *dt,
 	int bloom_pos, bucket_pos;
 	bool bloom_hit;
 
-	for (dtd = fy_atomic_load(&dt->tag_datas); dtd; dtd = dtd->next) {
+	for (dtd = fy_dt_head(dt); dtd; dtd = fy_dtd_next(dtd)) {
 		bloom_pos = (int)(hash & (uint64_t)dtd->bloom_filter_mask);
-		bloom_hit = fy_id_is_used(dtd->bloom_id, dtd->bloom_id_count, bloom_pos);
+		bloom_hit = fy_id_is_used(fy_dtd_bloom(dtd), dtd->bloom_id_count, bloom_pos);
 		if (!bloom_hit)
 			continue;
 
 		bucket_pos = (int)(hash & (uint64_t)dtd->bucket_count_mask);
-		for (de = fy_atomic_load(&dtd->buckets[bucket_pos]); de; de = fy_atomic_load(&de->next)) {
+		for (de = fy_bucket_head(&fy_dtd_buckets(dtd)[bucket_pos]); de; de = fy_de_next(de)) {
 			if (fy_dedup_entry_match(de, iov, iovcnt, total_size, align, hash))
 				return de;
 		}
@@ -1187,7 +1233,7 @@ static const void *fy_dedup_lookupv(struct fy_allocator *a, int tag,
 
 	de = fy_dedup_tag_lookupv_internal(dt, iov, iovcnt, total_size, align, hash);
 
-	return de ? de->mem : NULL;
+	return de ? fy_de_mem(de) : NULL;
 }
 
 static inline const struct fy_dedup_entry *
@@ -1211,7 +1257,7 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 	unsigned int aflags;
 
 	/* try the lucky path, without any reservation. This is the best hit case */
-	head_lucky = fy_atomic_load(&dt->tag_datas);
+	head_lucky = fy_dt_head(dt);
 	assert(head_lucky);	/* this must never be NULL, means we haven't initialized properly */
 
 	de_lookup = fy_dedup_tag_lookupv_internal(dt, iov, iovcnt, total_size, align, hash);
@@ -1232,7 +1278,7 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 		in_flight = fy_atomic_load(&head0->in_flight_state);
 		if (in_flight & FY_DEDUP_FROZEN_BIT) {
 			aflags |= FYDSAF_WAIT_ON_FROZEN;
-			head0 = fy_atomic_load(&dt->tag_datas); /* reload */
+			head0 = fy_dt_head(dt); /* reload */
 		} else if (fy_atomic_compare_exchange_weak(&head0->in_flight_state, &in_flight, in_flight + 1))
 			break;
 		fy_cpu_relax();
@@ -1251,14 +1297,14 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 	/* those are fixed for our run */
 	bloom_pos = (int)(hash & (uint64_t)head0->bloom_filter_mask);
 	bucket_pos = (int)(hash & (uint64_t)head0->bucket_count_mask);
-	de_headp = &head0->buckets[bucket_pos];
+	de_headp = &fy_dtd_buckets(head0)[bucket_pos];
 
-	de_head = fy_atomic_load(de_headp);
+	de_head = fy_bucket_head(de_headp);
 	for (;;) {
 		/* try again; someone might have raced and inserted our data (but only on this layer) */
-		bloom_hit = fy_id_is_used(head0->bloom_id, head0->bloom_id_count, bloom_pos);
+		bloom_hit = fy_id_is_used(fy_dtd_bloom(head0), head0->bloom_id_count, bloom_pos);
 		if (bloom_hit) {
-			for (de_iter = fy_atomic_load(de_headp); de_iter; de_iter = fy_atomic_load(&de_iter->next)) {
+			for (de_iter = fy_bucket_head(de_headp); de_iter; de_iter = fy_de_next(de_iter)) {
 				if (fy_dedup_entry_match(de_iter, iov, iovcnt, total_size, align, hash)) {
 					aflags |= FYDSAF_DUPLICATE;
 
@@ -1307,22 +1353,22 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 
 			de->hash = hash;
 			de->size = total_size;
-			de->mem = mem;
+			FY_SLOT_STORE(&de->mem, mem);
 
 			/* and copy the data */
-			fy_iovec_copy_from(iov, iovcnt, de->mem);
+			fy_iovec_copy_from(iov, iovcnt, mem);
 		}
 
 		/* Publish presence in the bloom filter BEFORE linking */
-		fy_id_set_used(head0->bloom_id, head0->bloom_id_count, bloom_pos);
+		fy_id_set_used(fy_dtd_bloom(head0), head0->bloom_id_count, bloom_pos);
 
 		/* always update the next entry with it */
-		fy_atomic_store(&de->next, de_head);
+		FY_SLOT_ASTORE(&de->next, de_head);
 
 		/* prepend; if the CAS fails @de_head is reloaded and we retry.
 		 * deliberately strong, do not change to weak.
 		 */
-		if (fy_atomic_compare_exchange_strong(de_headp, &de_head, de))
+		if (FY_SLOT_CAS(de_headp, &de_head, de))
 			break;
 
 		/* mark that this happened for statistics */
@@ -1331,7 +1377,7 @@ fy_dedup_tag_storev_internal(struct fy_dedup_tag *dt,
 
 	/* walk the new chain; if larger mark it as needing adjust */
 	chain_length = 1;
-	for (de_iter = fy_atomic_load(&de->next); de_iter; de_iter = fy_atomic_load(&de_iter->next)) {
+	for (de_iter = fy_de_next(de); de_iter; de_iter = fy_de_next(de_iter)) {
 		if (de_iter->hash == hash)
 			aflags |= FYDASF_HASH_COLISSION;
 		chain_length++;
@@ -1425,7 +1471,7 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag,
 				((action_flags & FYDSAF_DUPLICATE) ? "dup" : "unique"));
 	}
 
-	return de ? de->mem : NULL;
+	return de ? fy_de_mem(de) : NULL;
 }
 
 static void fy_dedup_release(struct fy_allocator *a FY_UNUSED,
@@ -1576,8 +1622,8 @@ static int fy_dedup_set_tag_count(struct fy_allocator *a, unsigned int count)
 			 * array is freed below without releasing what moved */
 			memset(dt_new, 0, sizeof(*dt_new));
 			fy_atomic_flag_clear(&dt_new->growing);
-			fy_atomic_store(&dt_new->tag_datas, fy_atomic_load(&dt->tag_datas));
-			fy_atomic_store(&dt->tag_datas, NULL);
+			FY_SLOT_ASTORE(&dt_new->tag_datas, fy_dt_head(dt));
+			FY_SLOT_ASTORE(&dt->tag_datas, NULL);
 			dt_new->content_tag = dt->content_tag;
 			dt_new->entries_tag = dt->entries_tag;
 			fy_atomic_store(&dt_new->unique_stores, fy_atomic_load(&dt->unique_stores));
@@ -1715,6 +1761,8 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 	struct fy_dedup_tag *dt;
 	struct fy_dedup_tag_data *head, *dtd, *merged;
 	struct fy_dedup_entry *de, *nde;
+	FY_ATOMIC(struct fy_dedup_entry *) *mbuckets;
+	fy_id_bits *mbloom;
 	int index_tag = FY_ALLOC_TAG_ERROR, tags[2];
 	unsigned int ntags;
 	size_t b, bucket_pos, bloom_pos;
@@ -1738,7 +1786,7 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 	 * single-threaded at the end of a parse). We therefore read the layer
 	 * chain directly without fencing against a grow.
 	 */
-	head = fy_atomic_load(&dt->tag_datas);
+	head = fy_dt_head(dt);
 	if (!head)
 		goto err_out;
 
@@ -1761,16 +1809,18 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 	merged->dedup_threshold = head->dedup_threshold;
 	merged->chain_length_grow_trigger = head->chain_length_grow_trigger;
 
-	merged->bloom_id = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
-			merged->bloom_id_count * sizeof(*merged->bloom_id), _Alignof(fy_id_bits));
-	merged->buckets = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
-			merged->bucket_count * sizeof(*merged->buckets), _Alignof(struct fy_dedup_entry *));
-	if (!merged->bloom_id || !merged->buckets)
+	mbloom = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+			merged->bloom_id_count * sizeof(*mbloom), _Alignof(fy_id_bits));
+	mbuckets = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
+			merged->bucket_count * sizeof(*mbuckets), _Alignof(struct fy_dedup_entry *));
+	if (!mbloom || !mbuckets)
 		goto err_out;
+	FY_SLOT_STORE(&merged->bloom_id, mbloom);
+	FY_SLOT_STORE(&merged->buckets, mbuckets);
 
-	fy_id_reset(merged->bloom_id, merged->bloom_id_count);
+	fy_id_reset(mbloom, merged->bloom_id_count);
 	for (b = 0; b < merged->bucket_count; b++)
-		fy_atomic_store(&merged->buckets[b], NULL);
+		FY_SLOT_ASTORE(&mbuckets[b], NULL);
 
 	/*
 	 * Re-bucket every entry from every chain version into the merged
@@ -1778,26 +1828,26 @@ static int fy_dedup_snapshot(struct fy_allocator *a, int tag, struct fy_allocato
 	 * source, and keeps the index region self-contained). de->mem still
 	 * points into the content region.
 	 */
-	for (dtd = head; dtd; dtd = dtd->next) {
+	for (dtd = head; dtd; dtd = fy_dtd_next(dtd)) {
 		for (b = 0; b < dtd->bucket_count; b++) {
-			for (de = fy_atomic_load(&dtd->buckets[b]); de; de = de->next) {
+			for (de = fy_bucket_head(&fy_dtd_buckets(dtd)[b]); de; de = fy_de_next(de)) {
 				nde = fy_allocator_alloc_nocheck(da->parent_allocator, index_tag,
 						sizeof(*nde), _Alignof(struct fy_dedup_entry));
 				if (!nde)
 					goto err_out;
 				nde->hash = de->hash;
 				nde->size = de->size;
-				nde->mem = de->mem;
+				FY_SLOT_STORE(&nde->mem, fy_de_mem(de));
 
 				bucket_pos = de->hash & merged->bucket_count_mask;
 				bloom_pos = de->hash & merged->bloom_filter_mask;
-				nde->next = fy_atomic_load(&merged->buckets[bucket_pos]);
-				fy_atomic_store(&merged->buckets[bucket_pos], nde);
-				fy_id_set_used(merged->bloom_id, merged->bloom_id_count, (int)bloom_pos);
+				FY_SLOT_ASTORE(&nde->next, fy_bucket_head(&mbuckets[bucket_pos]));
+				FY_SLOT_ASTORE(&mbuckets[bucket_pos], nde);
+				fy_id_set_used(mbloom, merged->bloom_id_count, (int)bloom_pos);
 			}
 		}
 	}
-	merged->next = NULL;
+	FY_SLOT_STORE(&merged->next, NULL);
 
 	snap->tag = tag;
 	snap->content_tag = dt->content_tag;

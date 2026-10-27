@@ -100,6 +100,57 @@ int fy_range_ptr_to_logical(const void *ptr, uintptr_t *logicalp);
 void *fy_range_logical_to_ptr(uintptr_t addr);
 
 /*
+ * Pointers stored in memory that other processes map (durable arenas) must
+ * hold logical addresses. fy_range_ptr_store() gives the value to store for
+ * a pointer: its logical address if it points into a translated range, the
+ * pointer itself otherwise. fy_range_ptr_load() turns a stored value back
+ * into a usable pointer. Natively logical addresses are runtime ones, so
+ * both are the identity.
+ */
+#ifdef __FILC__
+void *fy_range_ptr_store(const void *ptr);
+void *fy_range_ptr_load(const void *stored);
+#else
+static inline void *fy_range_ptr_store(const void *ptr)
+{
+	return (void *)ptr;
+}
+
+static inline void *fy_range_ptr_load(const void *stored)
+{
+	return (void *)stored;
+}
+#endif
+
+/*
+ * Accessors for pointer slots of data structures that may live in memory
+ * other processes map (a durable arena's dedup index). Under FIL-C a slot
+ * inside a translated range holds the logical address, accessed as an
+ * integer (a stored capability would be process local), and loads turn it
+ * back into a pointer; any other slot is accessed as a pointer. Natively
+ * they are the plain operations.
+ */
+#ifdef __FILC__
+void *fy_range_slot_load(void *slot);
+void fy_range_slot_store(void *slot, const void *ptr);
+void *fy_range_slot_atomic_load(void *slot);
+void fy_range_slot_atomic_store(void *slot, const void *ptr);
+bool fy_range_slot_cas(void *slot, void *expectedp, const void *desired);
+
+#define FY_SLOT_LOAD(_slot)		fy_range_slot_load((void *)(_slot))
+#define FY_SLOT_STORE(_slot, _p)	fy_range_slot_store((void *)(_slot), (_p))
+#define FY_SLOT_ALOAD(_slot)		fy_range_slot_atomic_load((void *)(_slot))
+#define FY_SLOT_ASTORE(_slot, _p)	fy_range_slot_atomic_store((void *)(_slot), (_p))
+#define FY_SLOT_CAS(_slot, _expp, _d)	fy_range_slot_cas((void *)(_slot), (void *)(_expp), (_d))
+#else
+#define FY_SLOT_LOAD(_slot)		(*(_slot))
+#define FY_SLOT_STORE(_slot, _p)	(*(_slot) = (_p))
+#define FY_SLOT_ALOAD(_slot)		fy_atomic_load(_slot)
+#define FY_SLOT_ASTORE(_slot, _p)	fy_atomic_store((_slot), (_p))
+#define FY_SLOT_CAS(_slot, _expp, _d)	fy_atomic_compare_exchange_strong((_slot), (_expp), (_d))
+#endif
+
+/*
  * Allocators track the memory they obtain through these. Only FIL-C
  * consumes the registry (to resolve pointers), so natively they compile
  * to nothing and allocators don't pay for registration.

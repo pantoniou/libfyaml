@@ -75,14 +75,11 @@ static void durable_unavailable(void)
 	ck_abort_msg("the durable arena could not be opened");
 }
 
-/* GC needs an atomic directory exchange, which only Linux and macOS have;
- * under FIL-C graph compaction and persistent dedup are not ported yet */
+/* GC needs an atomic directory exchange, which only Linux and macOS have */
 static bool gc_unsupported(void)
 {
-#ifndef __FILC__
 	if (fy_rename_exchange_supported())
 		return false;
-#endif
 	fprintf(stderr, "SKIP: durable arena GC is not supported on this platform\n");
 	return true;
 }
@@ -756,7 +753,7 @@ START_TEST(dedup_cross_session)
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
-		addr[i] = (uintptr_t)p;
+		addr[i] = durable_logical(p);
 	}
 	fy_allocator_sync(da);
 	fy_allocator_destroy(da);
@@ -768,7 +765,7 @@ START_TEST(dedup_cross_session)
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		ck_assert_uint_eq((uintptr_t)p, addr[i]);
+		ck_assert_uint_eq(durable_logical(p), addr[i]);
 	}
 	/* a brand-new payload is unique and itself dedups on repeat */
 	{
@@ -814,7 +811,7 @@ START_TEST(dedup_cross_process)
 				size_t len = dd_payload(pl, sizeof(pl), i);
 				const void *p = fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 				if (!p) _exit(3);
-				addrs[i] = (uintptr_t)p;
+				addrs[i] = durable_logical(p);
 			}
 			/* per-child unique payloads add concurrent-insert pressure */
 			for (i = 0; i < UNIQ; i++) {
@@ -913,7 +910,7 @@ START_TEST(dedup_builder_cross_process)
 				if (fy_generic_is_invalid(v)) _exit(4);
 				p = fy_generic_resolve_ptr(v);
 				if (!p) _exit(5);
-				addrs[i] = (uintptr_t)p;
+				addrs[i] = durable_logical(p);
 			}
 			/* per-process unique strings add concurrent-insert pressure */
 			for (i = 0; i < UNIQ; i++) {
@@ -1328,9 +1325,9 @@ START_TEST(durable_separate_index_basic)
 		if (!p || q != p)
 			bad_dedup++;
 		/* content must be in the content region, never the index region */
-		if (!p || (uintptr_t)p < cbase || (uintptr_t)p >= cend)
+		if (!p || durable_logical(p) < cbase || durable_logical(p) >= cend)
 			bad_range++;
-		if (p && (uintptr_t)p >= ibase && (uintptr_t)p < iend)
+		if (p && durable_logical(p) >= ibase && durable_logical(p) < iend)
 			bad_range++;
 	}
 	ck_assert_int_eq(bad_dedup, 0);
@@ -1486,7 +1483,7 @@ START_TEST(durable_separate_index_cross_session)
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
-		addr[i] = (uintptr_t)p;
+		addr[i] = durable_logical(p);
 	}
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
 	fy_allocator_destroy(da);
@@ -1500,7 +1497,7 @@ START_TEST(durable_separate_index_cross_session)
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		if ((uintptr_t)p != addr[i])
+		if (durable_logical(p) != addr[i])
 			bad++;
 	}
 	ck_assert_int_eq(bad, 0);
@@ -1833,7 +1830,7 @@ START_TEST(gc_address_stable)
 	ck_assert_uint_eq(fy_allocator_region_base(da), TEST_REGION_BASE);
 	root.v = (fy_generic_value)fy_allocator_refs_get(da);
 	ck_assert(fy_generic_is_sequence(root));
-	p = (uintptr_t)fy_generic_resolve_ptr(root);
+	p = durable_logical(fy_generic_resolve_ptr(root));
 	ck_assert_uint_ge(p, TEST_REGION_BASE);
 	ck_assert_uint_lt(p, TEST_REGION_BASE + TEST_REGION_SIZE);
 
