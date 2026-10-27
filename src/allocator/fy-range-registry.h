@@ -62,12 +62,28 @@ int fy_range_ptr_to_logical(const void *ptr, uintptr_t *logicalp);
  * address (with the range's capability under FIL-C), or NULL */
 void *fy_range_logical_to_ptr(uintptr_t addr);
 
-/* pointer slots in memory other processes may map (a durable dedup index) */
+/* pointer slots in memory other processes may map (a durable dedup index);
+ * under FIL-C a slot in a translated range holds the logical address as an
+ * integer, since a stored capability is process local */
+#ifdef __FILC__
+void *fy_range_slot_load(void *slot);
+void fy_range_slot_store(void *slot, const void *ptr);
+void *fy_range_slot_atomic_load(void *slot);
+void fy_range_slot_atomic_store(void *slot, const void *ptr);
+bool fy_range_slot_cas(void *slot, void *expectedp, const void *desired);
+
+#define FY_SLOT_LOAD(_slot)		fy_range_slot_load((void *)(_slot))
+#define FY_SLOT_STORE(_slot, _p)	fy_range_slot_store((void *)(_slot), (_p))
+#define FY_SLOT_ALOAD(_slot)		fy_range_slot_atomic_load((void *)(_slot))
+#define FY_SLOT_ASTORE(_slot, _p)	fy_range_slot_atomic_store((void *)(_slot), (_p))
+#define FY_SLOT_CAS(_slot, _expp, _d)	fy_range_slot_cas((void *)(_slot), (void *)(_expp), (_d))
+#else
 #define FY_SLOT_LOAD(_slot)		(*(_slot))
 #define FY_SLOT_STORE(_slot, _p)	(*(_slot) = (_p))
 #define FY_SLOT_ALOAD(_slot)		fy_atomic_load(_slot)
 #define FY_SLOT_ASTORE(_slot, _p)	fy_atomic_store((_slot), (_p))
 #define FY_SLOT_CAS(_slot, _expp, _d)	fy_atomic_compare_exchange_strong((_slot), (_expp), (_d))
+#endif
 
 /* allocators track their ranges only where pointers are resolved through
  * them: under FIL-C */

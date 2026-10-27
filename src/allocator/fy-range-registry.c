@@ -497,6 +497,116 @@ void *fy_range_logical_to_ptr(uintptr_t addr)
 	return p;
 }
 
+#ifdef __FILC__
+
+/* the value to store for ptr: its logical address in a translated range */
+static void *fy_range_ptr_store(const void *ptr)
+{
+	struct fy_range_read rd;
+	const struct fy_range_table *t;
+	const struct fy_range_entry *e;
+	uintptr_t addr = (uintptr_t)ptr;
+	void *v = (void *)ptr;
+	long pos;
+
+	fy_range_read_begin(&rd);
+
+	t = fy_atomic_load(&range_table);
+	if (t && t->nxlat) {
+		/* the innermost range containing it, then the innermost
+		 * translated one enclosing that */
+		for (pos = fy_range_table_find(t, addr); pos >= 0; pos = t->e[pos].parent) {
+			if (addr - t->e[pos].start < t->e[pos].size)
+				break;
+		}
+		for (; pos >= 0; pos = t->e[pos].parent) {
+			e = &t->e[pos];
+			if (fy_range_entry_translated(e)) {
+				v = (void *)(e->logical + (addr - e->start));
+				break;
+			}
+		}
+	}
+
+	fy_range_read_end(&rd);
+	return v;
+}
+
+/* the pointer for a stored value */
+static void *fy_range_ptr_load(const void *stored)
+{
+	struct fy_range_read rd;
+	const struct fy_range_table *t;
+	const struct fy_range_entry *e;
+	uintptr_t addr = (uintptr_t)stored;
+	void *p = (void *)stored;
+
+	fy_range_read_begin(&rd);
+
+	t = fy_atomic_load(&range_table);
+	e = fy_range_table_find_logical(t, addr);
+	if (e)
+		p = (char *)e->base + (addr - e->logical);
+
+	fy_range_read_end(&rd);
+	return p;
+}
+
+/* a slot in a translated range holds a logical address, as an integer */
+static bool fy_range_slot_translated(const void *slot)
+{
+	return fy_range_ptr_store(slot) != slot;
+}
+
+void *fy_range_slot_load(void *slot)
+{
+	if (fy_range_slot_translated(slot))
+		return fy_range_ptr_load((void *)*(uintptr_t *)slot);
+	return *(void **)slot;
+}
+
+void fy_range_slot_store(void *slot, const void *ptr)
+{
+	if (fy_range_slot_translated(slot))
+		*(uintptr_t *)slot = (uintptr_t)fy_range_ptr_store(ptr);
+	else
+		*(void **)slot = (void *)ptr;
+}
+
+void *fy_range_slot_atomic_load(void *slot)
+{
+	if (fy_range_slot_translated(slot))
+		return fy_range_ptr_load((void *)fy_atomic_load((FY_ATOMIC(uintptr_t) *)slot));
+	return fy_atomic_load((FY_ATOMIC(void *) *)slot);
+}
+
+void fy_range_slot_atomic_store(void *slot, const void *ptr)
+{
+	if (fy_range_slot_translated(slot))
+		fy_atomic_store((FY_ATOMIC(uintptr_t) *)slot, (uintptr_t)fy_range_ptr_store(ptr));
+	else
+		fy_atomic_store((FY_ATOMIC(void *) *)slot, (void *)ptr);
+}
+
+bool fy_range_slot_cas(void *slot, void *expectedp, const void *desired)
+{
+	void **ep = expectedp;
+	uintptr_t e;
+	bool ok;
+
+	if (!fy_range_slot_translated(slot))
+		return fy_atomic_compare_exchange_strong((FY_ATOMIC(void *) *)slot, ep, (void *)desired);
+
+	e = (uintptr_t)fy_range_ptr_store(*ep);
+	ok = fy_atomic_compare_exchange_strong((FY_ATOMIC(uintptr_t) *)slot, &e,
+					       (uintptr_t)fy_range_ptr_store(desired));
+	if (!ok)
+		*ep = fy_range_ptr_load((void *)e);
+	return ok;
+}
+
+#endif
+
 size_t fy_range_count(void)
 {
 	struct fy_range_read rd;
