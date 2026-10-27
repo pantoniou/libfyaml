@@ -167,6 +167,7 @@ enum fy_allocator_flags {
 	FYAF_KEEP_STATS = FY_BIT(0),
 	FYAF_TRACE	= FY_BIT(1),
 	FYAF_OWNS_PARENT = FY_BIT(2),
+	FYAF_REGISTERS_RANGES = FY_BIT(3),	/* all its memory is in the range registry */
 };
 
 struct fy_allocator {

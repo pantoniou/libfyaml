@@ -35,6 +35,7 @@
 #include "fy-utils.h"
 #include "fy-endian.h"
 #include "blake3.h"
+#include "fy-range-registry.h"
 
 static const uint8_t fy_durable_boot_magic[8] = {
 	'O', 'B', 'A', 'R', 'U', 'D', 'F', 'Y'
@@ -537,7 +538,8 @@ out:
 	}
 }
 
-static int fy_durable_reserve_region(struct fy_durable_region *rg)
+static int fy_durable_reserve_region(struct fy_durable_region *rg,
+				     struct fy_allocator *owner, int tag)
 {
 	void *p;
 
@@ -554,7 +556,14 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg)
 			(unsigned long long)rg->region_base, rg->prefix, p);
 		return -1;
 	}
+	/* persisted addresses are logical; natively they are the runtime ones */
+	if (fy_range_track_logical(p, rg->region_size, owner, tag,
+				   (uintptr_t)rg->region_base)) {
+		fy_munmap(p, rg->region_size);
+		return -1;
+	}
 	rg->region = p;
+	rg->range_owner = owner;
 	return 0;
 }
 
@@ -776,6 +785,8 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	da = container_of(a, struct fy_durable_allocator, a);
 	memset(da, 0, sizeof(*da));
 	da->a.name = "durable";
+	if (FY_RANGE_TRACKING)
+		da->a.flags |= FYAF_REGISTERS_RANGES;	/* both regions are registered */
 	da->a.ops = &fy_durable_allocator_ops;
 	da->a.parent = parent;
 	da->a.parent_tag = parent_tag;
@@ -844,7 +855,7 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	if (!da->content.chunks)
 		goto err_out;
 
-	if (fy_durable_reserve_region(&da->content) != 0)
+	if (fy_durable_reserve_region(&da->content, &da->a, FY_DURABLE_CONTENT_TAG) != 0)
 		goto err_out;
 
 	/* open chunk 0, creating it if asked */
@@ -930,6 +941,10 @@ static void fy_durable_region_cleanup(struct fy_durable_region *rg)
 		rg->chunks = NULL;
 	}
 	if (rg->region) {
+		if (rg->range_owner) {
+			fy_range_untrack(rg->region, rg->range_owner);
+			rg->range_owner = NULL;
+		}
 		fy_munmap(rg->region, rg->region_size);
 		rg->region = NULL;
 	}
@@ -1249,7 +1264,7 @@ static int fy_durable_index_ensure(struct fy_durable_allocator *da)
 	rg->chunks = calloc(rg->max_chunks, sizeof(*rg->chunks));
 	if (!rg->chunks)
 		return -1;
-	if (fy_durable_reserve_region(rg) != 0)
+	if (fy_durable_reserve_region(rg, &da->a, FY_DURABLE_INDEX_TAG) != 0)
 		goto err_out;
 
 	if (fy_atomic_load(rg->boot_head)) {

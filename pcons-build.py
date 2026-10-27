@@ -313,6 +313,7 @@ lib_sources: list[Path] = [
     src_dir / "xxhash" / "xxhash.c",
     src_dir / "thread" / "fy-thread.c",
     src_dir / "allocator" / "fy-allocator.c",
+    src_dir / "allocator" / "fy-range-registry.c",
     src_dir / "allocator" / "fy-allocator-linear.c",
     src_dir / "allocator" / "fy-allocator-malloc.c",
     src_dir / "allocator" / "fy-allocator-mremap.c",

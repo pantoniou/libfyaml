@@ -141,6 +141,7 @@ struct fy_durable_region {
 	size_t max_alloc;			/* largest size a fresh chunk can satisfy */
 	size_t chunk0_reserve;			/* bytes reserved before chunk-0's hdr (boot); 0 if none */
 	void *region;				/* PROT_NONE reservation base (== region_base), NULL if not active */
+	struct fy_allocator *range_owner;	/* registered in the range registry by, or NULL */
 	FY_ATOMIC(struct fy_durable_chunk_hdr *) cur_head;	/* process-local head hint */
 	/* per-process local map of which chunks are mapped here */
 	FY_ATOMIC(struct fy_durable_chunk_hdr *) *chunks;

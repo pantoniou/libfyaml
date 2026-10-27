@@ -33,6 +33,7 @@
 #include "fy-win32.h"
 
 #include "fy-allocator-mremap.h"
+#include "fy-range-registry.h"
 
 // #define DEBUG_ARENA
 
@@ -101,9 +102,12 @@ static inline bool fy_mremap_arena_check_fit(struct fy_mremap_arena *mran, size_
 	return new_next <= fy_atomic_load(&mran->size);
 }
 
+static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
+				    struct fy_mremap_arena *mran);
+
 static struct fy_mremap_arena *
 fy_mremap_arena_create(struct fy_mremap_allocator *mra,
-		       struct fy_mremap_tag *mrt FY_UNUSED,
+		       struct fy_mremap_tag *mrt,
 		       size_t size)
 {
 	struct fy_mremap_arena *mran = NULL;
@@ -170,6 +174,11 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	fy_atomic_store(&mran->size, size_page_align);
 	fy_atomic_store(&mran->next, FY_MREMAP_ARENA_OVERHEAD);
 
+	if (fy_range_track(mran, fy_atomic_load(&mran->size), &mra->a, (int)(mrt - mra->tags))) {
+		fy_mremap_arena_release(mra, mran);
+		return NULL;
+	}
+
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "%s: #%zu created arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
 #endif
@@ -177,16 +186,9 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	return mran;
 }
 
-static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
-				    struct fy_mremap_tag *mrt FY_UNUSED,
+static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
 				    struct fy_mremap_arena *mran)
 {
-	if (!mran)
-		return;
-
-#ifdef DEBUG_ARENA
-	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
-#endif
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
 		fy_align_free(mran);
@@ -199,6 +201,20 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
+}
+
+static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
+				    struct fy_mremap_tag *mrt FY_UNUSED,
+				    struct fy_mremap_arena *mran)
+{
+	if (!mran)
+		return;
+
+#ifdef DEBUG_ARENA
+	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
+#endif
+	fy_range_untrack(mran, &mra->a);
+	fy_mremap_arena_release(mra, mran);
 }
 
 static inline bool
@@ -263,8 +279,17 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 			break;
 		}
 #endif
-		/* publish the new size only once the space is mapped;
-		 * readers seeing the old size merely fail to fit */
+		if (fy_range_track_resize(mran, &mra->a, cur * 2)) {
+			/* undo the extension */
+#if USE_MREMAP
+			(void)mremap(mran, cur * 2, cur, 0);
+#else
+			munmap((char *)mran + cur, cur);
+#endif
+			return -1;
+		}
+		/* publish the new size only once the space is mapped and
+		 * registered; readers seeing the old size merely fail to fit */
 		fy_atomic_store(&mran->size, cur * 2);
 
 #ifdef DEBUG_ARENA
@@ -320,16 +345,19 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "trim: %zu -> %zu\n", cur, new_size);
 #endif
+	if (fy_range_track_resize(mran, &mra->a, new_size))
+		goto out;
+
 #if USE_MREMAP
 	/* failure to shrink a mapping is unthinkable, but check anyway */
 	mem = mremap(mran, cur, new_size, 0);
 	if (mem == MAP_FAILED || mem != mran)
-		goto out;
+		goto err_restore;
 #else
 	/* we don't shrink, we just unmap over the limit  */
 	rc = munmap((char *)mran + new_size, cur - new_size);
 	if (rc)
-		goto out;
+		goto err_restore;
 #endif
 	fy_atomic_store(&mran->size, new_size);
 	ret = 0;
@@ -338,6 +366,11 @@ out:
 	fy_atomic_fetch_and(&mran->flags, ~(uint64_t)FYMRAF_GROWING);
 	return ret;
 
+err_restore:
+	/* nothing may be allocated from an unregistered tail */
+	if (fy_range_track_resize(mran, &mra->a, cur))
+		fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
+	goto out;
 }
 
 static inline struct fy_mremap_tag *
@@ -678,6 +711,8 @@ static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	memset(mra, 0, sizeof(*mra));
 	mra->a.name = "mremap";
+	if (FY_RANGE_TRACKING)
+		mra->a.flags |= FYAF_REGISTERS_RANGES;	/* every arena is registered */
 	mra->a.ops = &fy_mremap_allocator_ops;
 	mra->a.parent = parent;
 	mra->a.parent_tag = parent_tag;
