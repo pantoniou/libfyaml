@@ -101,6 +101,26 @@ static inline void fy_range_untrack(const void *start, struct fy_allocator *owne
 		(void)fy_range_unregister(start, owner);
 }
 
+/* a handle identifies a location in every process: its logical address,
+ * which is the runtime address where ranges are not tracked; 0 if a
+ * tracked pointer is in no range */
+static inline uintptr_t fy_range_ptr_to_handle(const void *ptr)
+{
+	uintptr_t logical;
+
+	if (!FY_RANGE_TRACKING)
+		return (uintptr_t)ptr;
+	return fy_range_ptr_to_logical(ptr, &logical) == 1 ? logical : 0;
+}
+
+/* the pointer for a handle, NULL if no tracked range holds it */
+static inline void *fy_range_handle_to_ptr(uintptr_t handle)
+{
+	if (!FY_RANGE_TRACKING)
+		return (void *)handle;
+	return fy_range_logical_to_ptr(handle);
+}
+
 /* number of registered ranges (for diagnostics and tests) */
 size_t fy_range_count(void);
 
