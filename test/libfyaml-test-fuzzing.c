@@ -8803,6 +8803,7 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, fuzz_issue_453_rollback_implicit_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_455_insert_resolved_clone_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_456_insert_key_copy_leak_repro);
+	fy_check_testcase_add_test(ctc, fuzz_issue_490_count_items_recursive_merge_alias_repro);
 #ifdef HAVE_REFLECTION
 	fy_check_testcase_add_test(ctc, fuzz_issue_457_union_select_no_value_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_458_struct_contains_itself_repro);
@@ -8855,7 +8856,6 @@ void libfyaml_case_fuzzing(struct fy_check_suite *cs)
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, fuzz_issue_439_collect_diag_double_unref_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_482_diag_lines_past_input_repro);
-	fy_check_testcase_add_test(ctc, fuzz_issue_490_count_items_recursive_merge_alias_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_440_collect_diag_array_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_442_emit_events_alloc_repro);
 	fy_check_testcase_add_test(ctc, fuzz_issue_445_iterator_alloc_repro);
