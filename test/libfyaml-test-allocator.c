@@ -1027,6 +1027,55 @@ START_TEST(allocator_dedup_external_attach)
 }
 END_TEST
 
+/* growing the tag count keeps every tag and its content */
+START_TEST(allocator_grow_tag_count)
+{
+	static const char content[] = "content that must survive a tag count change";
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_allocator *base, *d, *a;
+	const void *p, *q;
+	int tag, count;
+	unsigned int pass;
+
+	for (pass = 0; pass < 2; pass++) {
+		base = fy_allocator_create("mremap", NULL);
+		ck_assert_ptr_ne(base, NULL);
+		d = NULL;
+		a = base;
+		if (pass) {
+			memset(&dcfg, 0, sizeof(dcfg));
+			dcfg.parent_allocator = base;
+			d = fy_allocator_create("dedup", &dcfg);
+			ck_assert_ptr_ne(d, NULL);
+			a = d;
+		}
+
+		tag = fy_allocator_get_tag(a);
+		ck_assert_int_ge(tag, 0);
+		p = fy_allocator_store(a, tag, content, sizeof(content), 8);
+		ck_assert_ptr_ne(p, NULL);
+
+		count = fy_allocator_get_tag_count(a);
+		ck_assert_int_eq(fy_allocator_set_tag_count(a, (unsigned int)count + 4), 0);
+		ck_assert_int_eq(fy_allocator_get_tag_count(a), count + 4);
+
+		/* the content is still there, and still deduplicated */
+		ck_assert_mem_eq(p, content, sizeof(content));
+		if (d) {
+			q = fy_allocator_lookup(a, tag, content, sizeof(content), 8);
+			ck_assert_ptr_eq(q, p);
+		}
+		/* and the tag still allocates */
+		q = fy_allocator_store(a, tag, "more", 5, 8);
+		ck_assert_ptr_ne(q, NULL);
+
+		if (d)
+			fy_allocator_destroy(d);
+		fy_allocator_destroy(base);
+	}
+}
+END_TEST
+
 #ifndef _WIN32
 
 /*
@@ -1165,6 +1214,7 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_multi_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_deep_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_concurrent_store);
+	fy_check_testcase_add_test(ctc, allocator_grow_tag_count);
 #ifndef _WIN32
 	fy_check_testcase_add_test(ctc, allocator_mremap_concurrent_trim);
 #endif
