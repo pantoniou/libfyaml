@@ -211,6 +211,68 @@ START_TEST(range_resize)
 }
 END_TEST
 
+START_TEST(range_logical)
+{
+	struct fy_range_info info;
+	char *buf, *other;
+	uintptr_t lbase, l;
+
+	buf = malloc(8192);
+	other = malloc(4096);
+	ck_assert_ptr_ne(buf, NULL);
+	ck_assert_ptr_ne(other, NULL);
+
+	/* a logical base far from both buffers */
+	lbase = (uintptr_t)0x123400000000ULL;
+	ck_assert_int_eq(fy_range_register_logical(buf, 4096, OWNER(1), 2, lbase), 0);
+	ck_assert(fy_range_lookup(buf + 10, &info));
+	ck_assert_uint_eq(info.logical, lbase);
+
+	/* runtime -> logical, and back */
+	ck_assert_int_eq(fy_range_ptr_to_logical(buf + 100, &l), 1);
+	ck_assert_uint_eq(l, lbase + 100);
+	ck_assert_ptr_eq(fy_range_logical_to_ptr(lbase + 100), buf + 100);
+	ck_assert_ptr_eq(fy_range_logical_to_ptr(lbase + 4096), NULL);
+
+	/* a range nested in it translates with it */
+	ck_assert_int_eq(fy_range_register(buf + 1024, 512, OWNER(2), 0), 0);
+	ck_assert_int_eq(fy_range_ptr_to_logical(buf + 1030, &l), 1);
+	ck_assert_uint_eq(l, lbase + 1030);
+	ck_assert_ptr_eq(fy_range_logical_to_ptr(lbase + 1030), buf + 1030);
+
+	/* untranslated memory is its own logical address */
+	ck_assert_int_eq(fy_range_register(buf + 4096, 4096, OWNER(3), 0), 0);
+	ck_assert_int_eq(fy_range_ptr_to_logical(buf + 5000, &l), 1);
+	ck_assert_uint_eq(l, (uintptr_t)(buf + 5000));
+	ck_assert_ptr_eq(fy_range_logical_to_ptr((uintptr_t)(buf + 5000)), buf + 5000);
+	ck_assert_int_eq(fy_range_ptr_to_logical(other, &l), 0);
+	ck_assert_uint_eq(l, (uintptr_t)other);
+	ck_assert_ptr_eq(fy_range_logical_to_ptr((uintptr_t)other), NULL);
+
+	/* a translated range may not overlap another in logical space,
+	 * nor an untranslated range */
+	ck_assert_int_eq(fy_range_register_logical(other, 4096, OWNER(4), 0, lbase + 2048), -1);
+	ck_assert_int_eq(errno, EEXIST);
+	ck_assert_int_eq(fy_range_register_logical(other, 4096, OWNER(4), 0,
+						   (uintptr_t)(buf + 4096)), -1);
+	ck_assert_int_eq(errno, EEXIST);
+
+	ck_assert_int_eq(fy_range_unregister(buf + 1024, OWNER(2)), 0);
+	ck_assert_int_eq(fy_range_unregister(buf + 4096, OWNER(3)), 0);
+	ck_assert_int_eq(fy_range_unregister(buf, OWNER(1)), 0);
+
+	/* collision: a translated range whose logical addresses are the
+	 * runtime addresses of unregistered memory */
+	ck_assert_int_eq(fy_range_register_logical(buf, 4096, OWNER(1), 0, (uintptr_t)other), 0);
+	ck_assert_int_eq(fy_range_ptr_to_logical(other + 8, &l), -1);
+	ck_assert_int_eq(fy_range_unregister(buf, OWNER(1)), 0);
+	ck_assert_int_eq(fy_range_ptr_to_logical(other + 8, &l), 0);
+
+	free(other);
+	free(buf);
+}
+END_TEST
+
 #define MANY_RANGES	257
 
 START_TEST(range_many)
@@ -515,6 +577,7 @@ void libfyaml_case_private_range(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, range_overlap);
 	fy_check_testcase_add_test(ctc, range_nesting);
 	fy_check_testcase_add_test(ctc, range_resize);
+	fy_check_testcase_add_test(ctc, range_logical);
 	fy_check_testcase_add_test(ctc, range_many);
 	fy_check_testcase_add_test(ctc, range_allocators);
 #ifdef HAVE_GENERIC

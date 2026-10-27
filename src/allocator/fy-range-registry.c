@@ -59,6 +59,12 @@
  *
  * To keep concurrent lookups from fighting over a single cache line the
  * counters are striped; a read section picks a stripe from its stack address.
+ *
+ * Each entry keeps the start as a pointer too: translating a logical
+ * address back derives the result from it, so that under FIL-C it carries
+ * the capability of the range. Translated entries (logical != start) are
+ * few (durable regions), and are also listed separately for the logical
+ * address lookups.
  */
 
 struct fy_range_entry {
@@ -67,12 +73,21 @@ struct fy_range_entry {
 	struct fy_allocator *owner;
 	int tag;
 	long parent;			/* innermost enclosing entry, or -1 */
+	const void *base;		/* start, as a pointer */
+	uintptr_t logical;		/* logical address of start */
 };
 
 struct fy_range_table {
 	size_t count;
+	size_t nxlat;			/* number of translated entries */
+	long *xlat;			/* their indices */
 	struct fy_range_entry e[];
 };
+
+static inline bool fy_range_entry_translated(const struct fy_range_entry *e)
+{
+	return e->logical != e->start;
+}
 
 #define FY_RANGE_STRIPES	16	/* power of two */
 
@@ -179,29 +194,37 @@ static long fy_range_table_find_exact(const struct fy_range_table *t, uintptr_t 
 	return -1;
 }
 
-static inline void fy_range_entry_set(struct fy_range_entry *e, uintptr_t start, size_t size,
-				      struct fy_allocator *owner, int tag)
+static inline void fy_range_entry_set(struct fy_range_entry *e, const void *base, size_t size,
+				      struct fy_allocator *owner, int tag, uintptr_t logical)
 {
-	e->start = start;
+	e->start = (uintptr_t)base;
 	e->size = size;
 	e->owner = owner;
 	e->tag = tag;
+	e->base = base;
+	e->logical = logical;
+}
+
+static inline bool fy_range_overlap(uintptr_t s1, size_t z1, uintptr_t s2, size_t z2)
+{
+	return s1 < s2 + z2 && s2 < s1 + z1;
 }
 
 /*
  * Build a new array from t, leaving out entry skip (if >= 0) and inserting
- * a new entry if size != 0. Validates that the ranges nest and computes the
- * parent links. Returns 0 and the new array in *ntp (NULL if empty), or -1
- * with errno set.
+ * a new entry if size != 0. Validates that the ranges nest and that the
+ * translated ranges don't collide, and computes the parent links.
+ * Returns 0 and the new array in *ntp (NULL if empty), or -1 with errno set.
  */
 static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
-				  uintptr_t start, size_t size,
-				  struct fy_allocator *owner, int tag,
+				  const void *base, size_t size,
+				  struct fy_allocator *owner, int tag, uintptr_t logical,
 				  struct fy_range_table **ntp)
 {
 	struct fy_range_table *nt;
-	struct fy_range_entry *e, *p;
+	struct fy_range_entry *e, *p, *x;
 	size_t count, i, j, top;
+	uintptr_t start = (uintptr_t)base;
 	long *stack;
 	bool inserted;
 
@@ -211,7 +234,7 @@ static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 	if (!count)
 		return 0;
 
-	nt = malloc(sizeof(*nt) + count * sizeof(nt->e[0]));
+	nt = malloc(sizeof(*nt) + count * (sizeof(nt->e[0]) + sizeof(nt->xlat[0])));
 	stack = malloc(count * sizeof(*stack));
 	if (!nt || !stack) {
 		errno = ENOMEM;
@@ -224,15 +247,17 @@ static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 		if ((long)i == skip)
 			continue;
 		if (!inserted && fy_range_before(start, size, t->e[i].start, t->e[i].size)) {
-			fy_range_entry_set(&nt->e[j++], start, size, owner, tag);
+			fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical);
 			inserted = true;
 		}
 		nt->e[j++] = t->e[i];
 	}
 	if (!inserted)
-		fy_range_entry_set(&nt->e[j++], start, size, owner, tag);
+		fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical);
 	assert(j == count);
 	nt->count = count;
+	nt->xlat = (long *)&nt->e[count];
+	nt->nxlat = 0;
 
 	/* the stack holds the chain of ranges enclosing the current one */
 	for (i = 0, top = 0; i < count; i++) {
@@ -254,6 +279,26 @@ static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 
 		e->parent = top > 0 ? stack[top - 1] : -1;
 		stack[top++] = (long)i;
+
+		if (fy_range_entry_translated(e))
+			nt->xlat[nt->nxlat++] = (long)i;
+	}
+
+	/* a translated range's logical addresses must not be mistaken for
+	 * another translated range's, nor for an untranslated range's */
+	for (i = 0; i < nt->nxlat; i++) {
+		x = &nt->e[nt->xlat[i]];
+		for (j = 0; j < count; j++) {
+			e = &nt->e[j];
+			if (e == x)
+				continue;
+			if (fy_range_entry_translated(e) ?
+			    fy_range_overlap(x->logical, x->size, e->logical, e->size) :
+			    fy_range_overlap(x->logical, x->size, e->start, e->size)) {
+				errno = EEXIST;
+				goto err_out;
+			}
+		}
 	}
 
 	free(stack);
@@ -272,9 +317,10 @@ enum fy_range_op {
 	FYRO_UNREGISTER,
 };
 
-static int fy_range_update(enum fy_range_op op, uintptr_t start, size_t size,
-			   struct fy_allocator *owner, int tag)
+static int fy_range_update(enum fy_range_op op, const void *base, size_t size,
+			   struct fy_allocator *owner, int tag, uintptr_t logical)
 {
+	uintptr_t start = (uintptr_t)base;
 	struct fy_range_read rd;
 	struct fy_range_table *t, *nt;
 	long pos;
@@ -293,11 +339,14 @@ static int fy_range_update(enum fy_range_op op, uintptr_t start, size_t size,
 				errno = ENOENT;
 				return -1;
 			}
-			if (op == FYRO_RESIZE)
+			if (op == FYRO_RESIZE) {
 				tag = t->e[pos].tag;
+				base = t->e[pos].base;
+				logical = t->e[pos].logical;
+			}
 		}
 
-		rc = fy_range_table_rebuild(t, pos, start, size, owner, tag, &nt);
+		rc = fy_range_table_rebuild(t, pos, base, size, owner, tag, logical, &nt);
 		if (rc) {
 			fy_range_read_end(&rd);
 			/* unregistering must not fail; the memory is going away */
@@ -325,16 +374,23 @@ static int fy_range_update(enum fy_range_op op, uintptr_t start, size_t size,
 	return 0;
 }
 
-int fy_range_register(const void *start, size_t size,
-		      struct fy_allocator *owner, int tag)
+int fy_range_register_logical(const void *start, size_t size,
+			      struct fy_allocator *owner, int tag,
+			      uintptr_t logical)
 {
 	uintptr_t s = (uintptr_t)start;
 
-	if (!start || !size || s + size < s) {
+	if (!start || !size || s + size < s || logical + size < logical) {
 		errno = EINVAL;
 		return -1;
 	}
-	return fy_range_update(FYRO_REGISTER, s, size, owner, tag);
+	return fy_range_update(FYRO_REGISTER, start, size, owner, tag, logical);
+}
+
+int fy_range_register(const void *start, size_t size,
+		      struct fy_allocator *owner, int tag)
+{
+	return fy_range_register_logical(start, size, owner, tag, (uintptr_t)start);
 }
 
 int fy_range_resize(const void *start, struct fy_allocator *owner, size_t size)
@@ -345,12 +401,12 @@ int fy_range_resize(const void *start, struct fy_allocator *owner, size_t size)
 		errno = EINVAL;
 		return -1;
 	}
-	return fy_range_update(FYRO_RESIZE, s, size, owner, 0);
+	return fy_range_update(FYRO_RESIZE, start, size, owner, 0, 0);
 }
 
 int fy_range_unregister(const void *start, struct fy_allocator *owner)
 {
-	return fy_range_update(FYRO_UNREGISTER, (uintptr_t)start, 0, owner, 0);
+	return fy_range_update(FYRO_UNREGISTER, start, 0, owner, 0, 0);
 }
 
 static bool fy_range_lookup_internal(const void *ptr, struct fy_allocator *owner,
@@ -378,6 +434,7 @@ static bool fy_range_lookup_internal(const void *ptr, struct fy_allocator *owner
 			info->size = e->size;
 			info->owner = e->owner;
 			info->tag = e->tag;
+			info->logical = e->logical;
 		}
 		found = true;
 		break;
@@ -397,6 +454,87 @@ bool fy_range_lookup_owner(const void *ptr, struct fy_allocator *owner,
 			   struct fy_range_info *info)
 {
 	return fy_range_lookup_internal(ptr, owner, true, info);
+}
+
+/* the translated range whose logical addresses hold addr, or NULL */
+static const struct fy_range_entry *
+fy_range_table_find_logical(const struct fy_range_table *t, uintptr_t addr)
+{
+	const struct fy_range_entry *x;
+	size_t i;
+
+	for (i = 0; t && i < t->nxlat; i++) {
+		x = &t->e[t->xlat[i]];
+		if (addr - x->logical < x->size)
+			return x;
+	}
+	return NULL;
+}
+
+int fy_range_ptr_to_logical(const void *ptr, uintptr_t *logicalp)
+{
+	struct fy_range_read rd;
+	const struct fy_range_table *t;
+	const struct fy_range_entry *e;
+	uintptr_t addr = (uintptr_t)ptr;
+	long pos;
+	int ret;
+
+	fy_range_read_begin(&rd);
+
+	t = fy_atomic_load(&range_table);
+
+	/* the innermost range containing it */
+	for (pos = fy_range_table_find(t, addr); pos >= 0; pos = t->e[pos].parent) {
+		if (addr - t->e[pos].start < t->e[pos].size)
+			break;
+	}
+	ret = pos >= 0 ? 1 : 0;
+
+	/* its enclosing ranges contain it too; the innermost translated one decides */
+	for (; pos >= 0; pos = t->e[pos].parent) {
+		e = &t->e[pos];
+		if (fy_range_entry_translated(e)) {
+			*logicalp = e->logical + (addr - e->start);
+			goto out;
+		}
+	}
+
+	/* untranslated; it must not read back as part of a translated range */
+	*logicalp = addr;
+	if (fy_range_table_find_logical(t, addr))
+		ret = -1;
+out:
+	fy_range_read_end(&rd);
+	return ret;
+}
+
+void *fy_range_logical_to_ptr(uintptr_t addr)
+{
+	struct fy_range_read rd;
+	const struct fy_range_table *t;
+	const struct fy_range_entry *e;
+	void *p = NULL;
+	long pos;
+
+	fy_range_read_begin(&rd);
+
+	t = fy_atomic_load(&range_table);
+	e = fy_range_table_find_logical(t, addr);
+	if (e) {
+		p = (char *)e->base + (addr - e->logical);
+	} else {
+		for (pos = fy_range_table_find(t, addr); pos >= 0; pos = t->e[pos].parent) {
+			e = &t->e[pos];
+			if (addr - e->start < e->size) {
+				p = (char *)e->base + (addr - e->start);
+				break;
+			}
+		}
+	}
+
+	fy_range_read_end(&rd);
+	return p;
 }
 
 size_t fy_range_count(void)

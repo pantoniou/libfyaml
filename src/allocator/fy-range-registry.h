@@ -14,6 +14,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 struct fy_allocator;
 
@@ -40,6 +41,14 @@ struct fy_allocator;
  * Memory whose lifetime is not under the allocator's control (in-place
  * allocators on caller supplied, usually stack, buffers) must not be
  * registered, since nothing would unregister it.
+ *
+ * A range may also have a logical base that differs from its runtime
+ * address. A durable region keeps the same logical addresses in every
+ * process, and they are what persisted data stores; natively the region
+ * is mapped at that address, but under FIL-C it lives wherever the
+ * runtime put it. Ranges registered without a logical base are their own
+ * logical base. Translated (logical != runtime) ranges must not overlap
+ * one another in logical space, nor overlap any untranslated range.
  */
 
 struct fy_range_info {
@@ -47,12 +56,18 @@ struct fy_range_info {
 	size_t size;
 	struct fy_allocator *owner;
 	int tag;
+	uintptr_t logical;	/* logical address of start */
 };
 
 /* register [start, start + size); returns 0 on success, -1 on error
  * (partial overlap with, or duplicate of, a registered range; or no memory) */
 int fy_range_register(const void *start, size_t size,
 		      struct fy_allocator *owner, int tag);
+
+/* register [start, start + size) with logical base logical */
+int fy_range_register_logical(const void *start, size_t size,
+			      struct fy_allocator *owner, int tag,
+			      uintptr_t logical);
 
 /* change the size of a registered range (in place arena grow/trim);
  * returns 0 on success, -1 if there is no such range, or if the new size
@@ -70,6 +85,19 @@ bool fy_range_lookup(const void *ptr, struct fy_range_info *info);
  * that is owned by owner */
 bool fy_range_lookup_owner(const void *ptr, struct fy_allocator *owner,
 			   struct fy_range_info *info);
+
+/* translate a runtime pointer to its logical address, applying the
+ * innermost translated range enclosing it (ranges nested in a durable
+ * region translate with it). Returns 1 with *logicalp set if ptr is in a
+ * registered range, 0 if it is in none (*logicalp is then ptr's value),
+ * or -1 if the resulting address would be read back as belonging to a
+ * translated range it is not part of (a logical/runtime collision) */
+int fy_range_ptr_to_logical(const void *ptr, uintptr_t *logicalp);
+
+/* translate a logical address back to a pointer into the registered
+ * range holding it, derived from the range's own start pointer (so under
+ * FIL-C it carries the range's capability); NULL if no range holds it */
+void *fy_range_logical_to_ptr(uintptr_t addr);
 
 /* number of registered ranges (for diagnostics and tests) */
 size_t fy_range_count(void);

@@ -648,7 +648,9 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg,
 		return -1;
 	}
 #endif
-	if (fy_range_register(p, rg->region_size, owner, tag)) {
+	/* persisted addresses are logical; natively they are the runtime ones */
+	if (fy_range_register_logical(p, rg->region_size, owner, tag,
+				      (uintptr_t)rg->region_base)) {
 		fy_munmap(p, rg->region_size);
 		return -1;
 	}
