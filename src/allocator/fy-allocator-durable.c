@@ -46,6 +46,44 @@ static inline void *fy_durable_chunk_base(struct fy_durable_region *rg, uint64_t
 	return (char *)rg->region + (gen << rg->chunk_shift);
 }
 
+/* persisted links hold logical addresses; natively they are the runtime ones */
+static inline uintptr_t fy_durable_encode(struct fy_durable_region *rg, const void *p)
+{
+	(void)rg;
+	return (uintptr_t)p;
+}
+
+static inline struct fy_durable_chunk_hdr *
+fy_durable_decode(struct fy_durable_region *rg, uintptr_t word)
+{
+	(void)rg;
+	return (void *)word;
+}
+
+static inline struct fy_durable_chunk_hdr *
+fy_durable_link_load(struct fy_durable_region *rg,
+		     FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot)
+{
+	(void)rg;
+	return fy_atomic_load(slot);
+}
+
+static inline void fy_durable_link_store(struct fy_durable_region *rg,
+		FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot,
+		struct fy_durable_chunk_hdr *p)
+{
+	(void)rg;
+	fy_atomic_store(slot, p);
+}
+
+static inline bool fy_durable_link_cas(struct fy_durable_region *rg,
+		FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot,
+		struct fy_durable_chunk_hdr **expected, struct fy_durable_chunk_hdr *desired)
+{
+	(void)rg;
+	return fy_atomic_compare_exchange_strong(slot, expected, desired);
+}
+
 /* byte offset of a chunk's allocation header within the chunk */
 static inline size_t fy_durable_hdr_off(struct fy_durable_region *rg, uint64_t gen)
 {
@@ -262,7 +300,7 @@ static void *fy_durable_arena_alloc(struct fy_durable_allocator *da,
 		}
 
 		/* slow path: resync to the published head, growing if it is also full */
-		pub = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+		pub = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, rg->boot_head));
 		if (!pub)
 			return NULL;
 		if (pub != head) {
@@ -287,7 +325,7 @@ static void fy_durable_init_chunk_hdr(struct fy_durable_region *rg,
 	hdr->usable = fy_durable_usable(rg, gen);
 	fy_atomic_store(&hdr->flags, 0);
 	fy_atomic_store(&hdr->next, FY_DURABLE_DATA0);
-	fy_atomic_store(&hdr->next_chunk, next_chunk);
+	fy_durable_link_store(rg, &hdr->next_chunk, next_chunk);
 	memset(hdr->content_hash, 0, sizeof(hdr->content_hash));
 }
 
@@ -381,7 +419,7 @@ fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
 	/* link */
 	snprintf(name, sizeof(name), "%s-%llu.bin", rg->prefix, (unsigned long long)gen);
 	new_hdr = fy_durable_hdr_for_gen(rg, gen);
-	fy_atomic_store(&new_hdr->next_chunk, observed_head);
+	fy_durable_link_store(rg, &new_hdr->next_chunk, observed_head);
 
 	/* atomically rename */
 	if (renameat(da->dirfd, tmp, da->dirfd, name) != 0)
@@ -391,7 +429,7 @@ fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
 
 	/* CAS store at the head */
 	expected = observed_head;
-	if (fy_atomic_compare_exchange_strong(rg->boot_head, &expected, new_hdr)) {
+	if (fy_durable_link_cas(rg, rg->boot_head, &expected, new_hdr)) {
 		do {
 			flock(da->dirfd, LOCK_UN);
 		} while (rc == -1 && errno == EAGAIN);
@@ -409,7 +447,7 @@ fy_durable_grow(struct fy_durable_allocator *da, struct fy_durable_region *rg,
 	flock(da->dirfd, LOCK_UN);
 
 	/* expected now holds the winner's head */
-	hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+	hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, rg->boot_head));
 	return hdr;
 
 err_out:
@@ -430,13 +468,13 @@ static bool fy_durable_gen_in_list(struct fy_durable_allocator *da,
 {
 	struct fy_durable_chunk_hdr *hdr;
 
-	hdr = fy_atomic_load(rg->boot_head);
+	hdr = fy_durable_link_load(rg, rg->boot_head);
 	while (hdr) {
 		if (!fy_durable_ensure_mapped_ptr(da, rg, hdr))
 			break;
 		if (hdr->generation == gen)
 			return true;
-		hdr = fy_atomic_load(&hdr->next_chunk);
+		hdr = fy_durable_link_load(rg, &hdr->next_chunk);
 	}
 	return false;
 }
@@ -676,7 +714,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 	if (rc != 0)
 		goto err_out;
 
-	base = (void *)(uintptr_t)rg->region_base;
+	base = rg->region;
 	mem = fy_mmap(base, rg->chunk_size, PROT_READ | PROT_WRITE,
 		      FY_MMAP_SHARED | FY_MMAP_FIXED, fd, 0);
 	close(fd);
@@ -718,7 +756,7 @@ static int fy_durable_create_chunk0(struct fy_durable_allocator *da)
 
 	/* generation id source starts past chunk 0; head is chunk 0 */
 	fy_atomic_store(&b->generation, 1);
-	fy_atomic_store(&b->head, h0);
+	fy_durable_link_store(rg, &b->head, h0);
 
 	msync(base, rg->chunk0_reserve + FY_DURABLE_DATA0, MS_SYNC);
 
@@ -753,7 +791,7 @@ static int fy_durable_open_chunk0(struct fy_durable_allocator *da)
 	struct fy_durable_region *rg = &da->content;
 	void *base;
 
-	base = (void *)(uintptr_t)rg->region_base;
+	base = rg->region;
 	if (fy_durable_map_chunk_file(da, rg, 0) != 0)
 		return -1;
 	da->boot = base;
@@ -999,8 +1037,8 @@ static void fy_durable_dump(struct fy_allocator *a)
 		(unsigned long long)(da->content.region_size >> 20),
 		(unsigned long long)(da->content.chunk_size >> 20),
 		(unsigned long long)fy_atomic_load(&da->boot->generation));
-	for (hdr = fy_atomic_load(&da->boot->head); hdr;
-	     hdr = fy_atomic_load(&hdr->next_chunk)) {
+	for (hdr = fy_durable_link_load(&da->content, &da->boot->head); hdr;
+	     hdr = fy_durable_link_load(&da->content, &hdr->next_chunk)) {
 		if (!fy_durable_ensure_mapped_ptr(da, &da->content, hdr))
 			break;
 		fprintf(stderr, "  chunk %llu: used %llu / %llu\n",
@@ -1117,8 +1155,8 @@ fy_durable_get_info(struct fy_allocator *a, int tag)
 
 	/* count chunks */
 	num_arenas = 0;
-	for (hdr = fy_atomic_load(rg->boot_head); hdr;
-	     hdr = fy_atomic_load(&hdr->next_chunk)) {
+	for (hdr = fy_durable_link_load(rg, rg->boot_head); hdr;
+	     hdr = fy_durable_link_load(rg, &hdr->next_chunk)) {
 		if (!fy_durable_ensure_mapped_ptr(da, rg, hdr))
 			break;
 		num_arenas++;
@@ -1137,8 +1175,8 @@ fy_durable_get_info(struct fy_allocator *a, int tag)
 	tag_info->arena_infos = arena_info;
 
 	i = 0;
-	for (hdr = fy_atomic_load(rg->boot_head); hdr && i < num_arenas;
-	     hdr = fy_atomic_load(&hdr->next_chunk), i++) {
+	for (hdr = fy_durable_link_load(rg, rg->boot_head); hdr && i < num_arenas;
+	     hdr = fy_durable_link_load(rg, &hdr->next_chunk), i++) {
 		size_t next = fy_atomic_load(&hdr->next);
 		size_t a_used = next - FY_DURABLE_DATA0;	/* offsets are from the header */
 		size_t a_free = hdr->usable - next;
@@ -1267,7 +1305,7 @@ static int fy_durable_index_ensure(struct fy_durable_allocator *da)
 	if (fy_durable_reserve_region(rg, &da->a, FY_DURABLE_INDEX_TAG) != 0)
 		goto err_out;
 
-	if (fy_atomic_load(rg->boot_head)) {
+	if (fy_durable_link_load(rg, rg->boot_head)) {
 		/* the index series exists: attach to its immutable chunk 0 */
 		h0 = fy_durable_ensure_mapped(da, rg, 0);
 		if (!h0)
@@ -1290,7 +1328,7 @@ static int fy_durable_index_ensure(struct fy_durable_allocator *da)
 		fy_atomic_store(&rg->chunks[0], h0);
 		fy_atomic_store(&rg->cur_head, h0);
 		fy_atomic_store(rg->boot_generation, 1);
-		fy_atomic_store(rg->boot_head, h0);
+		fy_durable_link_store(rg, rg->boot_head, h0);
 		/* persist the boot page so the published index roots are durable */
 		msync(da->content.region, da->pagesz, MS_SYNC);
 	}
@@ -1434,8 +1472,8 @@ static unsigned int fy_durable_op_chunk_count(struct fy_allocator *a)
 	struct fy_durable_chunk_hdr *hdr;
 	unsigned int n = 0;
 
-	for (hdr = fy_atomic_load(&da->boot->head); hdr;
-	     hdr = fy_atomic_load(&hdr->next_chunk)) {
+	for (hdr = fy_durable_link_load(&da->content, &da->boot->head); hdr;
+	     hdr = fy_durable_link_load(&da->content, &hdr->next_chunk)) {
 		if (!fy_durable_ensure_mapped_ptr(da, &da->content, hdr))
 			break;
 		n++;
@@ -1535,8 +1573,8 @@ static size_t fy_durable_content_used(struct fy_durable_allocator *da)
 	struct fy_durable_chunk_hdr *hdr;
 	size_t total = 0;
 
-	for (hdr = fy_atomic_load(&da->boot->head); hdr;
-	     hdr = fy_atomic_load(&hdr->next_chunk)) {
+	for (hdr = fy_durable_link_load(&da->content, &da->boot->head); hdr;
+	     hdr = fy_durable_link_load(&da->content, &hdr->next_chunk)) {
 		if (!fy_durable_ensure_mapped_ptr(da, &da->content, hdr))
 			break;
 		total += fy_durable_hdr_off(&da->content, hdr->generation) +
@@ -1792,7 +1830,7 @@ static int fy_durable_hash_content(struct fy_durable_allocator *da,
 	size_t data_len, next;
 	uint64_t flags;
 
-	head = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+	head = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, rg->boot_head));
 	if (!head)
 		return -1;
 
@@ -1807,7 +1845,7 @@ static int fy_durable_hash_content(struct fy_durable_allocator *da,
 
 	/* head chunk: hash live data up to the snapshotted bump */
 	first = true;
-	for (hdr = head; hdr; hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk))) {
+	for (hdr = head; hdr; hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, &hdr->next_chunk))) {
 		if (first) {
 			data_len = head_bump > FY_DURABLE_DATA0 ?
 				   head_bump - FY_DURABLE_DATA0 : 0;
@@ -1979,7 +2017,7 @@ static int fy_durable_op_verify(struct fy_allocator *a)
 	 * list (corruption).
 	 */
 	seen_head = false;
-	hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(rg->boot_head));
+	hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, rg->boot_head));
 	while (hdr) {
 		if (hdr->generation == head_gen) {
 			/* the head chunk at checkpoint time */
@@ -1989,13 +2027,13 @@ static int fy_durable_op_verify(struct fy_allocator *a)
 				blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
 			seen_head = true;
 			/* continue walking to older sealed chunks */
-			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, &hdr->next_chunk));
 			continue;
 		}
 
 		if (hdr->generation > head_gen) {
 			/* chunk added after the checkpoint; skip */
-			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+			hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, &hdr->next_chunk));
 			continue;
 		}
 
@@ -2017,7 +2055,7 @@ static int fy_durable_op_verify(struct fy_allocator *a)
 				blake3_hasher_update(h, (char *)hdr + FY_DURABLE_DATA0, data_len);
 		}
 
-		hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_atomic_load(&hdr->next_chunk));
+		hdr = fy_durable_ensure_mapped_ptr(da, rg, fy_durable_link_load(rg, &hdr->next_chunk));
 	}
 
 	/* refs_head as a LE 64-bit word, matching fy_durable_hash_content() */
@@ -2191,7 +2229,7 @@ static int fy_durable_op_checkpoint_recover(struct fy_allocator *a, uint64_t slo
 	fy_durable_prune_chunks_after(da, rg, target_gen);
 
 	/* restore the head to the target chunk */
-	fy_atomic_store(rg->boot_head, target_hdr);
+	fy_durable_link_store(rg, rg->boot_head, target_hdr);
 	fy_atomic_store(&rg->cur_head, target_hdr);
 
 	/* clear seal flags: the target chunk is now the active head again */
