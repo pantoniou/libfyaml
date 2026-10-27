@@ -843,6 +843,13 @@ START_TEST(allocator_dedup_concurrent_store)
 	const void **ref;
 	int nthreads, npayload, rounds, r, k, i, tag, bad;
 
+#ifdef __FILC__
+	/* FIL-C 0.687 trips an internal runtime assertion under this stress
+	 * (libpas, pas_large_sharing_pool.c:950, !node->is_booted) */
+	fprintf(stderr, "SKIP: mremap stress trips a FIL-C runtime assertion\n");
+	return;
+#endif
+
 	nthreads = dcs_env_int("FY_TEST_DCS_THREADS", DCS_NTHREADS, 1, 4096);
 	npayload = dcs_env_int("FY_TEST_DCS_PAYLOADS", DCS_NPAYLOAD, 1, 1 << 24);
 	rounds   = dcs_env_int("FY_TEST_DCS_ROUNDS", 1, 1, 1 << 20);
@@ -1133,6 +1140,13 @@ START_TEST(allocator_mremap_concurrent_trim)
 	pthread_t th[TRIM_THREADS], trimmer;
 	unsigned int k, i, j;
 	size_t sz;
+
+#ifdef __FILC__
+	/* FIL-C 0.687 trips an internal runtime assertion under this stress
+	 * (libpas, pas_large_sharing_pool.c:950, !node->is_booted) */
+	fprintf(stderr, "SKIP: mremap stress trips a FIL-C runtime assertion\n");
+	return;
+#endif
 
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.minimum_arena_size = 64 << 10;	/* small arenas: frequent grows and trims */

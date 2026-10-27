@@ -40,6 +40,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include "fy-check.h"
 #include "fy-utils.h"
 #include "fy-allocator.h"	/* fy_allocator_get_parent: reach the durable under the dedup wrapper */
+#include "fy-range-registry.h"
 
 #ifdef HAVE_GENERIC
 #include <libfyaml/libfyaml-generic.h>
@@ -195,6 +196,39 @@ dt_run_parallel(fy_work_exec_fn fn, void *jobs, size_t jobsz, int count)
 	fy_thread_pool_destroy(tp);
 }
 
+/*
+ * Persisted addresses are logical: natively the region is mapped at its
+ * base so they are the runtime addresses, but under FIL-C the region lives
+ * wherever the runtime put it. Record locations as logical addresses and
+ * find them again through the range registry, which works on both.
+ */
+static uintptr_t durable_logical(const void *p)
+{
+#if FY_RANGE_TRACKING
+	uintptr_t l;
+
+	if (!p)
+		return 0;
+	ck_assert_int_eq(fy_range_ptr_to_logical(p, &l), 1);
+	return l;
+#else
+	return (uintptr_t)p;	/* natively mapped at its base */
+#endif
+}
+
+static const void *durable_ptr(uintptr_t logical)
+{
+#if FY_RANGE_TRACKING
+	const void *p;
+
+	p = fy_range_logical_to_ptr(logical);
+	ck_assert_ptr_ne(p, NULL);
+	return p;
+#else
+	return (const void *)logical;
+#endif
+}
+
 /* region_base 0 selects the platform default base; check it is usable */
 START_TEST(durable_default_base)
 {
@@ -222,7 +256,7 @@ START_TEST(durable_default_base)
 
 	s1 = fy_allocator_store(da, FY_ALLOC_TAG_DEFAULT, "at the default base", 20, 16);
 	ck_assert_ptr_ne(s1, NULL);
-	a1 = (uintptr_t)s1;
+	a1 = durable_logical(s1);
 	ck_assert_uint_ge(a1, base);
 	ck_assert_uint_lt(a1, base + TEST_REGION_SIZE);
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
@@ -232,7 +266,7 @@ START_TEST(durable_default_base)
 	da = open_test_arena(dir, 0, 0);
 	ck_assert_ptr_ne(da, NULL);
 	ck_assert_uint_eq(fy_allocator_region_base(da), base);
-	ck_assert_mem_eq((const void *)a1, "at the default base", 20);
+	ck_assert_mem_eq(durable_ptr(a1), "at the default base", 20);
 	fy_allocator_destroy(da);
 	rm_rf(dir);
 }
@@ -243,6 +277,7 @@ START_TEST(durable_roundtrip_fixed_base)
 	char dir[256];
 	struct fy_allocator *da;
 	struct fy_allocator *a;
+	struct fy_range_info info;
 	const char *s1, *s2;
 	uintptr_t a1, a2;
 
@@ -266,8 +301,19 @@ START_TEST(durable_roundtrip_fixed_base)
 	ck_assert_ptr_ne(s1, NULL);
 	ck_assert_ptr_ne(s2, NULL);
 	ck_assert(fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, s1));
-	a1 = (uintptr_t)s1;
-	a2 = (uintptr_t)s2;
+	a1 = durable_logical(s1);
+	a2 = durable_logical(s2);
+
+#if FY_RANGE_TRACKING
+	/* the whole reserved region is registered to the arena, at its base */
+	ck_assert(fy_range_lookup(s1, &info));
+	ck_assert_ptr_eq(info.owner, a);
+	ck_assert_int_eq(info.tag, FY_ALLOC_TAG_DEFAULT);
+	ck_assert_uint_eq(info.logical, TEST_REGION_BASE);
+	ck_assert_uint_eq(info.size, TEST_REGION_SIZE);
+#else
+	(void)info;
+#endif
 
 	/* addresses must be inside the fixed region */
 	ck_assert_uint_ge(a1, TEST_REGION_BASE);
@@ -275,6 +321,9 @@ START_TEST(durable_roundtrip_fixed_base)
 
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
 	fy_allocator_destroy(da);
+#if FY_RANGE_TRACKING
+	ck_assert_ptr_eq(fy_range_logical_to_ptr(a1), NULL);
+#endif
 
 	/* reopen: payloads must be at the very same addresses, intact */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
@@ -282,8 +331,8 @@ START_TEST(durable_roundtrip_fixed_base)
 	ck_assert_uint_eq(fy_allocator_region_base(da), TEST_REGION_BASE);
 	ck_assert_uint_eq(fy_allocator_region_size(da), TEST_REGION_SIZE);
 
-	ck_assert_mem_eq((const void *)a1, "hello durable", 14);
-	ck_assert_mem_eq((const void *)a2, "second payload", 15);
+	ck_assert_mem_eq(durable_ptr(a1), "hello durable", 14);
+	ck_assert_mem_eq(durable_ptr(a2), "second payload", 15);
 
 	fy_allocator_destroy(da);
 	rm_rf(dir);
@@ -323,7 +372,9 @@ START_TEST(durable_builder_roundtrip)
 	ck_assert(!fy_generic_is_invalid(v));
 	p = fy_generic_resolve_ptr(v);
 	ck_assert(fy_allocator_contains(a, FY_ALLOC_TAG_DEFAULT, p));
-	addr = (uintptr_t)p;
+	addr = durable_logical(p);
+	/* the value itself holds the logical address, so it can be persisted */
+	ck_assert_uint_eq(v.v & ~(fy_generic_value)FY_INPLACE_TYPE_MASK, addr);
 	ck_assert_uint_ge(addr, TEST_REGION_BASE);
 	ck_assert_uint_lt(addr, TEST_REGION_BASE + TEST_REGION_SIZE);
 
@@ -337,7 +388,7 @@ START_TEST(durable_builder_roundtrip)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	ck_assert_ptr_ne(da, NULL);
 	/* the encoded string bytes (vlsize prefix + chars) live at addr */
-	ck_assert_mem_eq((const char *)addr + 1, "a durable interned string", 25);
+	ck_assert_mem_eq((const char *)durable_ptr(addr) + 1, "a durable interned string", 25);
 	fy_allocator_destroy(da);
 	rm_rf(dir);
 }
@@ -565,6 +616,13 @@ START_TEST(durable_base_conflict)
 	uint64_t base = 0x3c0000000000ULL;	/* separate from the others */
 	void *occupy;
 
+#ifdef __FILC__
+	/* the region is reserved wherever the runtime puts it; its base is
+	 * only logical, so there is nothing to conflict with */
+	fprintf(stderr, "SKIP: FIL-C does not reserve durable regions at their base\n");
+	return;
+#endif
+
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	/* occupy the chosen base so the reservation must fail */
@@ -754,7 +812,7 @@ START_TEST(dedup_cross_session)
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
-		addr[i] = (uintptr_t)p;
+		addr[i] = durable_logical(p);
 	}
 	fy_allocator_sync(da);
 	fy_allocator_destroy(da);
@@ -766,7 +824,7 @@ START_TEST(dedup_cross_session)
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		ck_assert_uint_eq((uintptr_t)p, addr[i]);
+		ck_assert_uint_eq(durable_logical(p), addr[i]);
 	}
 	/* a brand-new payload is unique and itself dedups on repeat */
 	{
@@ -812,7 +870,7 @@ START_TEST(dedup_cross_process)
 				size_t len = dd_payload(pl, sizeof(pl), i);
 				const void *p = fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 				if (!p) _exit(3);
-				addrs[i] = (uintptr_t)p;
+				addrs[i] = durable_logical(p);
 			}
 			/* per-child unique payloads add concurrent-insert pressure */
 			for (i = 0; i < UNIQ; i++) {
@@ -911,7 +969,7 @@ START_TEST(dedup_builder_cross_process)
 				if (fy_generic_is_invalid(v)) _exit(4);
 				p = fy_generic_resolve_ptr(v);
 				if (!p) _exit(5);
-				addrs[i] = (uintptr_t)p;
+				addrs[i] = durable_logical(p);
 			}
 			/* per-process unique strings add concurrent-insert pressure */
 			for (i = 0; i < UNIQ; i++) {
@@ -1334,9 +1392,9 @@ START_TEST(durable_separate_index_basic)
 		if (!p || q != p)
 			bad_dedup++;
 		/* content must be in the content region, never the index region */
-		if (!p || (uintptr_t)p < cbase || (uintptr_t)p >= cend)
+		if (!p || durable_logical(p) < cbase || durable_logical(p) >= cend)
 			bad_range++;
-		if (p && (uintptr_t)p >= ibase && (uintptr_t)p < iend)
+		if (p && durable_logical(p) >= ibase && durable_logical(p) < iend)
 			bad_range++;
 	}
 	ck_assert_int_eq(bad_dedup, 0);
@@ -1492,7 +1550,7 @@ START_TEST(durable_separate_index_cross_session)
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
 		ck_assert_ptr_ne(p, NULL);
-		addr[i] = (uintptr_t)p;
+		addr[i] = durable_logical(p);
 	}
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
 	fy_allocator_destroy(da);
@@ -1506,7 +1564,7 @@ START_TEST(durable_separate_index_cross_session)
 	for (i = 0; i < K; i++) {
 		size_t len = dd_payload(pl, sizeof(pl), i);
 		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		if ((uintptr_t)p != addr[i])
+		if (durable_logical(p) != addr[i])
 			bad++;
 	}
 	ck_assert_int_eq(bad, 0);
@@ -1650,6 +1708,13 @@ START_TEST(durable_open_detached_mount)
 	char dir[256];
 	int status;
 	pid_t pid;
+
+#ifdef __FILC__
+	/* FIL-C stops the process on unshare(), and the arena uses persistent
+	 * dedup, which is not ported to FIL-C yet */
+	fprintf(stderr, "SKIP: no namespaces or durable dedup under FIL-C\n");
+	return;
+#endif
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 	pid = fork();
@@ -1832,7 +1897,7 @@ START_TEST(gc_address_stable)
 	ck_assert_uint_eq(fy_allocator_region_base(da), TEST_REGION_BASE);
 	root.v = (fy_generic_value)fy_allocator_refs_get(da);
 	ck_assert(fy_generic_is_sequence(root));
-	p = (uintptr_t)fy_generic_resolve_ptr(root);
+	p = durable_logical(fy_generic_resolve_ptr(root));
 	ck_assert_uint_ge(p, TEST_REGION_BASE);
 	ck_assert_uint_lt(p, TEST_REGION_BASE + TEST_REGION_SIZE);
 
