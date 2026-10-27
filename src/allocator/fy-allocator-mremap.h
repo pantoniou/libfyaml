@@ -38,7 +38,7 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 
 struct fy_mremap_arena {
 	struct fy_mremap_arena *next_arena;
-	size_t size;	/* includes the arena header */
+	FY_ATOMIC(size_t) size;	/* includes the arena header */
 	FY_ATOMIC(uint64_t) flags;
 	FY_ATOMIC(size_t) next;
 	FY_ALIGNED_TO(16) uint64_t mem[];

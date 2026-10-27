@@ -77,9 +77,18 @@ static inline size_t fy_mremap_useable_arena_size(struct fy_mremap_allocator *mr
 		FY_MREMAP_ARENA_OVERHEAD;
 }
 
-static inline bool fy_mremap_arena_available(struct fy_mremap_arena *mran)
+/* set in next while the arena is being trimmed; see fy_mremap_arena_trim() */
+#define FY_MREMAP_NEXT_TRIMMING	((size_t)1 << (sizeof(size_t) * 8 - 1))
+
+/* the next offset, for everything but allocating (which must see the fence) */
+static inline size_t fy_mremap_arena_next(struct fy_mremap_arena *mran)
 {
-	return mran->size - fy_atomic_load(&mran->next);
+	return fy_atomic_load(&mran->next) & ~FY_MREMAP_NEXT_TRIMMING;
+}
+
+static inline size_t fy_mremap_arena_available(struct fy_mremap_arena *mran)
+{
+	return fy_atomic_load(&mran->size) - fy_mremap_arena_next(mran);
 }
 
 static inline bool fy_mremap_arena_check_fit(struct fy_mremap_arena *mran, size_t size, size_t align)
@@ -87,8 +96,10 @@ static inline bool fy_mremap_arena_check_fit(struct fy_mremap_arena *mran, size_
 	size_t old_next, new_next;
 
 	old_next = fy_atomic_load(&mran->next);
+	if (old_next & FY_MREMAP_NEXT_TRIMMING)
+		return false;	/* being trimmed */
 	new_next = fy_size_t_align(old_next, align) + size;
-	return new_next <= mran->size;
+	return new_next <= fy_atomic_load(&mran->size);
 }
 
 static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
@@ -160,16 +171,16 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	if (!fy_mremap_arena_type_is_growable(mra->arena_type))
 		flags |= FYMRAF_CANT_GROW;
 	fy_atomic_store(&mran->flags, flags);
-	mran->size = size_page_align;
+	fy_atomic_store(&mran->size, size_page_align);
 	fy_atomic_store(&mran->next, FY_MREMAP_ARENA_OVERHEAD);
 
-	if (fy_range_register(mran, mran->size, &mra->a, (int)(mrt - mra->tags))) {
+	if (fy_range_register(mran, fy_atomic_load(&mran->size), &mra->a, (int)(mrt - mra->tags))) {
 		fy_mremap_arena_release(mra, mran);
 		return NULL;
 	}
 
 #ifdef DEBUG_ARENA
-	fprintf(stderr, "%s: #%zu created arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
+	fprintf(stderr, "%s: #%zu created arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
 #endif
 
 	return mran;
@@ -184,7 +195,7 @@ static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
 		break;
 
 	case FYMRAT_MMAP:
-		(void)munmap(mran, mran->size);
+		(void)munmap(mran, fy_atomic_load(&mran->size));
 		break;
 
 	default:
@@ -200,7 +211,7 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
 		return;
 
 #ifdef DEBUG_ARENA
-	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
+	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
 #endif
 	fy_range_unregister(mran, &mra->a);
 	fy_mremap_arena_release(mra, mran);
@@ -223,8 +234,8 @@ fy_mremap_arena_should_grow(struct fy_mremap_allocator *mra, struct fy_mremap_ar
 		return false;
 
 	/* if the grow needs to be larger than double, don't bother */
-	next = atomic_load(&mran->next);
-	if (fy_size_t_align(next, align) + size > 2 * mran->size)
+	next = fy_mremap_arena_next(mran);
+	if (fy_size_t_align(next, align) + size > 2 * fy_atomic_load(&mran->size))
 		return false;
 
 	/* go for it */
@@ -237,10 +248,14 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 				size_t size,
 				size_t align)
 {
+	size_t cur;
 	void *mem;
 
 	if (!fy_mremap_arena_should_grow(mra, mran, size, align))
 		return -1;
+
+	/* the caller holds FYMRAF_GROWING; the size can't change under us */
+	cur = fy_atomic_load(&mran->size);
 
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
@@ -250,34 +265,36 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 	case FYMRAT_MMAP:
 #if USE_MREMAP
 		/* double the arena */
-		mem = mremap(mran, mran->size, mran->size * 2, 0);
+		mem = mremap(mran, cur, cur * 2, 0);
 		if (mem == MAP_FAILED)
 			break;
 
 		assert(mem == mran);
 #else
 		/* do a mmap right after the one we have, if it succeeds we have grown */
-		mem = mmap((char *)mran + mran->size, mran->size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-		if (mem != (char *)mran + mran->size) {
+		mem = mmap((char *)mran + cur, cur, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		if (mem != (char *)mran + cur) {
 			if (mem != MAP_FAILED)
-				munmap(mem, mran->size);
+				munmap(mem, cur);
 			break;
 		}
 #endif
-		if (fy_range_resize(mran, &mra->a, mran->size * 2)) {
+		if (fy_range_resize(mran, &mra->a, cur * 2)) {
 			/* undo the extension */
 #if USE_MREMAP
-			mem = mremap(mran, mran->size * 2, mran->size, 0);
+			mem = mremap(mran, cur * 2, cur, 0);
 			assert(mem == mran);
 #else
-			munmap((char *)mran + mran->size, mran->size);
+			munmap((char *)mran + cur, cur);
 #endif
 			break;
 		}
-		mran->size *= 2;
+		/* publish the new size only once the space is mapped and
+		 * registered; readers seeing the old size merely fail to fit */
+		fy_atomic_store(&mran->size, cur * 2);
 
 #ifdef DEBUG_ARENA
-		fprintf(stderr, "%s: #%zu grew arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
+		fprintf(stderr, "%s: #%zu grew arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, cur * 2, (cur * 2) >> 20);
 #endif
 		return 0;
 
@@ -288,11 +305,21 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 	return -1;
 }
 
+/*
+ * Trimming may run while other threads allocate from the arena. To keep
+ * them out of the tail being unmapped, the trim first sets
+ * FY_MREMAP_NEXT_TRIMMING in next: any allocation reading next afterwards
+ * sees an offset past any size, fails to fit and goes elsewhere, while
+ * every allocation committed before lies below the next the trim fits to.
+ * FYMRAF_GROWING serializes the trim with growing, which also resizes.
+ */
 static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 				struct fy_mremap_tag *mrt FY_UNUSED,
 				struct fy_mremap_arena *mran)
 {
-	size_t next, new_size;
+	size_t next, cur, new_size;
+	uint64_t flags;
+	int ret = -1;
 #if USE_MREMAP
 	void *mem FY_DEBUG_UNUSED;
 #else
@@ -302,51 +329,57 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 	if (!mran)
 		return -1;
 
-	switch (mra->arena_type) {
-	case FYMRAT_MALLOC:
-		/* trim not possible (or is it? should be possible to probe) */
-		break;
+	if (mra->arena_type != FYMRAT_MMAP)
+		return -1;	/* trim not possible (or is it? should be possible to probe) */
 
-	case FYMRAT_MMAP:
-		/* check the page size */
-		next = fy_atomic_load(&mran->next);
-		new_size = fy_size_t_align(next, mra->pagesz);
-		if (new_size >= mran->size)
-			break;
-
-#ifdef DEBUG_ARENA
-		fprintf(stderr, "trim: %zu -> %zu\n", mran->size, new_size);
-#endif
-		if (fy_range_resize(mran, &mra->a, new_size))
-			return -1;
-
-#if USE_MREMAP
-		/* failure to shrink a mapping is unthinkable, but check anyway */
-		mem = mremap(mran, mran->size, new_size, 0);
-		if (mem == MAP_FAILED || mem != mran)
-			goto err_restore;
-#else
-		/* we don't shrink, we just unmap over the limit  */
-		rc = munmap((char *)mran + new_size, mran->size - new_size);
-		if (rc)
-			goto err_restore;
-#endif
-		mran->size = new_size;
-		return 0;
-
-err_restore:
-		/* the arena kept its size; growing back to it cannot overlap,
-		 * but it may run out of memory. Nothing may be allocated from an
-		 * unregistered tail, so then retire the arena. */
-		if (fy_range_resize(mran, &mra->a, mran->size))
-			fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
+	/* exclude a concurrent grow (or another trim) */
+	flags = fy_atomic_load(&mran->flags);
+	if ((flags & FYMRAF_GROWING) ||
+	    !fy_atomic_compare_exchange_strong(&mran->flags, &flags, flags | FYMRAF_GROWING))
 		return -1;
 
-	default:
-		FY_IMPOSSIBLE_ABORT();
-	}
+	/* fence off new allocations */
+	do {
+		next = fy_atomic_load(&mran->next);
+	} while (!fy_atomic_compare_exchange_weak(&mran->next, &next,
+						  next | FY_MREMAP_NEXT_TRIMMING));
 
-	return -1;
+	cur = fy_atomic_load(&mran->size);
+	new_size = fy_size_t_align(next, mra->pagesz);
+	if (new_size >= cur)
+		goto out;
+
+#ifdef DEBUG_ARENA
+	fprintf(stderr, "trim: %zu -> %zu\n", cur, new_size);
+#endif
+	if (fy_range_resize(mran, &mra->a, new_size))
+		goto out;
+
+#if USE_MREMAP
+	/* failure to shrink a mapping is unthinkable, but check anyway */
+	mem = mremap(mran, cur, new_size, 0);
+	if (mem == MAP_FAILED || mem != mran)
+		goto err_restore;
+#else
+	/* we don't shrink, we just unmap over the limit  */
+	rc = munmap((char *)mran + new_size, cur - new_size);
+	if (rc)
+		goto err_restore;
+#endif
+	fy_atomic_store(&mran->size, new_size);
+	ret = 0;
+out:
+	fy_atomic_store(&mran->next, next);
+	fy_atomic_fetch_and(&mran->flags, ~(uint64_t)FYMRAF_GROWING);
+	return ret;
+
+err_restore:
+	/* the arena kept its size; growing back to it cannot overlap,
+	 * but it may run out of memory. Nothing may be allocated from an
+	 * unregistered tail, so then retire the arena. */
+	if (fy_range_resize(mran, &mra->a, cur))
+		fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
+	goto out;
 }
 
 static inline struct fy_mremap_tag *
@@ -379,9 +412,9 @@ static void fy_mremap_tag_cleanup(struct fy_mremap_allocator *mra, struct fy_mre
 	total_sys_alloc = 0;
 	total_wasted = 0;
 	for (mran = fy_atomic_load(&mrt->arenas); mran; mran = mran->next_arena) {
-		total_sys_alloc += mran->size;
-		next = fy_atomic_load(&mran->next);
-		total_wasted += (mran->size - next);
+		total_sys_alloc += fy_atomic_load(&mran->size);
+		next = fy_mremap_arena_next(mran);
+		total_wasted += (fy_atomic_load(&mran->size) - next);
 	}
 	fprintf(stderr, "total_sys_alloc=%zu total_wasted=%zu\n", total_sys_alloc, total_wasted);
 #endif
@@ -418,13 +451,13 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 #endif
 	for (mran = fy_atomic_load(&mrt->arenas); mran; mran = mran->next_arena) {
 #ifdef DEBUG_ARENA
-		next = fy_atomic_load(&mran->next);
-		wasted_before += (mran->size - next);
+		next = fy_mremap_arena_next(mran);
+		wasted_before += (fy_atomic_load(&mran->size) - next);
 #endif
 		(void)fy_mremap_arena_trim(mra, mrt, mran);
 #ifdef DEBUG_ARENA
-		next = fy_atomic_load(&mran->next);
-		wasted_after += (mran->size - next);
+		next = fy_mremap_arena_next(mran);
+		wasted_after += (fy_atomic_load(&mran->size) - next);
 #endif
 	}
 
@@ -515,7 +548,7 @@ again:
 			/* increase by the ratio until we're over */
 			old_next_arena_sz = fy_atomic_load(&mrt->next_arena_sz);
 			next_arena_sz = old_next_arena_sz;
-			while (next_arena_sz < mran->size)
+			while (next_arena_sz < fy_atomic_load(&mran->size))
 				next_arena_sz *= 2;
 			/* we don't care about it 'catching' */
 			/* if another thread changes the value we're fine too */
@@ -534,7 +567,7 @@ again:
 		}
 
 #ifdef DEBUG_ARENA
-		fprintf(stderr, "grow successful %p mran->size=%zu size=%zu\n", mran, mran->size, size);
+		fprintf(stderr, "grow successful %p fy_atomic_load(&mran->size)=%zu size=%zu\n", mran, fy_atomic_load(&mran->size), size);
 #endif
 
 		/* release the lock */
@@ -588,7 +621,7 @@ create_arena:
 	}
 
 #ifdef DEBUG_ARENA
-	fprintf(stderr, "allocated new %p mran->size=%zu size=%zu\n", mran, mran->size, size);
+	fprintf(stderr, "allocated new %p fy_atomic_load(&mran->size)=%zu size=%zu\n", mran, fy_atomic_load(&mran->size), size);
 #endif
 
 	/* last chance if we're racing with another thread
@@ -618,9 +651,10 @@ do_alloc:
 		old_next = fy_atomic_load(&mran->next);
 		data_pos = fy_size_t_align(old_next, align);
 		new_next = data_pos + size;
-		if (new_next > mran->size) {
+		/* a trim in progress fences the arena off */
+		if ((old_next & FY_MREMAP_NEXT_TRIMMING) || new_next > fy_atomic_load(&mran->size)) {
 #ifdef DEBUG_ARENA
-			fprintf(stderr, "failed new %p mran->size=%zu size=%zu failed to fit!\n", mran, mran->size, size);
+			fprintf(stderr, "failed new %p fy_atomic_load(&mran->size)=%zu size=%zu failed to fit!\n", mran, fy_atomic_load(&mran->size), size);
 #endif
 			goto again;
 		}
@@ -632,7 +666,7 @@ do_alloc:
 		memset(ptr, 0, size);
 
 #ifdef DEBUG_ARENA
-	fprintf(stderr, "allocated OK %p mran->size=%zu ptr=%p size=%zu align=%zu\n", mran, mran->size, ptr, size, align);
+	fprintf(stderr, "allocated OK %p fy_atomic_load(&mran->size)=%zu ptr=%p size=%zu align=%zu\n", mran, fy_atomic_load(&mran->size), ptr, size, align);
 #endif
 	return ptr;
 
@@ -801,8 +835,8 @@ void fy_mremap_dump(struct fy_allocator *a)
 
 		count = full_count = active_count = total = system_total = 0;
 		for (mran = fy_atomic_load(&mrt->arenas); mran; mran = mran->next_arena) {
-			total += fy_atomic_load(&mran->next);
-			system_total += mran->size;
+			total += fy_mremap_arena_next(mran);
+			system_total += fy_atomic_load(&mran->size);
 			count++;
 			active_count++;
 			/* XXX full count */
@@ -1174,9 +1208,9 @@ fy_mremap_get_info(struct fy_allocator *a, int tag)
 			}
 
 			for (mran = fy_atomic_load(&mrt->arenas); mran; mran = mran->next_arena) {
-				arena_free = (size_t)(mran->size - mran->next);
-				arena_used = (size_t)(mran->next - FY_MREMAP_ARENA_OVERHEAD);
-				arena_total = mran->size;
+				arena_free = fy_mremap_arena_available(mran);
+				arena_used = fy_mremap_arena_next(mran) - FY_MREMAP_ARENA_OVERHEAD;
+				arena_total = fy_atomic_load(&mran->size);
 
 				tag_free += arena_free;
 				tag_used += arena_used;
@@ -1232,7 +1266,7 @@ static bool mremap_tag_contains(struct fy_mremap_tag *mrt, const void *p)
 
 	for (mra = fy_atomic_load(&mrt->arenas); mra; mra = mra->next_arena) {
 		if (p >= (const void *)mra->mem &&
-		    p < (const void *)((const char *)mra->mem + mra->size))
+		    p < (const void *)((const char *)mra->mem + fy_atomic_load(&mra->size)))
 			return true;
 	}
 
