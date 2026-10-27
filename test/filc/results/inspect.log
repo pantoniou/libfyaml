@@ -1,0 +1,7 @@
+exit=0
+stdout:
+RECORDS=25 SUM=2718 CHUNKS=9
+OK
+
+stderr:
+REGION=0x7f7711b02000,0x7f7711b02000,0x7f7712b02000,mmap,aligned(4096)

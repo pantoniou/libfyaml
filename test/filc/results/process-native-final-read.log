@@ -1,0 +1,6 @@
+exit=0
+stdout:
+RECORDS=33 SUM=80154 CHUNKS=34
+OK
+
+stderr:

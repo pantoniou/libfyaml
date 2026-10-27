@@ -1,0 +1,14 @@
+exit=-5
+stdout:
+
+stderr:
+filc safety error: cannot read pointer to free object.
+    pointer: 0x7fb1dd382060,0x7fb1dd302000,0x7fb1dd302000,free,mmap,aligned(4096)
+    expected 8 bytes.
+semantic origin:
+    (filc) libfyaml/test/filc/durable-probe.c:216:94: main
+check scheduled at:
+    (filc) libfyaml/test/filc/durable-probe.c:216:94: main
+    (libc.so) src/env/__libc_start_main.c:79:7: __libc_start_main
+    (libpizlo.so) <runtime>: start_program
+[54] filc panic: thwarted a futile attempt to violate memory safety.

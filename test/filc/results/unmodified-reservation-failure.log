@@ -1,0 +1,13 @@
+filc safety error: cannot write pointer with null object (ptr = 0x300000000000,<null>).
+    (libpizlo.so) <runtime>: zsys_mmap
+    (libc.so) src/mman/mmap.c:29:16: __mmap
+    (libfyaml.so.2) libfyaml/src/util/fy-utils.c:1757:10: fy_mmap
+    (libfyaml.so.2) libfyaml/src/allocator/fy-allocator-durable.c:544:6: fy_durable_reserve_region
+    (libfyaml.so.2) libfyaml/src/allocator/fy-allocator-durable.c:847:6: fy_durable_setup
+    (libfyaml.so.2) libfyaml/src/allocator/fy-allocator-durable.c:893:6: fy_durable_create
+    (libfyaml.so.2) libfyaml/src/allocator/fy-allocator.c:305:9: fy_allocator_create_internal
+    (libfyaml.so.2) libfyaml/src/allocator/fy-allocator.c:311:9: fy_allocator_create
+    (durable-probe) libfyaml/test/filc/durable-probe.c:13:27: main
+    (libc.so) src/env/__libc_start_main.c:79:7: __libc_start_main
+    (libpizlo.so) <runtime>: start_program
+[10] filc panic: thwarted a futile attempt to violate memory safety.

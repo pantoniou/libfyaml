@@ -1,0 +1,344 @@
+{
+  "passed": 42,
+  "total": 42,
+  "tests": [
+    {
+      "test": "seed",
+      "compiler": "filc",
+      "mode": "seed",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "reopen",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "grow",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "reopen-grown",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "readonly",
+      "compiler": "filc",
+      "mode": "readonly",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "stale-cas",
+      "compiler": "filc",
+      "mode": "cas",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "inspect",
+      "compiler": "filc",
+      "mode": "inspect",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "retired-pointer",
+      "compiler": "filc",
+      "mode": "uaf",
+      "passed": true,
+      "returncode": -5,
+      "expected": -5
+    },
+    {
+      "test": "retired-pointer-after-reopen",
+      "compiler": "filc",
+      "mode": "reopen",
+      "passed": true,
+      "returncode": -5,
+      "expected": -5
+    },
+    {
+      "test": "native-reads-filc",
+      "compiler": "native",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "native-seed",
+      "compiler": "native",
+      "mode": "seed",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "filc-reads-native",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "filc-appends-native",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "native-reads-appended",
+      "compiler": "native",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "abrupt-writer-exit",
+      "compiler": "filc",
+      "mode": "crash",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "reopen-after-abrupt-exit",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "thread-writers",
+      "compiler": "filc",
+      "mode": "threads",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "reopen-thread-writes",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "checkpoint",
+      "compiler": "filc",
+      "mode": "checkpoint",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "verify-reopened-checkpoint",
+      "compiler": "filc",
+      "mode": "verify",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "native-verifies-filc-checkpoint",
+      "compiler": "native",
+      "mode": "verify",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "native-checkpoint",
+      "compiler": "native",
+      "mode": "checkpoint",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "filc-verifies-native-checkpoint",
+      "compiler": "filc",
+      "mode": "verify",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "checkpoint-rollback",
+      "compiler": "filc",
+      "mode": "recover",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "reopen-rolled-back",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "dedup-fails-explicitly",
+      "compiler": "filc",
+      "mode": "dedup",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "compaction-fails-explicitly",
+      "compiler": "filc",
+      "mode": "gc-unsupported",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "compaction-leaves-data-intact",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-seed",
+      "compiler": "filc",
+      "mode": "seed",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-writer-0",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-writer-1",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-writer-2",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-writer-3",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-live-reader",
+      "compiler": "filc",
+      "mode": "watch",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-final-read",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "process-native-final-read",
+      "compiler": "native",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-seed",
+      "compiler": "filc",
+      "mode": "seed",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-writer-0",
+      "compiler": "filc",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-writer-1",
+      "compiler": "native",
+      "mode": "append",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-live-reader",
+      "compiler": "filc",
+      "mode": "watch",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-final-read",
+      "compiler": "filc",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    },
+    {
+      "test": "mixed-native-final-read",
+      "compiler": "native",
+      "mode": "read",
+      "passed": true,
+      "returncode": 0,
+      "expected": 0
+    }
+  ],
+  "filc": "clang version 20.1.8 (Fil-C 0.687 git@github.com:pizlonator/llvm-project-deluge.git e7947f079c976fb167108f7407c20240bca0ca89)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /workspace/scratch/7d541a70fb25/filc-0.687-linux-x86_64/build/bin\nBuild config: +assertions\n",
+  "base_commit": "be739ea0e815295a598f6ed4fb2c4e070bbb2fbc"
+}
