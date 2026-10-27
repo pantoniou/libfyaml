@@ -521,7 +521,7 @@ fy_generic_collection_op_data_out(struct fy_generic_collection_op_data *cod,
 			goto err_out;
 	}
 
-	v = (fy_generic){ .v = (uintptr_t)p | cod->col_mark };
+	v = (fy_generic){ .v = fy_generic_encode_ptr(p, cod->col_mark) };
 
 	return v;
 

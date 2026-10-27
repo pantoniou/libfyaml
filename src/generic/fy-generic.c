@@ -1816,7 +1816,7 @@ fy_generic fy_gb_dint_type_create_out_of_place(struct fy_generic_builder *gb, fy
 		valp = fy_gb_store(gb, &vald, sizeof(vald), FY_GENERIC_SCALAR_ALIGN);
 	if (!valp)
 		return fy_invalid;
-	return (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
+	return (fy_generic){ .v = fy_generic_encode_ptr(valp, FY_INT_OUTPLACE_V) };
 }
 
 fy_generic fy_gb_int_type_create_out_of_place(struct fy_generic_builder *gb, long long val)
@@ -1841,7 +1841,7 @@ fy_generic fy_gb_float_type_create_out_of_place(struct fy_generic_builder *gb, d
 		valp = fy_gb_store(gb, &val, sizeof(val), FY_SCALAR_ALIGNOF(double));
 	if (!valp)
 		return fy_invalid;
-	return (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
+	return (fy_generic){ .v = fy_generic_encode_ptr(valp, FY_FLOAT_OUTPLACE_V) };
 }
 
 fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, const char *str, size_t len)
@@ -1868,7 +1868,7 @@ fy_generic fy_gb_string_size_create_out_of_place(struct fy_generic_builder *gb, 
 	if (!s)
 		return fy_invalid;
 
-	return (fy_generic){ .v = (uintptr_t)s | FY_STRING_OUTPLACE_V };
+	return (fy_generic){ .v = fy_generic_encode_ptr(s, FY_STRING_OUTPLACE_V) };
 }
 
 fy_generic fy_gb_string_create_out_of_place(struct fy_generic_builder *gb, const char *str)
@@ -1975,7 +1975,7 @@ fy_gb_internalize_core(struct fy_generic_builder *gb,
 		if (!valp)
 			break;
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_INT_OUTPLACE_V };
+		new_v = (fy_generic){ .v = fy_generic_encode_ptr(valp, FY_INT_OUTPLACE_V) };
 		break;
 
 	case FYGT_FLOAT:
@@ -1987,7 +1987,7 @@ fy_gb_internalize_core(struct fy_generic_builder *gb,
 		if (!valp)
 			break;
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_FLOAT_OUTPLACE_V };
+		new_v = (fy_generic){ .v = fy_generic_encode_ptr(valp, FY_FLOAT_OUTPLACE_V) };
 		break;
 
 	case FYGT_STRING:
@@ -2005,7 +2005,7 @@ fy_gb_internalize_core(struct fy_generic_builder *gb,
 		if (!valp)
 			break;
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | FY_STRING_OUTPLACE_V };
+		new_v = (fy_generic){ .v = fy_generic_encode_ptr(valp, FY_STRING_OUTPLACE_V) };
 		break;
 
 	case FYGT_SEQUENCE:
@@ -2053,7 +2053,7 @@ fy_gb_internalize_core(struct fy_generic_builder *gb,
 				break;
 		}
 
-		new_v = (fy_generic){ .v = (uintptr_t)valp | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V) };
+		new_v = (fy_generic){ .v = fy_generic_encode_ptr(valp, (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V)) };
 		break;
 
 	case FYGT_INVALID:
@@ -2183,7 +2183,7 @@ fy_generic fy_gb_indirect_create(struct fy_generic_builder *gb, const fy_generic
 	if (!p)
 		return fy_invalid;
 
-	return (fy_generic){ .v = (uintptr_t)p | FY_INDIRECT_V };
+	return (fy_generic){ .v = fy_generic_encode_ptr(p, FY_INDIRECT_V) };
 }
 
 fy_generic fy_gb_alias_create(struct fy_generic_builder *gb, fy_generic anchor)
