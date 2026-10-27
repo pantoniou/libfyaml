@@ -99,6 +99,45 @@ int fy_range_ptr_to_logical(const void *ptr, uintptr_t *logicalp);
  * FIL-C it carries the range's capability); NULL if no range holds it */
 void *fy_range_logical_to_ptr(uintptr_t addr);
 
+/*
+ * Allocators track the memory they obtain through these. Only FIL-C
+ * consumes the registry (to resolve pointers), so natively they compile
+ * to nothing and allocators don't pay for registration.
+ */
+#ifdef __FILC__
+#define FY_RANGE_TRACKING	1
+#else
+#define FY_RANGE_TRACKING	0
+#endif
+
+static inline int fy_range_track_logical(const void *start, size_t size,
+					 struct fy_allocator *owner, int tag,
+					 uintptr_t logical)
+{
+	if (!FY_RANGE_TRACKING)
+		return 0;
+	return fy_range_register_logical(start, size, owner, tag, logical);
+}
+
+static inline int fy_range_track(const void *start, size_t size,
+				 struct fy_allocator *owner, int tag)
+{
+	return fy_range_track_logical(start, size, owner, tag, (uintptr_t)start);
+}
+
+static inline int fy_range_track_resize(const void *start, struct fy_allocator *owner, size_t size)
+{
+	if (!FY_RANGE_TRACKING)
+		return 0;
+	return fy_range_resize(start, owner, size);
+}
+
+static inline void fy_range_untrack(const void *start, struct fy_allocator *owner)
+{
+	if (FY_RANGE_TRACKING)
+		(void)fy_range_unregister(start, owner);
+}
+
 /* number of registered ranges (for diagnostics and tests) */
 size_t fy_range_count(void);
 

@@ -207,25 +207,29 @@ dt_run_parallel(fy_work_exec_fn fn, void *jobs, size_t jobsz, int count)
  */
 static uintptr_t durable_logical(const void *p)
 {
+#if FY_RANGE_TRACKING
 	uintptr_t l;
 
+	if (!p)
+		return 0;
 	ck_assert_int_eq(fy_range_ptr_to_logical(p, &l), 1);
-#ifndef __FILC__
-	ck_assert_uint_eq(l, (uintptr_t)p);	/* natively mapped at its base */
-#endif
 	return l;
+#else
+	return (uintptr_t)p;	/* natively mapped at its base */
+#endif
 }
 
 static const void *durable_ptr(uintptr_t logical)
 {
+#if FY_RANGE_TRACKING
 	const void *p;
 
 	p = fy_range_logical_to_ptr(logical);
 	ck_assert_ptr_ne(p, NULL);
-#ifndef __FILC__
-	ck_assert_ptr_eq(p, (const void *)logical);
-#endif
 	return p;
+#else
+	return (const void *)logical;
+#endif
 }
 
 /* region_base 0 selects the platform default base; check it is usable */
@@ -303,12 +307,16 @@ START_TEST(durable_roundtrip_fixed_base)
 	a1 = durable_logical(s1);
 	a2 = durable_logical(s2);
 
+#if FY_RANGE_TRACKING
 	/* the whole reserved region is registered to the arena, at its base */
 	ck_assert(fy_range_lookup(s1, &info));
 	ck_assert_ptr_eq(info.owner, a);
 	ck_assert_int_eq(info.tag, FY_ALLOC_TAG_DEFAULT);
 	ck_assert_uint_eq(info.logical, TEST_REGION_BASE);
 	ck_assert_uint_eq(info.size, TEST_REGION_SIZE);
+#else
+	(void)info;
+#endif
 
 	/* addresses must be inside the fixed region */
 	ck_assert_uint_ge(a1, TEST_REGION_BASE);
@@ -316,7 +324,9 @@ START_TEST(durable_roundtrip_fixed_base)
 
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
 	fy_allocator_destroy(da);
+#if FY_RANGE_TRACKING
 	ck_assert_ptr_eq(fy_range_logical_to_ptr(a1), NULL);
+#endif
 
 	/* reopen: payloads must be at the very same addresses, intact */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);

@@ -350,12 +350,17 @@ START_TEST(range_allocators)
 		p = fy_allocator_alloc(a, tag, 128, 16);
 		ck_assert_ptr_ne(p, NULL);
 
-		/* the innermost registered owner of the memory is the allocator
-		 * that obtained it (auto delegates to an mremap allocator) */
-		ck_assert(fy_range_lookup(p, &info));
-		if (strcmp(names[i], "auto"))
-			ck_assert_ptr_eq(info.owner, a);
-		ck_assert(fy_allocator_contains(info.owner, info.tag, p));
+		if (FY_RANGE_TRACKING) {
+			/* the innermost registered owner of the memory is the
+			 * allocator that obtained it (auto delegates to mremap) */
+			ck_assert(fy_range_lookup(p, &info));
+			if (strcmp(names[i], "auto"))
+				ck_assert_ptr_eq(info.owner, a);
+			ck_assert(fy_allocator_contains(info.owner, info.tag, p));
+		} else {
+			/* natively nothing consumes the registry, so nothing registers */
+			ck_assert(!fy_range_lookup(p, NULL));
+		}
 
 		fy_allocator_destroy(a);
 		ck_assert(!fy_range_lookup(p, NULL));
@@ -429,7 +434,8 @@ START_TEST(range_builders)
 		/* the layers resolve down to the allocator owning the memory */
 		fy_allocator_resolve_owner(gb[i]->allocator, gb[i]->alloc_tag, &owner, &owner_tag);
 		ck_assert_str_eq(owner->name, owner_names[i]);
-		ck_assert(!!(owner->flags & FYAF_REGISTERS_RANGES) == registered[i]);
+		ck_assert(!!(owner->flags & FYAF_REGISTERS_RANGES) ==
+			  (FY_RANGE_TRACKING && registered[i]));
 
 		v = fy_gb_string_create_out_of_place(gb[i], long_str);
 		ck_assert(fy_generic_is_valid(v));
@@ -438,7 +444,7 @@ START_TEST(range_builders)
 
 		/* where the owner registers its memory, the registry gives the
 		 * same answer as the builder */
-		if (registered[i]) {
+		if (FY_RANGE_TRACKING && registered[i]) {
 			ck_assert(builder_owns_by_registry(gb[i], v));
 			ck_assert(!builder_owns_by_registry(gb[i], vo));
 		}

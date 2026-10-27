@@ -174,7 +174,7 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	fy_atomic_store(&mran->size, size_page_align);
 	fy_atomic_store(&mran->next, FY_MREMAP_ARENA_OVERHEAD);
 
-	if (fy_range_register(mran, fy_atomic_load(&mran->size), &mra->a, (int)(mrt - mra->tags))) {
+	if (fy_range_track(mran, fy_atomic_load(&mran->size), &mra->a, (int)(mrt - mra->tags))) {
 		fy_mremap_arena_release(mra, mran);
 		return NULL;
 	}
@@ -213,7 +213,7 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, fy_atomic_load(&mran->size), fy_atomic_load(&mran->size) >> 20);
 #endif
-	fy_range_unregister(mran, &mra->a);
+	fy_range_untrack(mran, &mra->a);
 	fy_mremap_arena_release(mra, mran);
 }
 
@@ -279,7 +279,7 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 			break;
 		}
 #endif
-		if (fy_range_resize(mran, &mra->a, cur * 2)) {
+		if (fy_range_track_resize(mran, &mra->a, cur * 2)) {
 			/* undo the extension */
 #if USE_MREMAP
 			mem = mremap(mran, cur * 2, cur, 0);
@@ -352,7 +352,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "trim: %zu -> %zu\n", cur, new_size);
 #endif
-	if (fy_range_resize(mran, &mra->a, new_size))
+	if (fy_range_track_resize(mran, &mra->a, new_size))
 		goto out;
 
 #if USE_MREMAP
@@ -377,7 +377,7 @@ err_restore:
 	/* the arena kept its size; growing back to it cannot overlap,
 	 * but it may run out of memory. Nothing may be allocated from an
 	 * unregistered tail, so then retire the arena. */
-	if (fy_range_resize(mran, &mra->a, cur))
+	if (fy_range_track_resize(mran, &mra->a, cur))
 		fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
 	goto out;
 }
@@ -720,7 +720,8 @@ static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	memset(mra, 0, sizeof(*mra));
 	mra->a.name = "mremap";
-	mra->a.flags |= FYAF_REGISTERS_RANGES;	/* every arena is registered */
+	if (FY_RANGE_TRACKING)
+		mra->a.flags |= FYAF_REGISTERS_RANGES;	/* every arena is registered */
 	mra->a.ops = &fy_mremap_allocator_ops;
 	mra->a.parent = parent;
 	mra->a.parent_tag = parent_tag;

@@ -67,8 +67,8 @@ static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 
 	/* an in-place allocator is never cleaned up, so its (usually stack)
 	 * buffer must not be registered */
-	if (parent != FY_PARENT_ALLOCATOR_INPLACE) {
-		if (fy_range_register(buf, cfg->size, &la->a, FY_ALLOC_TAG_DEFAULT))
+	if (FY_RANGE_TRACKING && parent != FY_PARENT_ALLOCATOR_INPLACE) {
+		if (fy_range_track(buf, cfg->size, &la->a, FY_ALLOC_TAG_DEFAULT))
 			goto err_out;
 		la->range_registered = true;
 		la->a.flags |= FYAF_REGISTERS_RANGES;
@@ -89,7 +89,7 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 
 	la = container_of(a, struct fy_linear_allocator, a);
 	if (la->range_registered) {
-		fy_range_unregister(la->start, &la->a);
+		fy_range_untrack(la->start, &la->a);
 		la->range_registered = false;
 	}
 	fy_parent_allocator_free(&la->a, la->alloc);

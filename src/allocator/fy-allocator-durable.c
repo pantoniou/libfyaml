@@ -649,7 +649,7 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg,
 	}
 #endif
 	/* persisted addresses are logical; natively they are the runtime ones */
-	if (fy_range_register_logical(p, rg->region_size, owner, tag,
+	if (fy_range_track_logical(p, rg->region_size, owner, tag,
 				      (uintptr_t)rg->region_base)) {
 		fy_munmap(p, rg->region_size);
 		return -1;
@@ -877,7 +877,8 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	da = container_of(a, struct fy_durable_allocator, a);
 	memset(da, 0, sizeof(*da));
 	da->a.name = "durable";
-	da->a.flags |= FYAF_REGISTERS_RANGES;	/* both regions are registered */
+	if (FY_RANGE_TRACKING)
+		da->a.flags |= FYAF_REGISTERS_RANGES;	/* both regions are registered */
 	da->a.ops = &fy_durable_allocator_ops;
 	da->a.parent = parent;
 	da->a.parent_tag = parent_tag;
@@ -1046,7 +1047,7 @@ static void fy_durable_region_cleanup(struct fy_durable_region *rg)
 	}
 	if (rg->region) {
 		if (rg->range_owner) {
-			fy_range_unregister(rg->region, rg->range_owner);
+			fy_range_untrack(rg->region, rg->range_owner);
 			rg->range_owner = NULL;
 		}
 		fy_munmap(rg->region, rg->region_size);
