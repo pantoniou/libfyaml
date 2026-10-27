@@ -1751,6 +1751,110 @@ if(CAN_TEST)
         )
     endif()
 
+    # Durable arena tests across processes; DURABLE_PEER_PROBE, a durable-probe
+    # built for another runtime (FIL-C or native), alternates with this one
+    if(HAVE_GENERIC AND NOT WIN32)
+        set(DURABLE_PEER_PROBE "" CACHE STRING "durable-probe of another runtime")
+        add_executable(durable-probe test/durable-probe.c)
+        target_compile_options(durable-probe PRIVATE ${COMMON_C_FLAGS})
+        target_compile_definitions(durable-probe PRIVATE HAVE_CONFIG_H ${COMMON_C_DEFINITIONS})
+        target_include_directories(durable-probe PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}
+        )
+        target_link_libraries(durable-probe PRIVATE fyaml)
+        set_target_properties(durable-probe PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
+        )
+
+        set(_dp_dir ${CMAKE_CURRENT_BINARY_DIR}/test/durable-probe.d)
+        set(P $<TARGET_FILE:durable-probe>)
+        if(DURABLE_PEER_PROBE)
+            set(Q ${DURABLE_PEER_PROBE})
+        else()
+            set(Q $<TARGET_FILE:durable-probe>)
+        endif()
+        file(MAKE_DIRECTORY ${_dp_dir})
+
+        # durable_probe_test(<seq> <name> <probe> <op> [args]): the steps of
+        # a sequence run in order, on the arena in the sequence's directory
+        function(durable_probe_test seq name probe op)
+            set(_t durable-probe/${seq}/${name})
+            get_property(_prev GLOBAL PROPERTY DURABLE_PROBE_PREV_${seq})
+            if(NOT _prev)
+                add_test(NAME durable-probe/${seq}/clean
+                    COMMAND ${CMAKE_COMMAND} -E rm -rf ${_dp_dir}/${seq} ${_dp_dir}/${seq}.sum
+                )
+                set_tests_properties(durable-probe/${seq}/clean PROPERTIES
+                    FIXTURES_SETUP durable-probe-${seq}-clean
+                    LABELS durable-probe
+                )
+                set(_prev clean)
+            endif()
+            add_test(NAME ${_t} COMMAND ${probe} ${op} ${_dp_dir}/${seq} ${ARGN})
+            set_tests_properties(${_t} PROPERTIES
+                FIXTURES_REQUIRED durable-probe-${seq}-${_prev}
+                FIXTURES_SETUP durable-probe-${seq}-${name}
+                LABELS durable-probe
+            )
+            set_property(GLOBAL PROPERTY DURABLE_PROBE_PREV_${seq} ${name})
+        endfunction()
+
+        durable_probe_test(basic seed ${P} seed)
+        durable_probe_test(basic reopen ${P} read 1 42)
+        durable_probe_test(basic grow ${P} append 24 100)
+        durable_probe_test(basic reopen-grown ${P} read 25 2718)
+        durable_probe_test(basic readonly ${P} readonly 25 2718)
+        durable_probe_test(basic stale-cas ${P} cas)
+        durable_probe_test(basic peer-reads ${Q} read 25 2718)
+
+        durable_probe_test(interop peer-seed ${Q} seed)
+        durable_probe_test(interop reads-peer ${P} read 1 42)
+        durable_probe_test(interop appends-peer ${P} append 8 100)
+        durable_probe_test(interop peer-reads-appended ${Q} read 9 870)
+
+        durable_probe_test(crash abrupt-exit ${P} crash)
+        durable_probe_test(crash reopen ${P} read 1 42)
+
+        durable_probe_test(threads writers ${P} threads)
+        durable_probe_test(threads peer-reads ${Q} read 32 8112)
+
+        durable_probe_test(checkpoint checkpoint ${P} checkpoint)
+        durable_probe_test(checkpoint verify ${P} verify)
+        durable_probe_test(checkpoint peer-verifies ${Q} verify)
+
+        durable_probe_test(peer-checkpoint checkpoint ${Q} checkpoint)
+        durable_probe_test(peer-checkpoint verify ${P} verify)
+
+        durable_probe_test(rollback recover ${P} recover)
+        durable_probe_test(rollback peer-reads ${Q} read 1 42)
+
+        # every run finds what the earlier ones stored, at the same addresses
+        durable_probe_test(dedup store ${P} dedup)
+        durable_probe_test(dedup peer-store ${Q} dedup)
+        durable_probe_test(dedup store-again ${P} dedup)
+
+        # compaction keeps a generic root intact, whichever runtime runs it
+        durable_probe_test(gc seed ${P} gc-seed)
+        durable_probe_test(gc gc ${P} gc)
+        durable_probe_test(gc read ${P} gc-read)
+        durable_probe_test(gc peer-reads ${Q} gc-read)
+        durable_probe_test(gc peer-gc ${Q} gc)
+        durable_probe_test(gc read-peer-gc ${P} gc-read)
+
+        durable_probe_test(processes seed ${P} seed)
+        durable_probe_test(processes concurrent ${P} concurrent ${P} ${P} ${P} ${P})
+
+        durable_probe_test(mixed seed ${P} seed)
+        durable_probe_test(mixed concurrent ${P} concurrent ${P} ${Q})
+
+        # under FIL-C a pointer into a retired mapping traps
+        durable_probe_test(stale seed ${P} seed)
+        durable_probe_test(stale stale ${P} stale)
+        durable_probe_test(peer-stale seed ${Q} seed)
+        durable_probe_test(peer-stale stale ${Q} stale)
+    endif()
+
     # Network-dependent tests using FetchContent
     if(HAVE_NETWORK)
         # Download test suites at configure time via FetchContent
@@ -1789,6 +1893,9 @@ if(CAN_TEST)
     set(TEST_DEPENDENCIES fy-tool fy-thread fy-b3sum fy-allocators)
     if(HAVE_COMPATIBLE_CHECK)
         list(APPEND TEST_DEPENDENCIES libfyaml-test)
+    endif()
+    if(HAVE_GENERIC AND NOT WIN32)
+        list(APPEND TEST_DEPENDENCIES durable-probe)
     endif()
     if(HAVE_LIBYAML)
         list(APPEND TEST_DEPENDENCIES libfyaml-parser)
