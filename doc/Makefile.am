@@ -70,6 +70,7 @@ EXTRA_DIST = \
 	canned-man/fy-tool.1 \
 	conf.py \
 	COMMENT-HANDLING.md \
+	filc-support.md \
 	generics-guide.rst \
 	index.rst \
 	intro.rst \
