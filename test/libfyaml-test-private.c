@@ -18,9 +18,15 @@
 
 #include <check.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <errno.h>
+#endif
+
 #include <libfyaml.h>
 #include "fy-parse.h"
 #include "fy-doc.h"
+#include "fy-utils.h"
 
 #include "fy-check.h"
 
@@ -189,6 +195,66 @@ START_TEST(document_accelerated)
 }
 END_TEST
 
+#ifndef _WIN32
+static void write_file(const char *path, const char *content)
+{
+	FILE *fp;
+
+	fp = fopen(path, "w");
+	ck_assert_ptr_ne(fp, NULL);
+	ck_assert_int_ge(fputs(content, fp), 0);
+	ck_assert_int_eq(fclose(fp), 0);
+}
+
+static bool file_has(const char *path, const char *content)
+{
+	char buf[64];
+	FILE *fp;
+	size_t n;
+
+	fp = fopen(path, "r");
+	if (!fp)
+		return false;
+	n = fread(buf, 1, sizeof(buf) - 1, fp);
+	fclose(fp);
+	buf[n] = '\0';
+	return !strcmp(buf, content);
+}
+
+/* a no-replace rename must never overwrite (musl has no RENAME_NOREPLACE) */
+START_TEST(rename_no_replace)
+{
+	char dir[] = "/tmp/fy-rename-XXXXXX";
+	char a[64], b[64];
+
+	ck_assert_ptr_ne(mkdtemp(dir), NULL);
+	snprintf(a, sizeof(a), "%s/a", dir);
+	snprintf(b, sizeof(b), "%s/b", dir);
+
+	write_file(a, "new");
+	write_file(b, "old");
+
+	/* the target exists: refused, and both files are untouched */
+	ck_assert_int_eq(fy_rename(a, b, true), -1);
+	ck_assert(file_has(a, "new"));
+	ck_assert(file_has(b, "old"));
+
+	/* plain rename replaces */
+	ck_assert_int_eq(fy_rename(a, b, false), 0);
+	ck_assert(file_has(b, "new"));
+	ck_assert_int_ne(access(a, F_OK), 0);
+
+	/* no-replace onto a missing target just renames */
+	ck_assert_int_eq(fy_rename(b, a, true), 0);
+	ck_assert(file_has(a, "new"));
+	ck_assert_int_ne(access(b, F_OK), 0);
+
+	unlink(a);
+	rmdir(dir);
+}
+END_TEST
+#endif
+
 void libfyaml_case_private(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -199,4 +265,7 @@ void libfyaml_case_private(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, scan_simple);
 	fy_check_testcase_add_test(ctc, parse_simple);
 	fy_check_testcase_add_test(ctc, document_accelerated);
+#ifndef _WIN32
+	fy_check_testcase_add_test(ctc, rename_no_replace);
+#endif
 }

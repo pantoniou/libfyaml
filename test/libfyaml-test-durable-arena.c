@@ -75,11 +75,14 @@ static void durable_unavailable(void)
 	ck_abort_msg("the durable arena could not be opened");
 }
 
-/* GC needs an atomic directory exchange, which only Linux and macOS have */
+/* GC needs an atomic directory exchange, which only Linux and macOS have;
+ * under FIL-C graph compaction and persistent dedup are not ported yet */
 static bool gc_unsupported(void)
 {
+#ifndef __FILC__
 	if (fy_rename_exchange_supported())
 		return false;
+#endif
 	fprintf(stderr, "SKIP: durable arena GC is not supported on this platform\n");
 	return true;
 }
