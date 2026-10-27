@@ -342,6 +342,65 @@ START_TEST(durable_builder_roundtrip)
 	rm_rf(dir);
 }
 END_TEST
+
+/* a generic root published in an arena is usable after reopening */
+START_TEST(durable_generic_refs)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	struct fy_generic_builder_cfg gb_cfg;
+	struct fy_generic_builder *gb, *heap_gb;
+	fy_generic root, foreign, v;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	da = open_test_arena(dir, TEST_REGION_BASE, 0);
+	if (!da) {
+		rm_rf(dir);
+		durable_unavailable();
+		return;
+	}
+	ck_assert(fy_generic_is_invalid(fy_generic_refs_get(da)));
+
+	memset(&gb_cfg, 0, sizeof(gb_cfg));
+	gb_cfg.flags = FYGBCF_SCOPE_LEADER;
+	gb_cfg.allocator = da;
+	gb = fy_generic_builder_create(&gb_cfg);
+	ck_assert_ptr_ne(gb, NULL);
+
+	root = fy_gb_mapping(gb, "name", "a durable root that outlives this process",
+			     "values", fy_gb_sequence(gb, 1, 2, 3));
+	ck_assert(fy_generic_is_valid(root));
+
+	/* a root whose storage is outside the arena is refused */
+	heap_gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(heap_gb, NULL);
+	foreign = fy_gb_string_create_out_of_place(heap_gb, "this string is not in the arena");
+	ck_assert_int_eq(fy_generic_refs_publish(da, fy_invalid, foreign, 0), -1);
+	fy_generic_builder_destroy(heap_gb);
+
+	ck_assert_int_eq(fy_generic_refs_publish(da, fy_invalid, root, FY_ALLOC_REFS_CHECKPOINT), 0);
+	/* a stale expected root is a lost race */
+	ck_assert_int_eq(fy_generic_refs_publish(da, fy_invalid, root, 0), 1);
+
+	fy_generic_builder_destroy(gb);
+	fy_allocator_destroy(da);
+
+	/* reopen: the root reads back whole */
+	da = open_test_arena(dir, TEST_REGION_BASE, 0);
+	ck_assert_ptr_ne(da, NULL);
+	root = fy_generic_refs_get(da);
+	ck_assert(fy_generic_is_mapping(root));
+	ck_assert_str_eq(fy_get(root, "name", ""), "a durable root that outlives this process");
+	v = fy_get(root, "values", fy_invalid);
+	ck_assert(fy_generic_is_sequence(v));
+	ck_assert_int_eq(fy_len(v), 3);
+	ck_assert_int_eq(fy_get(v, 2, -1), 3);
+
+	fy_allocator_destroy(da);
+	rm_rf(dir);
+}
+END_TEST
 #endif /* HAVE_GENERIC */
 
 START_TEST(durable_multi_chunk_grow)
@@ -1074,18 +1133,24 @@ START_TEST(refs_cross_session)
 
 	p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "refs-payload", 13, 16);
 	ck_assert_ptr_ne(p, NULL);
-	w = (uint64_t)(uintptr_t)p;
+	/* publish a handle, which stays valid across sessions and runtimes */
+	w = fy_allocator_ptr_to_handle(a, p);
+	ck_assert_uint_ne(w, 0);
+	ck_assert_ptr_eq(fy_allocator_handle_to_ptr(a, w), p);
+	ck_assert_uint_eq(fy_allocator_ptr_to_handle(a, &w), 0);	/* not arena memory */
 
 	/* checkpoint: content + head durable, ordered */
 	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, w, FY_ALLOC_REFS_CHECKPOINT), 0);
 	fy_allocator_destroy(da);
 
-	/* reopen: head word identical, and the pointed-at content intact at the
-	 * very same fixed address */
+	/* reopen: head word identical, and the content it identifies intact */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	ck_assert_ptr_ne(da, NULL);
 	ck_assert_uint_eq(fy_allocator_refs_get(da), w);
-	ck_assert_mem_eq((const void *)(uintptr_t)w, "refs-payload", 13);
+	ck_assert_mem_eq(fy_allocator_handle_to_ptr(da, w), "refs-payload", 13);
+#ifndef __FILC__
+	ck_assert_uint_eq(w, (uint64_t)(uintptr_t)p);	/* natively, the very same address */
+#endif
 
 	fy_allocator_destroy(da);
 	rm_rf(dir);
@@ -1128,7 +1193,9 @@ START_TEST(refs_checkpoint_crash)
 		p = fy_allocator_store(ca, FY_ALLOC_TAG_DEFAULT, "crash-content", 14, 16);
 		if (!p)
 			_exit(3);
-		cw = (uint64_t)(uintptr_t)p;
+		cw = fy_allocator_ptr_to_handle(ca, p);
+		if (!cw)
+			_exit(6);
 		if (fy_allocator_refs_publish(cda, 0, cw, FY_ALLOC_REFS_CHECKPOINT) != 0)
 			_exit(4);
 		if (write(pfd[1], &cw, sizeof(cw)) != (ssize_t)sizeof(cw))
@@ -1148,7 +1215,7 @@ START_TEST(refs_checkpoint_crash)
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	ck_assert_ptr_ne(da, NULL);
 	ck_assert_uint_eq(fy_allocator_refs_get(da), w);
-	ck_assert_mem_eq((const void *)(uintptr_t)w, "crash-content", 14);
+	ck_assert_mem_eq(fy_allocator_handle_to_ptr(da, w), "crash-content", 14);
 
 	fy_allocator_destroy(da);
 	rm_rf(dir);
@@ -2316,6 +2383,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #endif
 #ifdef HAVE_GENERIC
 	fy_check_testcase_add_test(ctc, durable_builder_roundtrip);
+	fy_check_testcase_add_test(ctc, durable_generic_refs);
 	fy_check_testcase_add_test(ctc, dedup_builder_cross_process);
 	fy_check_testcase_add_test(ctc, gc_basic_compaction);
 	fy_check_testcase_add_test(ctc, gc_address_stable);
