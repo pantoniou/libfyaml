@@ -30,6 +30,11 @@
 #include <pthread.h>
 #endif
 
+#if defined(__linux__)
+/* SYS_renameat2, for fy_rename() where the libc lacks RENAME_NOREPLACE (musl) */
+#include <sys/syscall.h>
+#endif
+
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -1227,8 +1232,14 @@ int fy_rename(const char *old_file, const char *new_file, bool no_replace)
 	if (neww)
 		free(neww);
 #else
-	/* portable fallback - this one will overwrite always */
-	rc = rename(old_file, new_file);
+	/* portable fallback; link() refuses an existing target atomically,
+	 * but both names exist until the old one is unlinked */
+	if (no_replace) {
+		rc = link(old_file, new_file);
+		if (!rc)
+			(void)unlink(old_file);
+	} else
+		rc = rename(old_file, new_file);
 #endif
 	return rc;
 }
