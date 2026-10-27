@@ -1314,6 +1314,72 @@ START_TEST(generic_compare)
 }
 END_TEST
 
+/* sequences order by their items, wherever their storage happens to be */
+START_TEST(generic_compare_sequence_order)
+{
+	struct fy_generic_builder *gb;
+	fy_generic a, b, empty;
+	unsigned int pass;
+	int ret;
+
+	gb = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(gb, NULL);
+
+	/* build each pair in both orders, so that allocation order (and
+	 * with it address order) can't decide the result */
+	for (pass = 0; pass < 2; pass++) {
+		if (!pass) {
+			a = fy_gb_sequence(gb, 1, 8, 3);
+			b = fy_gb_sequence(gb, 1, 2, 10);
+		} else {
+			b = fy_gb_sequence(gb, 1, 2, 10);
+			a = fy_gb_sequence(gb, 1, 8, 3);
+		}
+		ret = fy_compare(a, b);
+		ck_assert_int_gt(ret, 0);
+		ret = fy_compare(b, a);
+		ck_assert_int_lt(ret, 0);
+	}
+
+	/* a prefix orders first, whatever the items after it */
+	a = fy_gb_sequence(gb, 1, 2);
+	b = fy_gb_sequence(gb, 1, 2, 0);
+	ret = fy_compare(a, b);
+	ck_assert_int_lt(ret, 0);
+	ret = fy_compare(b, a);
+	ck_assert_int_gt(ret, 0);
+
+	/* shorter but greater at the first difference still orders after */
+	a = fy_gb_sequence(gb, 5);
+	b = fy_gb_sequence(gb, 1, 2, 3);
+	ret = fy_compare(a, b);
+	ck_assert_int_gt(ret, 0);
+	ret = fy_compare(b, a);
+	ck_assert_int_lt(ret, 0);
+
+	/* the empty sequence orders before any other */
+	empty = fy_gb_sequence(gb);
+	ret = fy_compare(empty, a);
+	ck_assert_int_lt(ret, 0);
+	ret = fy_compare(a, empty);
+	ck_assert_int_gt(ret, 0);
+	ret = fy_compare(empty, fy_seq_empty);
+	ck_assert_int_eq(ret, 0);
+
+	/* nested sequences compare by their items too */
+	a = fy_gb_sequence(gb, 1, fy_gb_sequence(gb, 2, 9));
+	b = fy_gb_sequence(gb, 1, fy_gb_sequence(gb, 2, 3, 4));
+	ret = fy_compare(a, b);
+	ck_assert_int_gt(ret, 0);
+	ret = fy_compare(b, a);
+	ck_assert_int_lt(ret, 0);
+	ret = fy_compare(a, fy_gb_sequence(gb, 1, fy_gb_sequence(gb, 2, 9)));
+	ck_assert_int_eq(ret, 0);
+
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* Test: Basic builder operation */
 START_TEST(gb_basics)
 {
@@ -8537,6 +8603,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* compare */
 	fy_check_testcase_add_test(ctc, generic_compare);
+	fy_check_testcase_add_test(ctc, generic_compare_sequence_order);
 
 	/* builders */
 	fy_check_testcase_add_test(ctc, gb_basics);
