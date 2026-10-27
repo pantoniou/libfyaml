@@ -313,6 +313,9 @@ int fy_munmap(void *addr, size_t len);
 /* portable way to find size of the current thread's stack */
 size_t fy_stack_size(void);
 
+/* yield the processor to another thread */
+void fy_sched_yield(void);
+
 /*
  * base64 (RFC 4648), e.g. "PNG" is "UE5H"; with line_len a newline ends
  * every line_len characters and the last line, e.g. for a literal block

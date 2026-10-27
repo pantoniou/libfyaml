@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/resource.h>
 #include <pthread.h>
+#include <sched.h>
 #endif
 
 #if defined(__linux__)
@@ -1977,6 +1978,15 @@ size_t fy_stack_size(void)
 
 	/* nothing worked */
 	return 0;
+}
+
+void fy_sched_yield(void)
+{
+#ifndef _WIN32
+	sched_yield();
+#else
+	SwitchToThread();
+#endif
 }
 
 static const char fy_base64_chars[] =
