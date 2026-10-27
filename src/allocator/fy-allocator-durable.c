@@ -41,47 +41,95 @@ static const uint8_t fy_durable_boot_magic[8] = {
 	'O', 'B', 'A', 'R', 'U', 'D', 'F', 'Y'
 };
 
+#ifdef __FILC__
+_Static_assert(sizeof(uintptr_t) == sizeof(struct fy_durable_chunk_hdr *),
+	       "durable link words must retain their on-disk width");
+_Static_assert(sizeof(FY_ATOMIC(uintptr_t)) ==
+	       sizeof(FY_ATOMIC(struct fy_durable_chunk_hdr *)),
+	       "integer atomic links must retain their on-disk layout");
+#endif
+
 static inline void *fy_durable_chunk_base(struct fy_durable_region *rg, uint64_t gen)
 {
 	return (char *)rg->region + (gen << rg->chunk_shift);
 }
 
-/* persisted links hold logical addresses; natively they are the runtime ones */
+/* persisted links hold logical addresses; natively they are the runtime ones.
+ * Under FIL-C they are accessed as integers, since a stored capability
+ * would be process local */
 static inline uintptr_t fy_durable_encode(struct fy_durable_region *rg, const void *p)
 {
+#ifdef __FILC__
+	if (!p)
+		return 0;
+	return rg->region_base + ((uintptr_t)p - (uintptr_t)rg->region);
+#else
 	(void)rg;
 	return (uintptr_t)p;
+#endif
 }
 
 static inline struct fy_durable_chunk_hdr *
 fy_durable_decode(struct fy_durable_region *rg, uintptr_t word)
 {
+#ifdef __FILC__
+	uintptr_t off;
+
+	if (!word || word < rg->region_base)
+		return NULL;
+	off = word - rg->region_base;
+	if (!rg->region || off > rg->region_size ||
+	    sizeof(struct fy_durable_chunk_hdr) > rg->region_size - off ||
+	    off % rg->chunk_size != (off < rg->chunk_size ? rg->chunk0_reserve : 0))
+		return NULL;
+	return (void *)((char *)rg->region + off);
+#else
 	(void)rg;
 	return (void *)word;
+#endif
 }
 
 static inline struct fy_durable_chunk_hdr *
 fy_durable_link_load(struct fy_durable_region *rg,
 		     FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot)
 {
+#ifdef __FILC__
+	return fy_durable_decode(rg, fy_atomic_load((FY_ATOMIC(uintptr_t) *)slot));
+#else
 	(void)rg;
 	return fy_atomic_load(slot);
+#endif
 }
 
 static inline void fy_durable_link_store(struct fy_durable_region *rg,
 		FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot,
 		struct fy_durable_chunk_hdr *p)
 {
+#ifdef __FILC__
+	fy_atomic_store((FY_ATOMIC(uintptr_t) *)slot, fy_durable_encode(rg, p));
+#else
 	(void)rg;
 	fy_atomic_store(slot, p);
+#endif
 }
 
 static inline bool fy_durable_link_cas(struct fy_durable_region *rg,
 		FY_ATOMIC(struct fy_durable_chunk_hdr *) *slot,
 		struct fy_durable_chunk_hdr **expected, struct fy_durable_chunk_hdr *desired)
 {
+#ifdef __FILC__
+	uintptr_t e = fy_durable_encode(rg, *expected);
+	bool ok;
+
+	ok = fy_atomic_compare_exchange_strong((FY_ATOMIC(uintptr_t) *)slot,
+					       &e, fy_durable_encode(rg, desired));
+	if (!ok)
+		*expected = fy_durable_decode(rg, e);
+	return ok;
+#else
 	(void)rg;
 	return fy_atomic_compare_exchange_strong(slot, expected, desired);
+#endif
 }
 
 /* byte offset of a chunk's allocation header within the chunk */
@@ -581,6 +629,13 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg,
 {
 	void *p;
 
+#ifdef __FILC__
+	/* mmap() refuses an address hint; region_base stays the logical base */
+	p = fy_mmap(NULL, rg->region_size, PROT_NONE,
+		    FY_MMAP_ANON | FY_MMAP_NORESERVE, -1, 0);
+	if (p == MAP_FAILED)
+		return -1;
+#else
 	p = fy_mmap((void *)(uintptr_t)rg->region_base, rg->region_size, PROT_NONE,
 		    FY_MMAP_ANON | FY_MMAP_FIXED_NOREPLACE | FY_MMAP_NORESERVE,
 		    -1, 0);
@@ -594,6 +649,7 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg,
 			(unsigned long long)rg->region_base, rg->prefix, p);
 		return -1;
 	}
+#endif
 	/* persisted addresses are logical; natively they are the runtime ones */
 	if (fy_range_track_logical(p, rg->region_size, owner, tag,
 				   (uintptr_t)rg->region_base)) {
