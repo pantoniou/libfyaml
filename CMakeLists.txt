@@ -152,6 +152,23 @@ option(ENABLE_REFLECTION "Enable reflection subsystem (requires statement expres
 option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
 option(ENABLE_LIBCLANG_DLOPEN "Load libclang on the first use of reflection, not at start-up" ON)
 
+# FIL-C (https://fil-c.org) is a memory safe C; nothing built by the host
+# compiler can be linked into its programs, so host packages are not
+# looked for and the dependencies that need them are off
+check_c_source_compiles("
+#ifndef __FILC__
+#error not FIL-C
+#endif
+int main(void) { return 0; }
+" HAVE_FILC)
+if(HAVE_FILC)
+    message(STATUS "FIL-C detected; host packages, SIMD, reflection and Python bindings are off")
+    set(ENABLE_PORTABLE_TARGET ON CACHE BOOL "Disabled by FIL-C" FORCE)
+    set(ENABLE_REFLECTION OFF CACHE BOOL "Disabled by FIL-C" FORCE)
+    set(ENABLE_LIBCLANG OFF CACHE BOOL "Disabled by FIL-C" FORCE)
+    set(ENABLE_PYTHON_BINDINGS OFF CACHE BOOL "Disabled by FIL-C" FORCE)
+endif()
+
 # Path to LLVM installation (optional, overrides automatic detection)
 set(LLVM_ROOT "" CACHE PATH "Path to LLVM installation directory (e.g., /usr/lib/llvm-15)")
 
@@ -243,7 +260,7 @@ check_c_source_compiles("
 " HAVE_DECL_ENVIRON)
 
 # find PkgConfig
-if(NOT CMAKE_CROSSCOMPILING)
+if(NOT CMAKE_CROSSCOMPILING AND NOT HAVE_FILC)
     find_package(PkgConfig)
 endif()
 
@@ -251,7 +268,9 @@ endif()
 
 # libyaml detection - try CMake config first, then pkg-config
 set(HAVE_LIBYAML 0)
-find_package(yaml QUIET CONFIG)
+if(NOT HAVE_FILC)
+    find_package(yaml QUIET CONFIG)
+endif()
 if(yaml_FOUND)
     set(HAVE_LIBYAML 1)
     # CMake config found, use imported target
@@ -289,7 +308,7 @@ endfunction()
 set(HAVE_CHECK 0)
 set(HAVE_COMPATIBLE_CHECK 0)
 if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
-    if(NOT CMAKE_CROSSCOMPILING)
+    if(NOT CMAKE_CROSSCOMPILING AND NOT HAVE_FILC)
         find_package(check QUIET CONFIG)
         if(check_FOUND)
             set(HAVE_CHECK 1)
@@ -2083,7 +2102,7 @@ if(LIBFYAML_ENABLE_TAGS)
 endif()
 
 # Python core bindings
-if(NOT CMAKE_CROSSCOMPILING)
+if(NOT CMAKE_CROSSCOMPILING AND NOT HAVE_FILC)
     # Development.SABIModule is needed for Python3_add_library(USE_SABI ...);
     # it was added in CMake 3.26. Request it conditionally so older CMake
     # (which still works for non-abi3 fallback builds) doesn't error out.
