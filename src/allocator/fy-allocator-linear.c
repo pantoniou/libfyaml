@@ -71,6 +71,7 @@ static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 		if (fy_range_register(buf, cfg->size, &la->a, FY_ALLOC_TAG_DEFAULT))
 			goto err_out;
 		la->range_registered = true;
+		la->a.flags |= FYAF_REGISTERS_RANGES;
 	}
 
 	return 0;

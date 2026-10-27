@@ -29,6 +29,11 @@
 #include "fy-allocator.h"
 #include "fy-range-registry.h"
 
+#ifdef HAVE_GENERIC
+#include <libfyaml/libfyaml-generic.h>
+#include "fy-generic.h"
+#endif
+
 #include "fy-check.h"
 
 /* owners are only compared, never dereferenced */
@@ -305,6 +310,88 @@ START_TEST(range_allocators)
 }
 END_TEST
 
+#ifdef HAVE_GENERIC
+
+/* does the registry attribute v to the memory owner of (gb's allocator, tag)? */
+static bool builder_owns_by_registry(struct fy_generic_builder *gb, fy_generic v)
+{
+	struct fy_allocator *owner;
+	struct fy_range_info info;
+	int owner_tag;
+
+	fy_allocator_resolve_owner(gb->allocator, gb->alloc_tag, &owner, &owner_tag);
+	return fy_range_lookup_owner(fy_generic_resolve_ptr(v), owner, &info) &&
+	       info.tag == owner_tag;
+}
+
+START_TEST(range_builders)
+{
+	static const char long_str[] = "a string long enough to be stored out of place";
+	static const bool registered[5] = { true, true, true, false, false };
+	static const char * const owner_names[5] = { "mremap", "mremap", "linear", "malloc", "linear" };
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb[5], *other;
+	struct fy_allocator *linear, *malloc_a, *owner;
+	struct fy_linear_allocator_cfg lcfg;
+	char stack_buf[16384];
+	fy_generic v, vo;
+	unsigned int i;
+	int owner_tag;
+
+	memset(&lcfg, 0, sizeof(lcfg));
+	lcfg.size = 65536;
+	linear = fy_allocator_create("linear", &lcfg);
+	malloc_a = fy_allocator_create("malloc", NULL);
+	ck_assert_ptr_ne(linear, NULL);
+	ck_assert_ptr_ne(malloc_a, NULL);
+
+	other = fy_generic_builder_create(NULL);
+	ck_assert_ptr_ne(other, NULL);
+	vo = fy_gb_string_create_out_of_place(other, long_str);
+	ck_assert(fy_generic_is_valid(vo));
+
+	memset(&cfg, 0, sizeof(cfg));
+	gb[0] = fy_generic_builder_create(&cfg);			/* auto -> mremap */
+	cfg.flags = FYGBCF_DEDUP_ENABLED;
+	gb[1] = fy_generic_builder_create(&cfg);			/* auto -> dedup -> mremap */
+	cfg.flags = 0;
+	cfg.allocator = linear;
+	gb[2] = fy_generic_builder_create(&cfg);			/* linear */
+	cfg.allocator = malloc_a;
+	gb[3] = fy_generic_builder_create(&cfg);			/* malloc, unregistered */
+	gb[4] = fy_generic_builder_create_in_place(0, NULL, stack_buf, sizeof(stack_buf));
+
+	for (i = 0; i < 5; i++) {
+		ck_assert_ptr_ne(gb[i], NULL);
+
+		/* the layers resolve down to the allocator owning the memory */
+		fy_allocator_resolve_owner(gb[i]->allocator, gb[i]->alloc_tag, &owner, &owner_tag);
+		ck_assert_str_eq(owner->name, owner_names[i]);
+		ck_assert(!!(owner->flags & FYAF_REGISTERS_RANGES) == registered[i]);
+
+		v = fy_gb_string_create_out_of_place(gb[i], long_str);
+		ck_assert(fy_generic_is_valid(v));
+		ck_assert(fy_generic_builder_contains(gb[i], v));
+		ck_assert(!fy_generic_builder_contains(gb[i], vo));
+
+		/* where the owner registers its memory, the registry gives the
+		 * same answer as the builder */
+		if (registered[i]) {
+			ck_assert(builder_owns_by_registry(gb[i], v));
+			ck_assert(!builder_owns_by_registry(gb[i], vo));
+		}
+	}
+
+	for (i = 0; i < 4; i++)
+		fy_generic_builder_destroy(gb[i]);
+	fy_generic_builder_destroy(other);
+	fy_allocator_destroy(linear);
+	fy_allocator_destroy(malloc_a);
+}
+END_TEST
+
+#endif
+
 #ifndef _WIN32
 
 #define STRESS_WRITERS		3
@@ -430,6 +517,9 @@ void libfyaml_case_private_range(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, range_resize);
 	fy_check_testcase_add_test(ctc, range_many);
 	fy_check_testcase_add_test(ctc, range_allocators);
+#ifdef HAVE_GENERIC
+	fy_check_testcase_add_test(ctc, range_builders);
+#endif
 #ifndef _WIN32
 	fy_check_testcase_add_test(ctc, range_threads);
 #endif

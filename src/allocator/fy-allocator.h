@@ -55,6 +55,10 @@ struct fy_allocator_ops {
 	struct fy_allocator_info *(*get_info)(struct fy_allocator *a, int tag);
 	enum fy_allocator_cap_flags (*get_caps)(struct fy_allocator *a);	/* Get capability flags (FYACF_*) */
 	bool (*contains)(struct fy_allocator *a, int tag, const void *ptr);
+	/* the allocator and tag that hand out the memory for (a, tag), when
+	 * a layers on a parent (optional; NULL if a owns its memory) */
+	int (*get_owner)(struct fy_allocator *a, int tag,
+			 struct fy_allocator **ownerp, int *owner_tagp);
 	/* durable snapshot support (optional; NULL if unsupported) */
 	int (*snapshot)(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap);
 	void (*snapshot_release)(struct fy_allocator *a, struct fy_allocator_snapshot *snap);
@@ -167,6 +171,7 @@ enum fy_allocator_flags {
 	FYAF_KEEP_STATS = FY_BIT(0),
 	FYAF_TRACE	= FY_BIT(1),
 	FYAF_OWNS_PARENT = FY_BIT(2),
+	FYAF_REGISTERS_RANGES = FY_BIT(3),	/* all its memory is in the range registry */
 };
 
 struct fy_allocator {
@@ -356,6 +361,23 @@ static inline bool
 fy_allocator_contains_nocheck(struct fy_allocator *a, int tag, const void *ptr)
 {
 	return a->ops->contains(a, tag, ptr);
+}
+
+/* follow the layers down to the allocator and tag that own the memory
+ * handed out for (a, tag) */
+static inline void
+fy_allocator_resolve_owner(struct fy_allocator *a, int tag,
+			   struct fy_allocator **ownerp, int *owner_tagp)
+{
+	struct fy_allocator *pa;
+	int ptag;
+
+	while (a->ops->get_owner && !a->ops->get_owner(a, tag, &pa, &ptag)) {
+		a = pa;
+		tag = ptag;
+	}
+	*ownerp = a;
+	*owner_tagp = tag;
 }
 
 static inline int

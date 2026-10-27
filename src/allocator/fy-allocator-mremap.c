@@ -336,8 +336,10 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 
 err_restore:
 		/* the arena kept its size; growing back to it cannot overlap,
-		 * and if it runs out of memory the tail just stays unregistered */
-		(void)fy_range_resize(mran, &mra->a, mran->size);
+		 * but it may run out of memory. Nothing may be allocated from an
+		 * unregistered tail, so then retire the arena. */
+		if (fy_range_resize(mran, &mra->a, mran->size))
+			fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
 		return -1;
 
 	default:
@@ -684,6 +686,7 @@ static int fy_mremap_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 	mra = container_of(a, struct fy_mremap_allocator, a);
 	memset(mra, 0, sizeof(*mra));
 	mra->a.name = "mremap";
+	mra->a.flags |= FYAF_REGISTERS_RANGES;	/* every arena is registered */
 	mra->a.ops = &fy_mremap_allocator_ops;
 	mra->a.parent = parent;
 	mra->a.parent_tag = parent_tag;

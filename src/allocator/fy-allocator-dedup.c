@@ -1926,6 +1926,23 @@ static bool fy_dedup_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return false;
 }
 
+static int fy_dedup_get_owner(struct fy_allocator *a, int tag,
+			      struct fy_allocator **ownerp, int *owner_tagp)
+{
+	struct fy_dedup_allocator *da;
+	struct fy_dedup_tag *dt;
+
+	da = container_of(a, struct fy_dedup_allocator, a);
+	dt = fy_dedup_tag_from_tag(da, tag);
+	if (!dt)
+		return -1;
+
+	/* content (the values) lives in the parent's content tag */
+	*ownerp = da->parent_allocator;
+	*owner_tagp = dt->content_tag;
+	return 0;
+}
+
 static int fy_dedup_op_sync(struct fy_allocator *a)
 {
 	return fy_allocator_sync(fy_allocator_get_parent(a));
@@ -1993,6 +2010,7 @@ const struct fy_allocator_ops fy_dedup_allocator_ops = {
 	.get_info = fy_dedup_get_info,
 	.get_caps = fy_dedup_get_caps,
 	.contains = fy_dedup_contains,
+	.get_owner = fy_dedup_get_owner,
 	.snapshot = fy_dedup_snapshot,
 	.snapshot_release = fy_dedup_snapshot_release,
 	.sync = fy_dedup_op_sync,

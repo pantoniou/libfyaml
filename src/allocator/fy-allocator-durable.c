@@ -783,6 +783,7 @@ static int fy_durable_setup(struct fy_allocator *a, struct fy_allocator *parent,
 	da = container_of(a, struct fy_durable_allocator, a);
 	memset(da, 0, sizeof(*da));
 	da->a.name = "durable";
+	da->a.flags |= FYAF_REGISTERS_RANGES;	/* both regions are registered */
 	da->a.ops = &fy_durable_allocator_ops;
 	da->a.parent = parent;
 	da->a.parent_tag = parent_tag;
