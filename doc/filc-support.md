@@ -15,13 +15,11 @@ This guide covers FIL-C 0.687 on Linux x86-64.
 | Parser, document tree, emitter | Works |
 | Generics (builders, ops, emit, images, parse cache) | Works |
 | Allocators (linear, malloc, mremap, dedup, auto) | Works |
-| Durable arenas | Work, including sharing arenas with native processes |
-| Durable arenas with persistent dedup, durable GC | Not supported yet (`ENOTSUP`) |
+| Durable arenas, persistent dedup, durable GC | Work, including sharing arenas with native processes |
 | Reflection (libclang) | Not tested; build it without |
 | Python bindings | Not built |
 
-The full test suite passes except five durable-arena tests that need the
-two unsupported features above (see [Expected test results](#expected-test-results)).
+The full test suite passes.
 
 ## Getting the toolchain
 
@@ -109,25 +107,14 @@ LD_LIBRARY_PATH=$FILC/pizfix/lib CK_FORK=no ./libfyaml-test generic_compare
 
 ### Expected test results
 
-All tests pass except these five, which need persistent dedup or raw
-pointers published as the refs head of a durable arena:
-
-```
-libfyaml/durable-arena/durable_combined_no_index
-libfyaml/durable-arena/durable_separate_index_cross_session
-libfyaml/durable-arena/durable_separate_index_grow
-libfyaml/durable-arena/refs_cross_session
-libfyaml/durable-arena/refs_checkpoint_crash
-```
-
-Some tests print `SKIP:` under FIL-C (fixed-address reservations, user
-namespaces, durable GC, and two mremap stress tests that trip a FIL-C
-runtime bug).
+All tests pass. Some print `SKIP:` under FIL-C: fixed-address reservations,
+user namespaces, and two mremap stress tests that trip a FIL-C runtime bug.
 
 ### Cross-runtime durable tests
 
 `test/filc/run-durable.py` checks that FIL-C and native processes can share
-durable arenas (reading, appending, concurrent writers, checkpoints). It
+durable arenas (reading, appending, concurrent writers, checkpoints,
+persistent dedup, compaction). It
 needs a FIL-C build and a native build of the shared library:
 
 ```sh
@@ -160,20 +147,21 @@ values natively.
   by `fy_generic_resolve_ptr()` / `fy_generic_resolve_collection_ptr()`.
   Under FIL-C these call into the library, which recovers the pointer with
   its capability.
-- **Range registry** (`src/allocator/fy-range-registry.[ch]`). Allocators
-  register the memory they obtain (linear buffers, mremap arenas, durable
-  regions) together with a pointer that carries its capability. Resolving an
-  address in a registered range rebuilds the pointer from it. Lookups and
-  updates take no locks. Natively the registry also maps an address back to
-  its owning allocator.
+- **Range registry** (`src/allocator/fy-range-registry.[ch]`). Under FIL-C,
+  allocators register the memory they obtain (linear buffers, mremap
+  arenas, durable regions) together with a pointer that carries its
+  capability. Resolving an address in a registered range rebuilds the
+  pointer from it. Lookups and updates take no locks. Natively nothing
+  registers.
 - **Other memory** (single malloc objects, `alloca` storage, static
   literals, in-place builders on stack buffers) goes through a FIL-C
   `zexact_ptrtable` when a value is encoded.
 - **Durable arenas.** The region is reserved wherever the runtime places it.
   Persisted data keeps using the configured `region_base` as a *logical*
-  address: chunk links, and generic values stored in the arena, hold logical
-  addresses, which the registry translates. Natively the logical address is
-  the runtime address, so FIL-C and native processes share the same files.
+  address: chunk links, the persistent dedup index and generic values stored
+  in the arena hold logical addresses, which the registry translates.
+  Natively the logical address is the runtime address, so FIL-C and native
+  processes share the same files.
 - **Relocation** (generic images, builder linearization, parse cache) derives
   relocated pointers from the destination buffer instead of integer
   arithmetic, and the parse cache always loads through its copying path.
@@ -181,11 +169,11 @@ values natively.
 ## Limitations
 
 - **Raw pointers do not survive a durable reopen.** Under FIL-C the arena
-  lands at a different address in every process. Publish generic values (or
-  logical addresses) as the refs head, not runtime pointers.
+  lands at a different address in every process. Publish a root generic
+  with `fy_generic_refs_publish()`, or a handle from
+  `fy_allocator_ptr_to_handle()`, as the refs head, never a runtime pointer.
 - **No fixed-address mappings.** `mmap` with a non-NULL address hint is
   refused, so nothing can be placed at a chosen address.
-- **Persistent dedup and durable GC** return `ENOTSUP`.
 - **Growing an mremap arena in place never succeeds**; the allocator makes
   new arenas instead, which costs some memory.
 - **Speed.** FIL-C is roughly 5 to 7 times slower than a native release
