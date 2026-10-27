@@ -1295,7 +1295,12 @@ START_TEST(generic_compare)
 	ret = fy_compare(maph1, maph2);
 	ck_assert(ret == 0);
 
-	/* mapping inequality (reorders) */
+	/*
+	 * mapping inequality (reorders): unequal mappings order by address,
+	 * which is undefined; native stack layout happens to give > 0, but
+	 * FIL-C lays out stack storage differently, so don't check it there
+	 */
+#ifndef __FILC__
 	v1 = fy_local_mapping("foo", 10, "bar", 101);
 	v2 = fy_local_mapping("bar", 100, "foo", 10);
 	ret = fy_compare(v1, v2);
@@ -1308,6 +1313,7 @@ START_TEST(generic_compare)
 	ck_assert(ret > 0);
 	ret = fy_compare(maph1, maph2);
 	ck_assert(ret > 0);
+#endif
 
 	/* NOTE: GCC miscompiles the complicated compare cast sequences */
 	/* file a bug report? */
