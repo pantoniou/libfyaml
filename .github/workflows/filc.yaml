@@ -1,0 +1,87 @@
+name: FIL-C CI
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'       && format('FIL-C CI · PR #{0}', github.event.pull_request.number) ||
+      github.event_name == 'workflow_dispatch'  && 'FIL-C CI · manual' ||
+      format('FIL-C CI · {0} · {1}', github.ref_name, github.event.head_commit.message) }}
+
+on:
+  push:
+    branches: [ master, stable, devel ]
+  pull_request:
+    branches: [ master, stable, devel ]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
+  FILC_VERSION: "0.687"
+  FILC_SHA256: aab538401f78a47ab261ee79afed8c6b99e1d4848e263ae159a75b03c1288da1
+
+jobs:
+  filc:
+    name: FIL-C · ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+    - name: "Git Sane LF"
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
+    - name: "Checkout"
+      uses: actions/checkout@v5
+
+    - name: "Install dependencies"
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install --no-install-recommends -y check linux-libc-dev
+
+    - name: "Cache FIL-C"
+      uses: actions/cache@v4
+      with:
+        path: filc-dist
+        key: filc-${{ env.FILC_VERSION }}
+
+    - name: "Install FIL-C"
+      run: |
+        tarball=filc-dist/filc-$FILC_VERSION-linux-x86_64.tar.xz
+        if [ ! -f $tarball ]; then
+          mkdir -p filc-dist
+          curl -fsSL -o $tarball \
+            https://github.com/pizlonator/fil-c/releases/download/v$FILC_VERSION/filc-$FILC_VERSION-linux-x86_64.tar.xz
+        fi
+        echo "$FILC_SHA256  $tarball" | sha256sum -c
+        tar xJf $tarball -C "$RUNNER_TEMP"
+        FILC="$RUNNER_TEMP/filc-$FILC_VERSION-linux-x86_64"
+        # the kernel headers, which setup.sh would link
+        mkdir -p "$FILC/pizfix/os-include"
+        ln -sfn /usr/include/linux "$FILC/pizfix/os-include/linux"
+        ln -sfn /usr/include/x86_64-linux-gnu/asm "$FILC/pizfix/os-include/asm"
+        ln -sfn /usr/include/asm-generic "$FILC/pizfix/os-include/asm-generic"
+        echo "FILC=$FILC" >> "$GITHUB_ENV"
+
+    # a native probe, so that the durable arena tests also run across runtimes
+    - name: "Build the native durable-probe"
+      run: |
+        cmake -S . -B build-native -DENABLE_NETWORK=OFF \
+          -DENABLE_REFLECTION=OFF -DENABLE_PYTHON_BINDINGS=OFF
+        cmake --build build-native --target durable-probe -j$(nproc)
+
+    - name: "Configure"
+      run: |
+        cmake -S . -B build-filc \
+          -DCMAKE_C_COMPILER="$FILC/build/bin/clang" \
+          -DCMAKE_CXX_COMPILER="$FILC/build/bin/clang++" \
+          -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=-O1 \
+          -DENABLE_NETWORK=OFF \
+          -DDURABLE_PEER_PROBE="$PWD/build-native/test/durable-probe"
+
+    - name: "Build"
+      run: cmake --build build-filc -j$(nproc)
+
+    - name: "Test"
+      run: |
+        ulimit -c 0
+        cd build-filc
+        LD_LIBRARY_PATH="$FILC/pizfix/lib" ctest -j$(nproc) --output-on-failure
