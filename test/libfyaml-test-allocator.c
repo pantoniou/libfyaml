@@ -26,6 +26,11 @@
 #include "fy-allocator.h"
 #include "fy-allocator-dedup.h"
 
+#ifndef _WIN32
+#include <pthread.h>
+#include "fy-atomics.h"
+#endif
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) ((sizeof(x)/sizeof((x)[0])))
 #endif
@@ -1015,6 +1020,110 @@ START_TEST(allocator_dedup_external_attach)
 }
 END_TEST
 
+#ifndef _WIN32
+
+/*
+ * Trimming an mremap tag while other threads allocate from it must not
+ * unmap memory that an allocation lands in: allocate small blocks from
+ * several threads, fill each with its own pattern, and keep trimming;
+ * every block must still hold its pattern at the end.
+ */
+#define TRIM_THREADS	4
+#define TRIM_BLOCKS	20000
+
+struct trim_stress {
+	struct fy_allocator *a;
+	int tag;
+	FY_ATOMIC(int) stop;
+};
+
+struct trim_worker {
+	struct trim_stress *ts;
+	unsigned int id;
+	unsigned char **blocks;
+	int fail;
+};
+
+static size_t trim_block_size(unsigned int i)
+{
+	return 24 + (i % 7) * 40;
+}
+
+static void *trim_alloc_worker(void *arg)
+{
+	struct trim_worker *w = arg;
+	unsigned int i;
+	size_t sz;
+
+	for (i = 0; i < TRIM_BLOCKS; i++) {
+		sz = trim_block_size(i);
+		w->blocks[i] = fy_allocator_alloc(w->ts->a, w->ts->tag, sz, 8);
+		if (!w->blocks[i]) {
+			w->fail = 1;
+			break;
+		}
+		memset(w->blocks[i], (int)(w->id * 31 + i) & 0xff, sz);
+	}
+	return NULL;
+}
+
+static void *trim_trimmer(void *arg)
+{
+	struct trim_stress *ts = arg;
+
+	while (!fy_atomic_load(&ts->stop))
+		fy_allocator_trim_tag(ts->a, ts->tag);
+	return NULL;
+}
+
+START_TEST(allocator_mremap_concurrent_trim)
+{
+	struct fy_mremap_allocator_cfg cfg;
+	struct trim_stress ts;
+	struct trim_worker w[TRIM_THREADS];
+	pthread_t th[TRIM_THREADS], trimmer;
+	unsigned int k, i, j;
+	size_t sz;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.minimum_arena_size = 64 << 10;	/* small arenas: frequent grows and trims */
+	cfg.arena_type = FYMRAT_MMAP;
+	ts.a = fy_allocator_create("mremap", &cfg);
+	ck_assert_ptr_ne(ts.a, NULL);
+	ts.tag = fy_allocator_get_tag(ts.a);
+	ck_assert_int_ge(ts.tag, 0);
+	fy_atomic_store(&ts.stop, 0);
+
+	ck_assert_int_eq(pthread_create(&trimmer, NULL, trim_trimmer, &ts), 0);
+	for (k = 0; k < TRIM_THREADS; k++) {
+		w[k].ts = &ts;
+		w[k].id = k;
+		w[k].fail = 0;
+		w[k].blocks = calloc(TRIM_BLOCKS, sizeof(*w[k].blocks));
+		ck_assert_ptr_ne(w[k].blocks, NULL);
+		ck_assert_int_eq(pthread_create(&th[k], NULL, trim_alloc_worker, &w[k]), 0);
+	}
+	for (k = 0; k < TRIM_THREADS; k++)
+		pthread_join(th[k], NULL);
+	fy_atomic_store(&ts.stop, 1);
+	pthread_join(trimmer, NULL);
+
+	for (k = 0; k < TRIM_THREADS; k++) {
+		ck_assert_int_eq(w[k].fail, 0);
+		for (i = 0; i < TRIM_BLOCKS; i++) {
+			sz = trim_block_size(i);
+			for (j = 0; j < sz; j++)
+				ck_assert_uint_eq(w[k].blocks[i][j], (k * 31 + i) & 0xff);
+		}
+		free(w[k].blocks);
+	}
+
+	fy_allocator_destroy(ts.a);
+}
+END_TEST
+
+#endif
+
 void libfyaml_case_allocator(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -1042,5 +1151,8 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_multi_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_deep_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_concurrent_store);
+#ifndef _WIN32
+	fy_check_testcase_add_test(ctc, allocator_mremap_concurrent_trim);
+#endif
 	fy_check_testcase_add_test(ctc, allocator_dedup_external_attach);
 }
