@@ -65,7 +65,8 @@ fy_generic_arena_relocate_ptr_internal(const struct fy_arena_reloc *arenas,
 
 	tag = v.v & mask;
 	off = (uintptr_t)p - arena->src.i;
-	v.v = (fy_generic_value)(arena->dst.i + off) | tag;
+	/* derive from the destination pointer, keeping its provenance */
+	v.v = fy_generic_encode_ptr((const char *)arena->dst.p + off, tag);
 	return v;
 }
 

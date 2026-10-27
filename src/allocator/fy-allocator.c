@@ -939,13 +939,14 @@ void *fy_arena_reloc_ptr(const struct fy_arena_reloc *arenas, unsigned int count
 
 	arena = fy_arena_locate_by_src(arenas, count, ptr);
 	if (arena) {
+		/* derive from the destination pointer, keeping its provenance */
 		off = (uintptr_t)ptr - arena->src.i;
-		return (void *)(arena->dst.i + off);
+		return (char *)arena->dst.p + off;
 	}
 
 	/* already pointing at the destination image (fixed-base no-op) */
 	if (ptr >= start && ptr < (const void *)((const char *)start + size))
-		return (void *)(uintptr_t)ptr;
+		return (void *)ptr;
 
 	/* not in any source range and not in the destination - error */
 	return NULL;
