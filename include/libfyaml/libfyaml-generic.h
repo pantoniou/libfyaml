@@ -664,6 +664,15 @@ bool fy_generic_is_direct_invalid(const fy_generic v)
 	return v.v == fy_invalid_value;
 }
 
+#ifdef __FILC__
+/* under FIL-C an integer cast to a pointer has no capability; the library
+ * encodes logical addresses and resolves them to capable pointers */
+fy_generic_value fy_generic_filc_encode_ptr(const void *p, fy_generic_value tag)
+	FY_EXPORT;
+const void *fy_generic_filc_resolve_ptr(fy_generic_value addr)
+	FY_EXPORT;
+#endif
+
 /**
  * fy_generic_resolve_ptr() - Extract the raw pointer from a non-collection generic.
  *
@@ -682,7 +691,11 @@ const void *fy_generic_resolve_ptr(fy_generic ptr)
 	/* clear the bottom 3 bits (all pointers are 8 byte aligned) */
 	/* note collections have the bit 3 cleared too, so it's 16 byte aligned */
 	ptr.v &= ~(uintptr_t)FY_INPLACE_TYPE_MASK;
+#ifdef __FILC__
+	return fy_generic_filc_resolve_ptr(ptr.v);
+#else
 	return (const void *)ptr.v;
+#endif
 }
 
 /**
@@ -702,7 +715,11 @@ const void *fy_generic_resolve_collection_ptr(fy_generic ptr)
 	/* clear the boot 3 bits (all pointers are 8 byte aligned) */
 	/* note collections have the bit 3 cleared too, so it's 16 byte aligned */
 	ptr.v &= ~(uintptr_t)FY_COLLECTION_MASK;
+#ifdef __FILC__
+	return fy_generic_filc_resolve_ptr(ptr.v);
+#else
 	return (const void *)ptr.v;
+#endif
 }
 
 /**
@@ -719,7 +736,11 @@ const void *fy_generic_resolve_collection_ptr(fy_generic ptr)
 static inline FY_ALWAYS_INLINE
 fy_generic_value fy_generic_encode_ptr(const void *p, fy_generic_value tag)
 {
+#ifdef __FILC__
+	return fy_generic_filc_encode_ptr(p, tag);
+#else
 	return (fy_generic_value)(uintptr_t)p | tag;
+#endif
 }
 
 /**

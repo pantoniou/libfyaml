@@ -23,7 +23,11 @@ string(REPLACE "\n" ";" INPUT_HEADERS "${HEADER_LIST_CONTENT}")
 # Functions declared with FY_EXPORT but not implemented as standalone functions
 # (they may be inline, macros, or not implemented)
 # These are determined by linker errors - if the symbol is unresolved, add it here
-set(EXCLUDE_FUNCTIONS)
+set(EXCLUDE_FUNCTIONS
+    # only under FIL-C, which is never Windows
+    fy_generic_filc_encode_ptr
+    fy_generic_filc_resolve_ptr
+)
 
 # Read and concatenate all header files
 set(HEADER_CONTENT "")

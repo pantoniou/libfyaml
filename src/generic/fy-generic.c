@@ -25,6 +25,7 @@
 
 #include "fy-allocator.h"
 #include "fy-allocator-linear.h"
+#include "fy-range-registry.h"
 #include "fy-thread.h"
 
 #include "xxhash.h"
@@ -3291,6 +3292,28 @@ fy_generic fy_gb_copy_out_of_place(struct fy_generic_builder *gb, fy_generic v)
 	return fy_gb_internalize(gb, v);
 }
 
+/* move an out-of-place value by d; under FIL-C a result in [start, end)
+ * is derived from start, keeping the destination's capability */
+static inline FY_ALWAYS_INLINE fy_generic
+fy_generic_relocate_value(const void *start, const void *end, fy_generic v, ptrdiff_t d,
+			  fy_generic_value mask, fy_generic_value tag)
+{
+	uintptr_t a;
+
+	a = (uintptr_t)((ptrdiff_t)(v.v & ~mask) + d);
+#ifdef __FILC__
+	if (a - (uintptr_t)start < (uintptr_t)end - (uintptr_t)start) {
+		v.v = fy_generic_encode_ptr((const char *)start + (a - (uintptr_t)start), tag);
+		return v;
+	}
+#else
+	(void)start;
+	(void)end;
+#endif
+	v.v = (fy_generic_value)a | tag;
+	return v;
+}
+
 fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
 {
 	const void *p;
@@ -3315,7 +3338,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_collection_ptr(v, d).v | FY_INDIRECT_V;
+		v = fy_generic_relocate_value(start, end, v, d, FY_COLLECTION_MASK, FY_INDIRECT_V);
 		vp = (fy_generic *)fy_generic_resolve_ptr(v);
 
 		flags = (uint64_t)(vp->v & FYGIF_CONTENT_MASK);
@@ -3345,7 +3368,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_ptr(v, d).v | FY_INT_OUTPLACE_V;
+		v = fy_generic_relocate_value(start, end, v, d, FY_INPLACE_TYPE_MASK, FY_INT_OUTPLACE_V);
 		break;
 
 	case FYGT_FLOAT:
@@ -3356,7 +3379,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_ptr(v, d).v | FY_FLOAT_OUTPLACE_V;
+		v = fy_generic_relocate_value(start, end, v, d, FY_INPLACE_TYPE_MASK, FY_FLOAT_OUTPLACE_V);
 		break;
 
 	case FYGT_STRING:
@@ -3367,7 +3390,7 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_ptr(v, d).v | FY_STRING_OUTPLACE_V;
+		v = fy_generic_relocate_value(start, end, v, d, FY_INPLACE_TYPE_MASK, FY_STRING_OUTPLACE_V);
 		break;
 
 	case FYGT_SEQUENCE:
@@ -3380,7 +3403,8 @@ fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d
 		if (p >= start && p < end)
 			return v;
 
-		v.v = fy_generic_relocate_collection_ptr(v, d).v | (type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
+		v = fy_generic_relocate_value(start, end, v, d, FY_COLLECTION_MASK,
+					      type == FYGT_SEQUENCE ? FY_SEQ_V : FY_MAP_V);
 
 		/* read collection items from the destination buffer */
 		p = fy_generic_resolve_collection_ptr(v);
@@ -4436,3 +4460,57 @@ err_out:
 	fy_input_unref(fyi);
 	return NULL;
 }
+
+#ifdef __FILC__
+
+#include <stdfil.h>
+
+/* registered memory resolves through the range registry, anything else
+ * through a strong exact pointer table (a generic may be the only
+ * reference to an object, which must not be collected) */
+static FY_ATOMIC(zexact_ptrtable *) fy_generic_filc_table;
+
+static zexact_ptrtable *fy_generic_filc_get_table(void)
+{
+	zexact_ptrtable *t, *nt;
+
+	t = fy_atomic_load(&fy_generic_filc_table);
+	if (t)
+		return t;
+	nt = zexact_ptrtable_new();
+	/* on a lost race the new table is simply garbage collected */
+	if (!fy_atomic_compare_exchange_strong(&fy_generic_filc_table, &t, nt))
+		return t;
+	return nt;
+}
+
+fy_generic_value fy_generic_filc_encode_ptr(const void *p, fy_generic_value tag)
+{
+	uintptr_t addr;
+	int rc;
+
+	rc = fy_range_ptr_to_logical(p, &addr);
+	if (rc < 0)
+		return fy_invalid_value;	/* would read back as durable data */
+	if (!rc && p &&
+	    zexact_ptrtable_encode(fy_generic_filc_get_table(), (void *)p) != addr)
+		return fy_invalid_value;	/* a freed object */
+	return (fy_generic_value)addr | tag;
+}
+
+const void *fy_generic_filc_resolve_ptr(fy_generic_value addr)
+{
+	zexact_ptrtable *t;
+	void *p;
+
+	p = fy_range_logical_to_ptr(addr);
+	if (p)
+		return p;
+	t = fy_atomic_load(&fy_generic_filc_table);
+	if (t)
+		return zexact_ptrtable_decode(t, addr);
+	/* never encoded: no capability, any access traps */
+	return (const void *)addr;
+}
+
+#endif

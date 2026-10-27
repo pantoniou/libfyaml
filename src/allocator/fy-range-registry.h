@@ -70,8 +70,12 @@ void *fy_range_logical_to_ptr(uintptr_t addr);
 #define FY_SLOT_CAS(_slot, _expp, _d)	fy_atomic_compare_exchange_strong((_slot), (_expp), (_d))
 
 /* allocators track their ranges only where pointers are resolved through
- * them; nothing does yet */
+ * them: under FIL-C */
+#ifdef __FILC__
+#define FY_RANGE_TRACKING	1
+#else
 #define FY_RANGE_TRACKING	0
+#endif
 
 static inline int fy_range_track_logical(const void *start, size_t size,
 					 struct fy_allocator *owner, int tag,

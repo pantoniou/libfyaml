@@ -892,6 +892,9 @@ fy_cache_restore_index(struct fy_parse_cache_entry *entry, const char *content_p
 #ifdef _WIN32
 	force_reloc = true;	/* no fixed mmap; use the copy path below */
 #endif
+#ifdef __FILC__
+	force_reloc = true;	/* FIL-C can't map at an integer address */
+#endif
 
 	if (!force_reloc) {
 		/*
@@ -1066,6 +1069,9 @@ fy_parse_cache_load_file_with_validation(const char *file,
 	force_reloc = fy_parse_cache_force_relocate();
 #ifdef _WIN32
 	force_reloc |= true;	/* we don't have mmap fixed yet */
+#endif
+#ifdef __FILC__
+	force_reloc |= true;	/* FIL-C can't map at an integer address */
 #endif
 
 	if (!force_reloc) {
