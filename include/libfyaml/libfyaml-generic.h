@@ -7621,6 +7621,43 @@ fy_generic_builder_get_allocator(struct fy_generic_builder *gb)
 	FY_EXPORT;
 
 /**
+ * fy_generic_refs_get() - Read the root generic published in a durable arena
+ *
+ * The generic counterpart of fy_allocator_refs_get(). Generic values hold
+ * handles (see fy_allocator_ptr_to_handle()), not raw pointers, so a root
+ * published by any process or runtime can be used directly.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ *
+ * Returns:
+ * The published root, or fy_invalid if none has been published.
+ */
+fy_generic
+fy_generic_refs_get(struct fy_allocator *a)
+	FY_EXPORT;
+
+/**
+ * fy_generic_refs_publish() - Atomically publish a root generic in a durable arena
+ *
+ * The generic counterpart of fy_allocator_refs_publish(). @desired must be an
+ * in-place value or live in @a (typically built by a builder on @a), so that
+ * it is valid for every process that opens the arena.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ * @expected: The root expected to be current (fy_invalid for none)
+ * @desired: The new root
+ * @flags: FY_ALLOC_REFS_* bits
+ *
+ * Returns:
+ * 0 if published, 1 if @expected did not match (no change), or -1 on error,
+ * including a @desired whose storage is not in @a.
+ */
+int
+fy_generic_refs_publish(struct fy_allocator *a, fy_generic expected,
+			fy_generic desired, unsigned int flags)
+	FY_EXPORT;
+
+/**
  * fy_generic_builder_get_cfg() - Return the configuration used to create a builder.
  *
  * @gb: Builder

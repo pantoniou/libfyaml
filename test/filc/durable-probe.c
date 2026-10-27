@@ -127,18 +127,65 @@ int main(int argc, char **argv)
 {
     assert(argc >= 3);
     const char *mode = argv[1], *dir = argv[2];
-    if (!strcmp(mode, "gc-unsupported")) {
-        errno = 0;
-        assert(fy_durable_arena_gc(dir) == -1 && errno == ENOTSUP);
-        puts("GC_EXPLICITLY_UNSUPPORTED"); return 0;
-    }
     if (!strcmp(mode, "dedup")) {
+        /* the same payloads, stored twice, dedup to one location; the sum of
+         * their logical addresses must agree across runs and runtimes */
         struct fy_durable_allocator_cfg c = {.dir=dir, .region_base=BASE,
             .region_size=REGION, .chunk_size=CHUNK,
             .flags=FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_DEDUP};
-        errno = 0;
-        assert(!fy_allocator_create("durable", &c) && errno == ENOTSUP);
-        puts("DEDUP_EXPLICITLY_UNSUPPORTED"); return 0;
+        struct fy_allocator *a = fy_allocator_create("durable", &c);
+        unsigned long long sum = 0;
+        char buf[64];
+        if (!a) { perror("open dedup durable"); return 2; }
+        for (unsigned i = 0; i < 64; i++) {
+            int len = snprintf(buf, sizeof(buf), "a deduplicated durable payload %u", i);
+            const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, buf, (size_t)len + 1, 16);
+            const void *q = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, buf, (size_t)len + 1, 16);
+            uint64_t l = fy_allocator_ptr_to_handle(a, p);
+            assert(p && p == q && !strcmp(p, buf));
+            assert(l >= BASE && l < BASE + REGION);
+            sum += l;
+        }
+        assert(!fy_allocator_sync(a));
+        fy_allocator_destroy(a);
+        printf("DEDUP_OK %llu\n", sum); return 0;
+    }
+    if (!strcmp(mode, "gc-seed") || !strcmp(mode, "gc-read")) {
+        /* a generic root (a sequence of strings) as the refs head */
+        struct fy_allocator *a = open_arena(dir, 0);
+        char buf[64];
+        if (!strcmp(mode, "gc-seed")) {
+            struct fy_generic_builder_cfg gbc = {.flags = FYGBCF_SCOPE_LEADER, .allocator = a};
+            struct fy_generic_builder *gb = fy_generic_builder_create(&gbc);
+            fy_generic items[32];
+            assert(gb);
+            for (unsigned i = 0; i < 32; i++) {
+                snprintf(buf, sizeof(buf), "a string the collector must keep %u", i);
+                items[i] = fy_gb_string_create_out_of_place(gb, buf);
+                assert(fy_generic_is_valid(items[i]));
+            }
+            fy_generic root = fy_gb_sequence_create(gb, 32, items);
+            assert(fy_generic_is_valid(root));
+            assert(!fy_allocator_refs_publish(a, 0, root.v, FY_ALLOC_REFS_CHECKPOINT));
+            fy_generic_builder_destroy(gb);
+            puts("GC_SEED_OK");
+        } else {
+            fy_generic root = { .v = (fy_generic_value)fy_allocator_refs_get(a) };
+            size_t count;
+            const fy_generic *items = fy_generic_sequence_get_items(root, &count);
+            assert(fy_generic_is_sequence(root) && count == 32);
+            for (unsigned i = 0; i < 32; i++) {
+                snprintf(buf, sizeof(buf), "a string the collector must keep %u", i);
+                assert(!strcmp(fy_cast(items[i], ""), buf));
+            }
+            puts("GC_READ_OK");
+        }
+        fy_allocator_destroy(a);
+        return 0;
+    }
+    if (!strcmp(mode, "gc")) {
+        assert(!fy_durable_arena_gc(dir));
+        puts("GC_OK"); return 0;
     }
     unsigned flags = (!strcmp(mode, "readonly") || !strcmp(mode, "watch")) ?
         FY_DURABLE_ARENA_READONLY : 0;

@@ -36,6 +36,7 @@
 #include "fy-allocator-dedup.h"
 #include "fy-allocator-auto.h"
 #include "fy-allocator-durable.h"
+#include "fy-range-registry.h"
 
 static struct fy_registered_allocator_entry_list allocator_registry_list;
 static bool allocator_registry_initialized = false;
@@ -732,6 +733,37 @@ int fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
 	if (!a)
 		return -1;
 	return fy_allocator_refs_publish_nocheck(a, expected, desired, flags);
+}
+
+uint64_t fy_allocator_ptr_to_handle(struct fy_allocator *a, const void *ptr)
+{
+	uintptr_t handle;
+
+	if (!a || !ptr || !fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_NONE, ptr))
+		return 0;
+#if FY_RANGE_TRACKING
+	if (fy_range_ptr_to_logical(ptr, &handle) != 1)
+		return 0;
+#else
+	handle = (uintptr_t)ptr;	/* the logical address is the runtime one */
+#endif
+	return (uint64_t)handle;
+}
+
+void *fy_allocator_handle_to_ptr(struct fy_allocator *a, uint64_t handle)
+{
+	void *p;
+
+	if (!a || !handle || handle > UINTPTR_MAX)
+		return NULL;
+#if FY_RANGE_TRACKING
+	p = fy_range_logical_to_ptr((uintptr_t)handle);
+#else
+	p = (void *)(uintptr_t)handle;
+#endif
+	if (!p || !fy_allocator_contains_nocheck(a, FY_ALLOC_TAG_NONE, p))
+		return NULL;
+	return p;
 }
 
 uint64_t fy_allocator_generation(struct fy_allocator *a)

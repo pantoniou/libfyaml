@@ -82,9 +82,25 @@ run('native-checkpoint', 'checkpoint', 'native-checkpoint', kind='native')
 run('filc-verifies-native-checkpoint', 'verify', 'native-checkpoint')
 run('checkpoint-rollback', 'recover', 'rollback')
 run('reopen-rolled-back', 'read', 'rollback', 1, 42)
-run('dedup-fails-explicitly', 'dedup', 'dedup', marker='DEDUP_EXPLICITLY_UNSUPPORTED')
-run('compaction-fails-explicitly', 'gc-unsupported', 'basic', marker='GC_EXPLICITLY_UNSUPPORTED')
-run('compaction-leaves-data-intact', 'read', 'basic', 25, 2718)
+# persistent dedup: every run, of either runtime, finds the entries the
+# earlier runs stored, at the same logical addresses
+dedup_sums = []
+for label, kind in [('dedup-filc', 'filc'), ('dedup-native', 'native'), ('dedup-filc-again', 'filc')]:
+    p = command([work/kind, 'dedup', work/'dedup'], envs[kind])
+    words = (p.stdout.split() + ['', ''])[:2]
+    if words[0] == 'DEDUP_OK':
+        dedup_sums.append(words[1])
+    ok = p.returncode == 0 and words[0] == 'DEDUP_OK' and len(set(dedup_sums)) == 1
+    p = subprocess.CompletedProcess(p.args, 0 if ok else 1, p.stdout, p.stderr)
+    record(label, kind, 'dedup', p, marker='DEDUP_OK')
+
+# compaction keeps a generic root intact, whichever runtime collects or reads
+run('gc-seed', 'gc-seed', 'gc', marker='GC_SEED_OK')
+run('gc-filc', 'gc', 'gc', marker='GC_OK')
+run('gc-filc-read', 'gc-read', 'gc', marker='GC_READ_OK')
+run('gc-native-read', 'gc-read', 'gc', kind='native', marker='GC_READ_OK')
+run('gc-native', 'gc', 'gc', kind='native', marker='GC_OK')
+run('gc-native-filc-read', 'gc-read', 'gc', marker='GC_READ_OK')
 
 # Concurrent executables, not forked snapshots: each owns a different runtime mapping.
 for group, kinds in [('process', ['filc']*4), ('mixed', ['filc', 'native'])]:

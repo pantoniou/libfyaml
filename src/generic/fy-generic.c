@@ -1508,6 +1508,39 @@ fy_generic_builder_create_in_place(enum fy_gb_cfg_flags flags, struct fy_generic
 	return gb;
 }
 
+fy_generic fy_generic_refs_get(struct fy_allocator *a)
+{
+	uint64_t refs;
+
+	refs = fy_allocator_refs_get(a);
+	if (!refs)
+		return fy_invalid;
+	return (fy_generic){ .v = (fy_generic_value)refs };
+}
+
+int fy_generic_refs_publish(struct fy_allocator *a, fy_generic expected,
+			    fy_generic desired, unsigned int flags)
+{
+	const void *p;
+
+	if (!a || fy_generic_is_invalid(desired))
+		return -1;
+
+	/* out of place storage must be in the arena, or other processes
+	 * could not follow it */
+	if (!fy_generic_is_in_place(desired)) {
+		p = fy_generic_is_direct_collection(desired) ?
+			fy_generic_resolve_collection_ptr(desired) :
+			fy_generic_resolve_ptr(desired);
+		if (!fy_allocator_contains(a, FY_ALLOC_TAG_NONE, p))
+			return -1;
+	}
+
+	return fy_allocator_refs_publish(a,
+			fy_generic_is_invalid(expected) ? 0 : (uint64_t)expected.v,
+			(uint64_t)desired.v, flags);
+}
+
 struct fy_allocator *fy_generic_builder_get_allocator(struct fy_generic_builder *gb)
 {
 	if (!gb)

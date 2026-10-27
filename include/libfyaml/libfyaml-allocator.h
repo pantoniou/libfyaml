@@ -763,6 +763,44 @@ fy_allocator_refs_publish(struct fy_allocator *a, uint64_t expected,
 	FY_EXPORT;
 
 /**
+ * fy_allocator_ptr_to_handle() - Get a stable handle for a location in an allocator
+ *
+ * Return a 64-bit handle for @ptr that identifies the same location in every
+ * process and session that opens the same durable arena, under any runtime.
+ * Store handles (for example as the refs head word) instead of raw pointers:
+ * natively a durable arena is mapped at its base and the handle equals the
+ * pointer, but under FIL-C the arena is mapped at a different address in each
+ * process, and only its handles stay valid. Generic values already hold
+ * handles, see fy_generic_refs_publish().
+ *
+ * @a: The allocator (durable, or a layer over one)
+ * @ptr: A pointer to memory handed out by @a
+ *
+ * Returns:
+ * The handle, or 0 if @ptr is not memory of @a.
+ */
+uint64_t
+fy_allocator_ptr_to_handle(struct fy_allocator *a, const void *ptr)
+	FY_EXPORT;
+
+/**
+ * fy_allocator_handle_to_ptr() - Get the pointer for a handle in an allocator
+ *
+ * The inverse of fy_allocator_ptr_to_handle(): return a pointer to the
+ * location @handle identifies, valid in this process.
+ *
+ * @a: The allocator (durable, or a layer over one)
+ * @handle: A handle from fy_allocator_ptr_to_handle(), possibly obtained by
+ *          another process
+ *
+ * Returns:
+ * The pointer, or NULL if @handle does not identify memory of @a.
+ */
+void *
+fy_allocator_handle_to_ptr(struct fy_allocator *a, uint64_t handle)
+	FY_EXPORT;
+
+/**
  * fy_allocator_generation() - Get the durable arena generation
  *
  * Return a monotonically increasing generation counter for a durable arena,
