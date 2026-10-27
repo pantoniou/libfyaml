@@ -37,6 +37,7 @@ static void display_usage(FILE *fp, char *progname)
 // #if defined(HAVE_STATIC) && HAVE_STATIC
 void libfyaml_case_private(struct fy_check_suite *cs);
 void libfyaml_case_private_id(struct fy_check_suite *cs);
+void libfyaml_case_private_range(struct fy_check_suite *cs);
 // #endif
 void libfyaml_case_core(struct fy_check_suite *cs);
 void libfyaml_case_meta(struct fy_check_suite *cs);
@@ -67,6 +68,7 @@ struct fy_check_suite *libfyaml_suite(int argc, char **argv)
 // #if defined(HAVE_STATIC) && HAVE_STATIC
 	libfyaml_case_private(cs);
 	libfyaml_case_private_id(cs);
+	libfyaml_case_private_range(cs);
 // #endif
 	libfyaml_case_core(cs);
 	libfyaml_case_meta(cs);

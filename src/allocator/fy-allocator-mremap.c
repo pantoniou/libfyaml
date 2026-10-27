@@ -33,6 +33,7 @@
 #include "fy-win32.h"
 
 #include "fy-allocator-mremap.h"
+#include "fy-range-registry.h"
 
 // #define DEBUG_ARENA
 
@@ -90,9 +91,12 @@ static inline bool fy_mremap_arena_check_fit(struct fy_mremap_arena *mran, size_
 	return new_next <= mran->size;
 }
 
+static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
+				    struct fy_mremap_arena *mran);
+
 static struct fy_mremap_arena *
 fy_mremap_arena_create(struct fy_mremap_allocator *mra,
-		       struct fy_mremap_tag *mrt FY_UNUSED,
+		       struct fy_mremap_tag *mrt,
 		       size_t size)
 {
 	struct fy_mremap_arena *mran = NULL;
@@ -159,6 +163,11 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	mran->size = size_page_align;
 	fy_atomic_store(&mran->next, FY_MREMAP_ARENA_OVERHEAD);
 
+	if (fy_range_register(mran, mran->size, &mra->a, (int)(mrt - mra->tags))) {
+		fy_mremap_arena_release(mra, mran);
+		return NULL;
+	}
+
 #ifdef DEBUG_ARENA
 	fprintf(stderr, "%s: #%zu created arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
 #endif
@@ -166,16 +175,9 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 	return mran;
 }
 
-static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
-				    struct fy_mremap_tag *mrt FY_UNUSED,
+static void fy_mremap_arena_release(struct fy_mremap_allocator *mra,
 				    struct fy_mremap_arena *mran)
 {
-	if (!mran)
-		return;
-
-#ifdef DEBUG_ARENA
-	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
-#endif
 	switch (mra->arena_type) {
 	case FYMRAT_MALLOC:
 		fy_align_free(mran);
@@ -188,6 +190,20 @@ static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
 	default:
 		FY_IMPOSSIBLE_ABORT();
 	}
+}
+
+static void fy_mremap_arena_destroy(struct fy_mremap_allocator *mra,
+				    struct fy_mremap_tag *mrt FY_UNUSED,
+				    struct fy_mremap_arena *mran)
+{
+	if (!mran)
+		return;
+
+#ifdef DEBUG_ARENA
+	fprintf(stderr, "%s: #%zu destroy arena %p size=%zu (%zuMB)\n", __func__, mrt - mra->tags, mran, mran->size, mran->size >> 20);
+#endif
+	fy_range_unregister(mran, &mra->a);
+	fy_mremap_arena_release(mra, mran);
 }
 
 static inline bool
@@ -248,6 +264,16 @@ static int fy_mremap_arena_grow(struct fy_mremap_allocator *mra,
 			break;
 		}
 #endif
+		if (fy_range_resize(mran, &mra->a, mran->size * 2)) {
+			/* undo the extension */
+#if USE_MREMAP
+			mem = mremap(mran, mran->size * 2, mran->size, 0);
+			assert(mem == mran);
+#else
+			munmap((char *)mran + mran->size, mran->size);
+#endif
+			break;
+		}
 		mran->size *= 2;
 
 #ifdef DEBUG_ARENA
@@ -291,20 +317,28 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 #ifdef DEBUG_ARENA
 		fprintf(stderr, "trim: %zu -> %zu\n", mran->size, new_size);
 #endif
+		if (fy_range_resize(mran, &mra->a, new_size))
+			return -1;
 
 #if USE_MREMAP
 		/* failure to shrink a mapping is unthinkable, but check anyway */
 		mem = mremap(mran, mran->size, new_size, 0);
 		if (mem == MAP_FAILED || mem != mran)
-			return -1;
+			goto err_restore;
 #else
 		/* we don't shrink, we just unmap over the limit  */
 		rc = munmap((char *)mran + new_size, mran->size - new_size);
 		if (rc)
-			return -1;
+			goto err_restore;
 #endif
 		mran->size = new_size;
 		return 0;
+
+err_restore:
+		/* the arena kept its size; growing back to it cannot overlap,
+		 * and if it runs out of memory the tail just stays unregistered */
+		(void)fy_range_resize(mran, &mra->a, mran->size);
+		return -1;
 
 	default:
 		FY_IMPOSSIBLE_ABORT();

@@ -1054,6 +1054,7 @@ set(LIBSRCS
     src/xxhash/xxhash.c
     src/thread/fy-thread.c
     src/allocator/fy-allocator.c
+    src/allocator/fy-range-registry.c
     src/allocator/fy-allocator-linear.c
     src/allocator/fy-allocator-malloc.c
     src/allocator/fy-allocator-mremap.c
@@ -1622,6 +1623,7 @@ if(CAN_TEST)
             $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:test/libfyaml-test-alloc-fail.c>
             test/libfyaml-test-private.c
             test/libfyaml-test-private-id.c
+            test/libfyaml-test-private-range.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>

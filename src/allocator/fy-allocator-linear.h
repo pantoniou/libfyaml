@@ -23,6 +23,7 @@ struct fy_linear_allocator {
 	void *alloc;
 	void *start;
 	bool need_zero;
+	bool range_registered;
 	/* no need to keep anything else */
 	FY_ATOMIC(uint64_t) allocations;
 	FY_ATOMIC(uint64_t) allocated;

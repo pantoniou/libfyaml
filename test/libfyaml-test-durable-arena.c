@@ -40,6 +40,7 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include "fy-check.h"
 #include "fy-utils.h"
 #include "fy-allocator.h"	/* fy_allocator_get_parent: reach the durable under the dedup wrapper */
+#include "fy-range-registry.h"
 
 #ifdef HAVE_GENERIC
 #include <libfyaml/libfyaml-generic.h>
@@ -243,6 +244,7 @@ START_TEST(durable_roundtrip_fixed_base)
 	char dir[256];
 	struct fy_allocator *da;
 	struct fy_allocator *a;
+	struct fy_range_info info;
 	const char *s1, *s2;
 	uintptr_t a1, a2;
 
@@ -269,12 +271,20 @@ START_TEST(durable_roundtrip_fixed_base)
 	a1 = (uintptr_t)s1;
 	a2 = (uintptr_t)s2;
 
+	/* the whole reserved region is registered to the arena */
+	ck_assert(fy_range_lookup(s1, &info));
+	ck_assert_ptr_eq(info.owner, a);
+	ck_assert_int_eq(info.tag, FY_ALLOC_TAG_DEFAULT);
+	ck_assert_uint_eq((uintptr_t)info.start, TEST_REGION_BASE);
+	ck_assert_uint_eq(info.size, TEST_REGION_SIZE);
+
 	/* addresses must be inside the fixed region */
 	ck_assert_uint_ge(a1, TEST_REGION_BASE);
 	ck_assert_uint_lt(a1, TEST_REGION_BASE + TEST_REGION_SIZE);
 
 	ck_assert_int_eq(fy_allocator_sync(da), 0);
 	fy_allocator_destroy(da);
+	ck_assert(!fy_range_lookup((const void *)a1, NULL));
 
 	/* reopen: payloads must be at the very same addresses, intact */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);

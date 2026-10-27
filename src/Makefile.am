@@ -66,6 +66,7 @@ libfyaml_la_SOURCES += \
 # allocator
 libfyaml_la_SOURCES += \
 	allocator/fy-allocator.c allocator/fy-allocator.h \
+	allocator/fy-range-registry.c allocator/fy-range-registry.h \
 	allocator/fy-allocator-linear.c allocator/fy-allocator-linear.h \
 	allocator/fy-allocator-malloc.c allocator/fy-allocator-malloc.h \
 	allocator/fy-allocator-mremap.c allocator/fy-allocator-mremap.h \

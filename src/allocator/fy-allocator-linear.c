@@ -25,6 +25,7 @@
 
 #include "fy-utils.h"
 #include "fy-allocator-linear.h"
+#include "fy-range-registry.h"
 
 static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
@@ -64,6 +65,14 @@ static int fy_linear_setup(struct fy_allocator *a, struct fy_allocator *parent, 
 
 	fy_atomic_store(&la->next, 0);
 
+	/* an in-place allocator is never cleaned up, so its (usually stack)
+	 * buffer must not be registered */
+	if (parent != FY_PARENT_ALLOCATOR_INPLACE) {
+		if (fy_range_register(buf, cfg->size, &la->a, FY_ALLOC_TAG_DEFAULT))
+			goto err_out;
+		la->range_registered = true;
+	}
+
 	return 0;
 err_out:
 	fy_early_parent_allocator_free(parent, parent_tag, alloc);
@@ -78,6 +87,10 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 		return;
 
 	la = container_of(a, struct fy_linear_allocator, a);
+	if (la->range_registered) {
+		fy_range_unregister(la->start, &la->a);
+		la->range_registered = false;
+	}
 	fy_parent_allocator_free(&la->a, la->alloc);
 	la->alloc = NULL;
 }
