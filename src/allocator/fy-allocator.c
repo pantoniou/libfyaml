@@ -70,14 +70,12 @@ static inline void allocator_registry_unlock(void)
 
 #else	// _WIN32
 
-static CRITICAL_SECTION allocator_registry_mutex;
-static LONG allocator_registry_mutex_initialized = 0;
+/* statically initialized: a critical section initialized on first use
+ * could be entered by a second thread before its initialization ended */
+static SRWLOCK allocator_registry_mutex = SRWLOCK_INIT;
 static inline void allocator_registry_lock(void)
 {
-	/* Initialize on first use using interlocked operation */
-	if (InterlockedCompareExchange(&allocator_registry_mutex_initialized, 1, 0) == 0)
-		InitializeCriticalSection(&allocator_registry_mutex);
-	EnterCriticalSection(&allocator_registry_mutex);
+	AcquireSRWLockExclusive(&allocator_registry_mutex);
 	assert(!allocator_registry_locked);
 	allocator_registry_locked = true;
 }
@@ -86,7 +84,7 @@ static inline void allocator_registry_unlock(void)
 {
 	assert(allocator_registry_locked);
 	allocator_registry_locked = false;
-	LeaveCriticalSection(&allocator_registry_mutex);
+	ReleaseSRWLockExclusive(&allocator_registry_mutex);
 }
 
 #endif
