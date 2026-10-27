@@ -377,6 +377,17 @@ static bool fy_auto_contains(struct fy_allocator *a, int tag, const void *ptr)
 	return fy_allocator_contains_nocheck(aa->parent_allocator, tag, ptr);
 }
 
+static int fy_auto_get_owner(struct fy_allocator *a, int tag,
+			     struct fy_allocator **ownerp, int *owner_tagp)
+{
+	struct fy_auto_allocator *aa;
+
+	aa = container_of(a, struct fy_auto_allocator, a);
+	*ownerp = aa->parent_allocator;
+	*owner_tagp = tag;
+	return 0;
+}
+
 static int fy_auto_snapshot(struct fy_allocator *a, int tag, struct fy_allocator_snapshot *snap)
 {
 	struct fy_auto_allocator *aa;
@@ -414,6 +425,7 @@ const struct fy_allocator_ops fy_auto_allocator_ops = {
 	.get_info = fy_auto_get_info,
 	.get_caps = fy_auto_get_caps,
 	.contains = fy_auto_contains,
+	.get_owner = fy_auto_get_owner,
 	.snapshot = fy_auto_snapshot,
 	.snapshot_release = fy_auto_snapshot_release,
 };
