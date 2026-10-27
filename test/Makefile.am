@@ -70,6 +70,7 @@ if HAVE_STATIC
 libfyaml_test_SOURCES += \
 	libfyaml-test-private.c \
 	libfyaml-test-private-id.c \
+	libfyaml-test-private-range.c \
 	libfyaml-test-parser.c \
 	libfyaml-test-thread.c \
 	libfyaml-test-reflection.c

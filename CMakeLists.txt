@@ -1623,6 +1623,7 @@ if(CAN_TEST)
             $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:test/libfyaml-test-alloc-fail.c>
             test/libfyaml-test-private.c
             test/libfyaml-test-private-id.c
+            test/libfyaml-test-private-range.c
             test/libfyaml-test-parser.c
             test/libfyaml-test-thread.c
             $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>

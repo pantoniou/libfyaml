@@ -568,6 +568,7 @@ if have_check:
         test_dir / "libfyaml-test-fuzzing.c",
         test_dir / "libfyaml-test-private.c",
         test_dir / "libfyaml-test-private-id.c",
+        test_dir / "libfyaml-test-private-range.c",
         test_dir / "libfyaml-test-parser.c",
         test_dir / "libfyaml-test-thread.c",
         test_dir / "libfyaml-test-atom-analysis.c",
