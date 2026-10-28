@@ -172,50 +172,61 @@ enum fy_packed_generator_type {
 
 /* format of "BLOB"
  *
- * All larger than 8 bit values are in little-endian
+ * All larger than 8 bit values are in big-endian (BLOB_ENDIAN)
  *
  * [Header]
  * [TypeEntries]
  * [DeclEntries]
+ * [StringTable]
+ *
+ * A size code n gives a value of (1 << n) bytes:
+ * 0=8bit, 1=16bit, 2=32bit, 3=64bit
  *
  * Header format:
  * [00-03] 'F', 'Y' 'P' 'G'
  * [04-04] Major version number of the format
  * [05-05] Minor version number of the format
- * [06-06] T Size of type ids (0=8bit, 1=16bit, 2=32bit, 3=64bit)
- * [07-07] D Size of decl ids (0=8bit, 1=16bit, 2=32bit, 3=64bit)
- * [08-08] S String offset count size (0=8bit, 1=16bit, 2=32bit, 3=64bit)
+ * [06-06] T Size code of type ids
+ * [07-07] D Size code of decl ids
+ * [08-08] S Size code of string table offsets
  * [09-0f] Reserved
  * [10-17] Type table # entries
- * [10-18] Type table size in bytes
+ * [18-1f] Type table size in bytes
  * [20-27] Decl table # entries
  * [28-2f] Decl table size in bytes
- * [30-37] Size of string table
- * [37-3f] Reserved
+ * [30-37] Size of string table in bytes
+ * [38-3f] Reserved
  * Total size = 0x40 bytes
  *
- * D = Decl ID size in bytes
- * T = Type ID size in bytes
- * S = String table offset in bytes
- * C = Element count size in bytes
- * V = Enum value size in bytes
+ * T = Type ID size in bytes, from the T size code
+ * D = Decl ID size in bytes, from the D size code
+ * S = String table offset size in bytes, from the S size code
+ * C = Element count size in bytes, from the size code in the type entry
+ * V = Enum value size in bytes, from the size code in the decl entry
+ *
+ * A type id below FY_TYPE_ID_OFFSET is a primary type, with the type
+ * kind - FYTK_PRIMARY_FIRST in the low FYTK_PRIMARY_BITS and the
+ * qualifiers above them; the rest are FY_TYPE_ID_OFFSET + the index
+ * in the type table.
+ * A decl id is 0 for no decl, or 1 + the index in the decl table.
+ * A string table offset is 0 for no string, or the offset of a '\0'
+ * terminated string in the string table.
  *
  * Type table entries format
  *    offset size description
  * --------- ---- -----------
- *         0    1 [0:4] type_kind | constant_array ? [5:6] size of C in BID_ : [7] elaborated type
- *         1    1 [0:2] CONST,VOLATILE,RESTRICT
- *         1    D decl.id (if it exists for the given type)
- *       2+D    T dependent_type.id (if it exists for the given type)
- *     2+D+T    C element count (if it exists for the given type)
+ *         0    1 [0:4] type_kind | [5:6] size code of C | [7] flags follow
+ *         1    1 low byte of the type flags (only if flags follow; F=1, else F=0)
+ *       1+F    D decl.id
+ *     1+F+D    T dependent_type.id (if the type kind is dependent)
+ *   1+F+D+T    C element count (if the type kind has an element count)
  * ---------
- * T+1+D+T+C max size of type entry
- * 2*T+D+C+1
+ * 2+D+T+C maximum size of entry
  *
  * Decl table entries format
  *    offset size description
  * ---------- ---- -----------
- *          0    1 decl_type[0:3] | enum_value ? [4:5]size of V in BID_
+ *          0    1 [0:3] decl_type | [4:5] size code of V | [6] enum value is signed
  *          1    T type.id
  *        1+T    S name - string table offset (0 if anonymous or can be generated)
  *      1+T+S |  1 bit_width if bitfield
