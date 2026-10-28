@@ -51,6 +51,38 @@ static bool packed_bitfield_type_is_valid(struct fy_type *ft)
 		      ft->type_kind == FYTK_BOOL || ft->type_kind == FYTK_ENUM);
 }
 
+/* the decl type that declares a struct, union, enum or typedef */
+static enum fy_decl_type packed_type_kind_decl_type(enum fy_type_kind type_kind)
+{
+	switch (type_kind) {
+	case FYTK_STRUCT:
+		return FYDT_STRUCT;
+	case FYTK_UNION:
+		return FYDT_UNION;
+	case FYTK_ENUM:
+		return FYDT_ENUM;
+	case FYTK_TYPEDEF:
+		return FYDT_TYPEDEF;
+	default:
+		break;
+	}
+	return FYDT_NONE;
+}
+
+/* a struct, union, enum or typedef has a decl of its own kind,
+ * and such a decl declares nothing else */
+static bool packed_type_decl_is_valid(enum fy_type_kind type_kind, const struct fy_decl_p *declp)
+{
+	enum fy_decl_type decl_type;
+
+	decl_type = packed_type_kind_decl_type(type_kind);
+	if (decl_type != FYDT_NONE)
+		return declp && declp->decl_type == decl_type;
+
+	return !declp || (declp->decl_type != FYDT_STRUCT && declp->decl_type != FYDT_UNION &&
+			  declp->decl_type != FYDT_ENUM && declp->decl_type != FYDT_TYPEDEF);
+}
+
 static int packed_decl_setup(struct fy_decl *decl, void *user);
 static void packed_decl_cleanup(struct fy_decl *decl);
 
@@ -305,7 +337,8 @@ static int packed_do_import(struct fy_import *imp)
 		declp = fy_decl_p_from_id(ti, typep->decl);
 
 		/* an elaborated type has the same decl as the named type */
-		if (declp && (typep->flags & FYTF_ELABORATED)) {
+		if (typep->flags & FYTF_ELABORATED) {
+			RFL_ASSERT(declp);
 			decl = packed_lookup_decl_by_declp(rfl, declp);
 			RFL_ASSERT(decl);
 
@@ -331,6 +364,9 @@ static int packed_do_import(struct fy_import *imp)
 
 			continue;
 		}
+
+		/* a corrupt blob can pair a type with the wrong decl, or with none */
+		RFL_ASSERT(packed_type_decl_is_valid(type_kind, declp));
 
 		decl_name = NULL;
 
@@ -1499,6 +1535,10 @@ static int packed_reflection_setup_blob(struct fy_reflection *rfl)
 
 		/* always have a decl */
 		typep->decl.id = Drf(&Br);
+
+		/* zero is no decl, the rest must be in the decl table */
+		RFL_ERROR_CHECK((unsigned int)typep->decl.id <= (unsigned int)Dc,
+				"packed: Blob type decl out of range");
 
 		if (fy_type_kind_is_dependent(typep->type_kind))
 			typep->dependent_type.id = Trf(&Br);
