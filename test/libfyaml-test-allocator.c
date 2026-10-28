@@ -1138,7 +1138,7 @@ START_TEST(allocator_mremap_concurrent_trim)
 	struct trim_stress ts;
 	struct trim_worker w[TRIM_THREADS];
 	pthread_t th[TRIM_THREADS], trimmer;
-	unsigned int k, i, j;
+	unsigned int k, i, j, pat;
 	size_t sz;
 
 #ifdef __FILC__
@@ -1171,12 +1171,18 @@ START_TEST(allocator_mremap_concurrent_trim)
 	fy_atomic_store(&ts.stop, 1);
 	pthread_join(trimmer, NULL);
 
+	/* each passing ck_assert() writes a mark point, so check the bytes
+	 * directly and only call into check on a mismatch */
 	for (k = 0; k < TRIM_THREADS; k++) {
 		ck_assert_int_eq(w[k].fail, 0);
 		for (i = 0; i < TRIM_BLOCKS; i++) {
 			sz = trim_block_size(i);
-			for (j = 0; j < sz; j++)
-				ck_assert_uint_eq(w[k].blocks[i][j], (k * 31 + i) & 0xff);
+			pat = (k * 31 + i) & 0xff;
+			for (j = 0; j < sz && w[k].blocks[i][j] == pat; j++)
+				;
+			if (j < sz)
+				ck_abort_msg("thread %u block %u byte %u is 0x%02x, expected 0x%02x",
+					     k, i, j, w[k].blocks[i][j], pat);
 		}
 		free(w[k].blocks);
 	}
