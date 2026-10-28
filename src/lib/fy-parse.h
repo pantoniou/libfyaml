@@ -219,6 +219,7 @@ struct fy_parser {
 
 	/* produced tokens, but not yet consumed */
 	struct fy_token_list queued_tokens;
+	enum fy_token_type last_removed_token_type;	/* type of the last token taken from the queue */
 	int token_activity_counter;
 
 	/* last comment */

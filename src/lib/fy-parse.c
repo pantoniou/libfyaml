@@ -813,6 +813,7 @@ int fy_parse_setup(struct fy_parser *fyp, const struct fy_parse_cfg *cfg)
 	fy_simple_key_list_init(&fyp->recycled_simple_key);
 
 	fy_token_list_init(&fyp->queued_tokens);
+	fyp->last_removed_token_type = FYTT_NONE;
 
 	fy_input_list_init(&fyp->queued_inputs);
 
@@ -1817,6 +1818,22 @@ struct fy_simple_key *fy_would_remove_required_simple_key(struct fy_parser *fyp)
 	return NULL;
 }
 
+/* the token before a simple key ends a complete node; the parser rejects
+ * anything that follows it at that indentation with a better message */
+static bool fy_simple_key_follows_node(struct fy_parser *fyp, struct fy_simple_key *fysk)
+{
+	struct fy_token *fyt;
+	enum fy_token_type type;
+
+	/* the token of a pending simple key is still queued */
+	fyt = fy_token_prev(&fyp->queued_tokens, fysk->token);
+	type = fyt ? fyt->type : fyp->last_removed_token_type;
+
+	return type == FYTT_SCALAR || type == FYTT_ALIAS ||
+	       type == FYTT_FLOW_SEQUENCE_END || type == FYTT_FLOW_MAPPING_END ||
+	       type == FYTT_BLOCK_END;
+}
+
 int fy_remove_simple_key(struct fy_parser *fyp, enum fy_token_type next_type)
 {
 	struct fy_simple_key *fysk;
@@ -2114,9 +2131,9 @@ int fy_fetch_stream_end(struct fy_parser *fyp)
 	if (!fyp->parse_flow_only && !fyp->parse_block_only)
 		fy_reader_stream_end(fyp->reader);
 
-	/* a required simple key must be completed by a ':' */
+	/* a required simple key that would be taken as a value must be completed by a ':' */
 	fysk = fy_would_remove_required_simple_key(fyp);
-	if (fysk) {
+	if (fysk && !fy_simple_key_follows_node(fyp, fysk)) {
 		fy_purge_required_simple_key_report(fyp, fysk->token, FYTT_STREAM_END);
 		goto err_out;
 	}
@@ -2586,9 +2603,9 @@ int fy_fetch_document_indicator(struct fy_parser *fyp, enum fy_token_type type)
 	struct fy_simple_key *fysk;
 	struct fy_token *fyt;
 
-	/* a required simple key must be completed by a ':' */
+	/* a required simple key that would be taken as a value must be completed by a ':' */
 	fysk = fy_would_remove_required_simple_key(fyp);
-	if (fysk) {
+	if (fysk && !fy_simple_key_follows_node(fyp, fysk)) {
 		fy_purge_required_simple_key_report(fyp, fysk->token, type);
 		goto err_out;
 	}
@@ -5900,6 +5917,7 @@ fy_scan_remove(struct fy_parser *fyp, struct fy_token *fyt)
 		return NULL;
 
 	fy_token_list_del(&fyp->queued_tokens, fyt);
+	fyp->last_removed_token_type = fyt->type;
 
 	return fyt;
 }
