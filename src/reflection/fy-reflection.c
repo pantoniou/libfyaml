@@ -3372,14 +3372,20 @@ void fy_decl_dump(struct fy_decl *decl, int start_level, bool no_location)
 		decl->id,
 		decl_type_txt[decl->decl_type], decl->name);
 
-	assert(decl->type);
-	printf(" -> T#%d '%s'%s", decl->type->id, decl->type->fullname,
-			(decl->type->flags & FYTF_UNRESOLVED) ? " (unresolved)" : "");
+	/* a corrupt packed blob can leave out any of the types */
+	if (decl->type)
+		printf(" -> T#%d '%s'%s", decl->type->id,
+				decl->type->fullname ? decl->type->fullname : "<NULL>",
+				(decl->type->flags & FYTF_UNRESOLVED) ? " (unresolved)" : "");
+	else
+		printf(" -> <NULL>");
 
 	switch (decl->decl_type) {
 	case FYDT_ENUM:
-		assert(decl->type->dependent_type);
-		printf(" \"%s\"", fy_type_kind_info_get_internal(decl->type->dependent_type->type_kind)->name);
+		if (decl->type && decl->type->dependent_type)
+			printf(" \"%s\"", fy_type_kind_info_get_internal(decl->type->dependent_type->type_kind)->name);
+		else
+			printf(" \"<NULL>\"");
 		break;
 	case FYDT_ENUM_VALUE:
 		if (!fy_decl_enum_value_is_unsigned(decl))
@@ -3515,8 +3521,10 @@ void fy_type_dump(struct fy_type *ft, bool no_location)
 		}
 	} else if (ft->flags & FYTF_ELABORATED) {
 		ft_unqual = fy_type_unqualified(ft);
-		assert(ft_unqual);
-		printf(" -> T#%d '%s'", ft_unqual->id, ft_unqual->fullname);
+		if (ft_unqual)
+			printf(" -> T#%d '%s'", ft_unqual->id, ft_unqual->fullname ? ft_unqual->fullname : "<NULL>");
+		else
+			printf(" -> <NULL>");
 	}
 
 	if (fy_type_kind_is_dependent(ft->type_kind)) {

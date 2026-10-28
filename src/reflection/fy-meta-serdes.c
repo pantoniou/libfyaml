@@ -106,14 +106,15 @@ int fy_reflection_type_filter(struct fy_reflection *rfl,
 	fy_reflection_clear_all_markers(rfl);
 	prev = NULL;
 	while ((ti = fy_type_info_iterate(rfl, &prev)) != NULL) {
+		/* a type without a name matches no pattern */
 		if (type_include) {
-			ret = regexec(&type_include_reg, ti->name, 0, NULL, 0);
+			ret = ti->name ? regexec(&type_include_reg, ti->name, 0, NULL, 0) : REG_NOMATCH;
 			include_match = ret == 0;
 		} else
 			include_match = true;
 
 		if (type_exclude) {
-			ret = regexec(&type_exclude_reg, ti->name, 0, NULL, 0);
+			ret = ti->name ? regexec(&type_exclude_reg, ti->name, 0, NULL, 0) : REG_NOMATCH;
 			exclude_match = ret == 0;
 		} else
 			exclude_match = false;
