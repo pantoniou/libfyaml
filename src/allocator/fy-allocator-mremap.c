@@ -488,7 +488,7 @@ static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mrema
 static void *fy_mremap_tag_alloc(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt, size_t size, size_t align)
 {
 	struct fy_mremap_arena *mran, *old_arenas, *start_arenas;
-	size_t next_sz, next_arena_sz, old_next_arena_sz, old_next, new_next, data_pos;
+	size_t next_sz, next_arena_sz, old_next_arena_sz, old_next, new_next, cur_next, data_pos;
 	uint64_t flags;
 	void *ptr;
 	int rc;
@@ -651,6 +651,16 @@ do_alloc:
 		}
 		ptr = (void *)((char *)mran + data_pos);
 	} while (!fy_atomic_compare_exchange_strong(&mran->next, &old_next, new_next));
+
+	/* a trim can run to completion between the size check and the CAS,
+	 * and it puts back the same next; the size read after the CAS is
+	 * current, so give the block back if it is past the end */
+	while (new_next > fy_atomic_load(&mran->size)) {
+		cur_next = new_next;
+		if (fy_atomic_compare_exchange_strong(&mran->next, &cur_next, old_next))
+			goto again;
+		/* a trim holds next, or a grow mapped the block; check again */
+	}
 
 	/* malloc arenas need to zero out */
 	if (mra->arena_type == FYMRAT_MALLOC)
