@@ -369,7 +369,16 @@ EXTRA_DIST += \
 	test-errors/0010/test.error \
 	test-errors/0011/=== \
 	test-errors/0011/in.yaml \
-	test-errors/0011/test.error
+	test-errors/0011/test.error \
+	test-errors/0012/=== \
+	test-errors/0012/in.yaml \
+	test-errors/0012/test.error \
+	test-errors/0013/=== \
+	test-errors/0013/in.yaml \
+	test-errors/0013/test.error \
+	test-errors/0014/=== \
+	test-errors/0014/in.yaml \
+	test-errors/0014/test.error
 
 EXTRA_DIST += \
 	reflection-data
