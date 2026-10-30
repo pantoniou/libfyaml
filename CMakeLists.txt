@@ -149,7 +149,7 @@ option(ENABLE_DEVMODE "Enable development mode only debugging" OFF)
 option(BUILD_TESTING "Build tests" ON)
 option(ENABLE_GENERIC "Enable generic subsystem (requires statement expressions)" ON)
 option(ENABLE_REFLECTION "Enable reflection subsystem (requires statement expressions)" ON)
-option(ENABLE_LIBCLANG "Enable libclang support for reflection" ON)
+option(ENABLE_LIBCLANG "Use libclang for reflection instead of the built-in C parser (cparse)" OFF)
 option(ENABLE_LIBCLANG_DLOPEN "Load libclang on the first use of reflection, not at start-up" ON)
 
 # FIL-C (https://fil-c.org) is a memory safe C; nothing built by the host
@@ -308,7 +308,7 @@ if(NOT HAVE_CMAKE_GEXPR)
 endif()
 
 if(NOT ENABLE_LIBCLANG)
-    message(STATUS "libclang support disabled (ENABLE_LIBCLANG=OFF)")
+    message(STATUS "libclang support disabled (reflection uses the built-in C parser; ENABLE_LIBCLANG=ON selects libclang)")
 else()
 
     # If user specified LLVM_ROOT, add it to CMAKE_PREFIX_PATH for this search
@@ -487,17 +487,15 @@ else()
                 list(APPEND COMMON_C_DEFINITIONS HAVE_LLVM_C_CORE_H)
             endif()
         else()
-            message(STATUS "libclang not found or not working")
-            message(STATUS "  Reflection support will be disabled")
-            message(STATUS "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm")
-            message(STATUS "  To disable this check: cmake -DENABLE_LIBCLANG=OFF")
+            message(FATAL_ERROR "ENABLE_LIBCLANG=ON but libclang was not found or does not work\n"
+                "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm\n"
+                "  To use the built-in C parser instead: cmake -DENABLE_LIBCLANG=OFF")
         endif()
     else()
         if(NOT LIBCLANG_FOUND)
-            message(STATUS "libclang not found")
-            message(STATUS "  Reflection support will be disabled")
-            message(STATUS "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm")
-            message(STATUS "  To disable this check: cmake -DENABLE_LIBCLANG=OFF")
+            message(FATAL_ERROR "ENABLE_LIBCLANG=ON but libclang was not found\n"
+                "  To specify libclang location: cmake -DLLVM_ROOT=/path/to/llvm\n"
+                "  To use the built-in C parser instead: cmake -DENABLE_LIBCLANG=OFF")
         endif()
     endif()
 
@@ -1820,8 +1818,8 @@ int main(void) { return 0; }
         add_jsontestsuite_tests()
     endif()
 
-    # Reflection tests - only if libclang is available and reflection is enabled
-    if(HAVE_REFLECTION AND HAVE_LIBCLANG)
+    # Reflection tests (the built-in C parser, or libclang when it is enabled)
+    if(HAVE_REFLECTION AND (HAVE_CPARSE_BACKEND OR HAVE_LIBCLANG))
         add_testreflection_tests()
         add_testreflection_packed_tests()
     endif()

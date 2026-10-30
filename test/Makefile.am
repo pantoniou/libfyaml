@@ -150,7 +150,7 @@ TESTS += testemitter-generic-binary.test
 TESTS += testemitter-generic-image.test
 endif
 
-if HAVE_LIBCLANG
+if HAVE_REFLECTION_C
 TESTS += testreflection.test
 endif
 
