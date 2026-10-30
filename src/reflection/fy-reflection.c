@@ -31,127 +31,9 @@
 #include "fy-reflection-private.h"
 #include "fy-reflection-util.h"
 
+#include "cparse-private.h"
+
 static struct fy_document *get_yaml_document(const char *cooked_comment);
-
-enum fy_c_keyword {
-	/* invalid */
-	fyckw_invalid,
-	/* C89 */
-	fyckw_auto,
-	fyckw_break,
-	fyckw_case,
-	fyckw_char,
-	fyckw_const,
-	fyckw_continue,
-	fyckw_default,
-	fyckw_do,
-	fyckw_double,
-	fyckw_else,
-	fyckw_enum,
-	fyckw_extern,
-	fyckw_float,
-	fyckw_for,
-	fyckw_goto,
-	fyckw_if,
-	fyckw_int,
-	fyckw_long,
-	fyckw_register,
-	fyckw_return,
-	fyckw_short,
-	fyckw_signed,
-	fyckw_sizeof,
-	fyckw_static,
-	fyckw_struct,
-	fyckw_switch,
-	fyckw_typedef,
-	fyckw_union,
-	fyckw_unsigned,
-	fyckw_void,
-	fyckw_volatile,
-	fyckw_while,
-	/* C99 */
-	fyckw_inline,
-	fyckw_restrict,
-	fyckw__Bool,
-	fyckw__Complex,
-	fyckw__Imaginary,
-	/* C11 */
-	fyckw__Alignas,
-	fyckw__Alignof,
-	fyckw__Atomic,
-	fyckw__Static_assert,
-	fyckw__Noreturn,
-	fyckw__Thread_local,
-	fyckw__Generic,
-	/* C23 */
-	fyckw_alignas,
-	fyckw_alignof,
-	fyckw_bool,
-	fyckw_constexpr,
-	fyckw_false,
-	fyckw_nullptr,
-	fyckw_static_assert,
-	fyckw_thread_local,
-	fyckw_true,
-	fyckw_typeof,
-	fyckw_typeof_unqual,
-	fyckw__BitInt,
-	fyckw__Decimal32,
-	fyckw__Decimal64,
-	fyckw__Decimal128,
-};
-
-enum fy_c_standard {
-	fycstd_invalid,
-	fycstd_89,
-	fycstd_99,
-	fycstd_11,
-	fycstd_23,
-};
-
-static inline FY_UNUSED bool
-fy_c_keyword_is_valid(enum fy_c_keyword ckw)
-{
-	return (int)ckw >= fyckw_auto && (int)ckw <= fyckw__Decimal128;
-}
-
-static inline FY_UNUSED enum fy_c_standard
-fy_c_keyword_standard(enum fy_c_keyword ckw)
-{
-	if (ckw >= fyckw_auto && ckw <= fyckw_while)
-		return fycstd_89;
-	if (ckw >= fyckw_inline && ckw <= fyckw__Imaginary)
-		return fycstd_99;
-	if (ckw >= fyckw__Alignas && ckw <= fyckw__Generic)
-		return fycstd_11;
-	if (ckw >= fyckw_alignas && ckw <= fyckw__Decimal128)
-		return fycstd_23;
-	return fycstd_invalid;
-}
-
-static inline FY_UNUSED bool
-fy_c_keyword_is_c89(enum fy_c_keyword ckw)
-{
-	return ckw >= fyckw_auto && ckw <= fyckw_while;
-}
-
-static inline FY_UNUSED bool
-fy_c_keyword_is_c99(enum fy_c_keyword ckw)
-{
-	return ckw >= fyckw_inline && ckw <= fyckw__Imaginary;
-}
-
-static inline FY_UNUSED bool
-fy_c_keyword_is_c11(enum fy_c_keyword ckw)
-{
-	return ckw >= fyckw__Alignas && ckw <= fyckw__Generic;
-}
-
-static inline FY_UNUSED bool
-fy_c_keyword_is_c23(enum fy_c_keyword ckw)
-{
-	return ckw >= fyckw_alignas && ckw <= fyckw__Decimal128;
-}
 
 static inline bool is_c_identifier(char c, bool first)
 {
@@ -162,341 +44,6 @@ static inline bool is_c_identifier(char c, bool first)
 static inline bool c_identifier_needs_space(char c)
 {
 	return is_c_identifier(c, false) || c == '*' || c == '@' /* || c == '(' */ ;
-}
-
-static const char *c_keywords[] = {
-#undef CKW
-#define CKW(_x) [ fyckw_ ## _x ] = #_x
-	CKW(invalid),
-	CKW(auto),
-	CKW(break),
-	CKW(case),
-	CKW(char),
-	CKW(const),
-	CKW(continue),
-	CKW(default),
-	CKW(do),
-	CKW(double),
-	CKW(else),
-	CKW(enum),
-	CKW(extern),
-	CKW(float),
-	CKW(for),
-	CKW(goto),
-	CKW(if),
-	CKW(int),
-	CKW(long),
-	CKW(register),
-	CKW(return),
-	CKW(short),
-	CKW(signed),
-	CKW(sizeof),
-	CKW(static),
-	CKW(struct),
-	CKW(switch),
-	CKW(typedef),
-	CKW(union),
-	CKW(unsigned),
-	CKW(void),
-	CKW(volatile),
-	CKW(while),
-	CKW(inline),
-	CKW(restrict),
-	CKW(_Bool),
-	CKW(_Complex),
-	CKW(_Imaginary),
-	CKW(_Alignas),
-	CKW(_Alignof),
-	CKW(_Atomic),
-	CKW(_Static_assert),
-	CKW(_Noreturn),
-	CKW(_Thread_local),
-	CKW(_Generic),
-	CKW(alignas),
-	CKW(alignof),
-	CKW(bool),
-	CKW(constexpr),
-	CKW(false),
-	CKW(nullptr),
-	CKW(static_assert),
-	CKW(thread_local),
-	CKW(true),
-	CKW(typeof),
-	CKW(typeof_unqual),
-	CKW(_BitInt),
-	CKW(_Decimal32),
-	CKW(_Decimal64),
-	CKW(_Decimal128),
-#undef CKW
-};
-
-static const char *parse_c_identifier(const char *s, size_t len, const char **ident, size_t *ident_len)
-{
-	const char *e, *p;
-
-	if (!s || !len)
-		goto err_out;
-
-	if (len == (size_t)-1)
-		len = strlen(s);
-
-	e = s + len;
-	while (s < e && isspace((unsigned char)*s))
-		s++;
-
-	if (s >= e)
-		goto err_out;
-
-	p = s;
-	if (!is_c_identifier(*s, true))
-		goto err_out;
-	s++;
-	while (s < e && is_c_identifier(*s, false))
-		s++;
-	len = (size_t)(s - p);
-
-	/* skip any spaces */
-	while (s < e && isspace((unsigned char)*s))
-		s++;
-
-	*ident = p;
-	*ident_len = len;
-
-	return s;
-
-err_out:
-	*ident = NULL;
-	*ident_len = 0;
-
-	return NULL;
-}
-
-static const char *parse_c_keyword(const char *s, size_t len, enum fy_c_keyword *ckwp)
-{
-	const char *kw, *ident;
-	size_t kw_len, ident_len;
-	unsigned int i;
-
-	*ckwp = fyckw_invalid;
-
-	s = parse_c_identifier(s, len, &ident, &ident_len);
-	if (!s)
-		goto err_out;
-
-	for (i = 0; i < ARRAY_SIZE(c_keywords); i++) {
-		kw = c_keywords[i];
-		kw_len = strlen(kw);
-		if (kw_len == ident_len && !memcmp(kw, ident, ident_len)) {
-			*ckwp = i;
-			return s;
-		}
-	}
-err_out:
-	*ckwp = fyckw_invalid;
-	return NULL;
-}
-
-static const char *parse_c_type_qualifiers(const char *s, size_t len, unsigned int *qualsp)
-{
-	enum fy_c_keyword ckw;
-	const char *e, *sn;
-
-	if (len == (size_t)-1)
-		len = strlen(s);
-	e = s + len;
-
-	*qualsp = 0;
-	while ((sn = parse_c_keyword(s, (size_t)(e - s), &ckw)) != NULL) {
-		if (ckw == fyckw_const)
-			*qualsp |= FY_QUALIFIER_CONST;
-		else if (ckw == fyckw_volatile)
-			*qualsp |= FY_QUALIFIER_VOLATILE;
-		else if (ckw == fyckw_restrict)
-			*qualsp |= FY_QUALIFIER_RESTRICT;
-		else
-			break;
-		s = sn;
-	}
-
-	return s;
-}
-
-static const char *parse_c_primitive_type(const char *s, size_t len, enum fy_type_kind *type_kindp)
-{
-	enum fy_type_kind type_kind;
-	const char *e, *p, *pp;
-	enum fy_c_keyword ckw;
-	int is_unsigned;
-
-	if (len == (size_t)-1)
-		len = strlen(s);
-	e = s + len;
-
-	/* default unspecified */
-	is_unsigned = -1;
-
-	/* parse signed/unsigned specifier it exists */
-	p = parse_c_keyword(s, (size_t)(e - s), &ckw);
-	if (ckw == fyckw_signed || ckw == fyckw_unsigned) {
-		is_unsigned = ckw == fyckw_unsigned;
-		s = p;
-	}
-
-	p = parse_c_keyword(s, (size_t)(e - s), &ckw);
-	if (!p)
-		goto err_out;
-
-	type_kind = FYTK_INVALID;
-
-	switch (ckw) {
-	case fyckw_void:
-		if (is_unsigned >= 0)
-			goto err_out;
-		type_kind = FYTK_VOID;
-		break;
-
-	case fyckw_bool:
-	case fyckw__Bool:
-		if (is_unsigned >= 0)
-			goto err_out;
-		type_kind = FYTK_BOOL;
-		break;
-
-	case fyckw_char:
-		type_kind = is_unsigned  < 0 ? FYTK_CHAR:
-			    is_unsigned == 0 ? FYTK_SCHAR : FYTK_UCHAR;
-		break;
-
-	case fyckw_short:
-		type_kind = is_unsigned > 0 ? FYTK_USHORT : FYTK_SHORT;
-		/* parse again to consume trailing int, i.e. short int */
-		pp = parse_c_keyword(p, (size_t)(e - p), &ckw);
-		if (ckw == fyckw_int)
-			p = pp;
-		break;
-
-	case fyckw_int:
-		type_kind = is_unsigned > 0 ? FYTK_UINT : FYTK_INT;
-		break;
-
-	case fyckw_long:
-
-		pp = parse_c_keyword(p, (size_t)(e - p), &ckw);
-		if (ckw == fyckw_double) {
-			type_kind = FYTK_LONGDOUBLE;
-			p = pp;
-			break;
-		}
-
-		/* long long */
-		if (ckw == fyckw_long) {
-			type_kind = is_unsigned > 0 ? FYTK_ULONGLONG : FYTK_LONGLONG;
-			p = pp;
-
-			/* parse again to consume trailing int, i.e. long long int */
-			pp = parse_c_keyword(p, (size_t)(e - p), &ckw);
-		} else
-			type_kind = is_unsigned > 0 ? FYTK_ULONG : FYTK_LONG;
-
-		/* consume trailing int */
-		if (ckw == fyckw_int)
-			p = pp;
-
-		break;
-
-	case fyckw_float:
-		if (is_unsigned >= 0)
-			goto err_out;
-		type_kind = FYTK_FLOAT;
-		break;
-
-	case fyckw_double:
-		if (is_unsigned >= 0)
-			goto err_out;
-		type_kind = FYTK_DOUBLE;
-		break;
-
-	default:
-		goto err_out;
-	}
-
-	*type_kindp = type_kind;
-	return p;
-
-err_out:
-	*type_kindp = FYTK_INVALID;
-	return NULL;
-}
-
-static const char *parse_c_type(const char *s, size_t len,
-				enum fy_type_kind *type_kindp, const char **namep, size_t *name_lenp,
-				unsigned int *qualsp)
-{
-	enum fy_type_kind type_kind;
-	enum fy_c_keyword ckw;
-	const char *e, *p;
-	const char *type;
-	size_t type_len;
-
-	if (len == (size_t)-1)
-		len = strlen(s);
-	e = s + len;
-
-	*qualsp = 0;
-
-	/* start by parsing the qualifiers */
-	s = parse_c_type_qualifiers(s, (size_t)(e - s), qualsp);
-	if (!s)
-		goto err_out;
-
-	/* now try to parse the primitive type if it exists */
-	p = parse_c_primitive_type(s, (size_t)(e - s), &type_kind);
-	if (type_kind != FYTK_INVALID) {
-		*type_kindp = type_kind;
-		*namep = fy_type_kind_name(type_kind);
-		*name_lenp = strlen(*namep);
-		s = p;
-
-	} else {
-
-		/* failed, that's ok, try named types (struct/union/enum) */
-		p = parse_c_keyword(s, (size_t)(e - s), &ckw);
-		if (ckw == fyckw_struct || ckw == fyckw_union || ckw == fyckw_enum) {
-			s = p;
-		} else if (ckw != fyckw_invalid)	/* any other keyword is invalid here */
-			goto err_out;
-
-		p = parse_c_identifier(s, (size_t)(e - s), &type, &type_len);
-		if (!p)
-			goto err_out;
-		switch (ckw) {
-		case fyckw_struct:
-			type_kind = FYTK_STRUCT;
-			break;
-		case fyckw_union:
-			type_kind = FYTK_UNION;
-			break;
-		case fyckw_enum:
-			type_kind = FYTK_ENUM;
-			break;
-		default:
-			type_kind = FYTK_TYPEDEF;
-			break;
-		}
-		s = p;
-
-		*namep = type;
-		*name_lenp = type_len;
-		*type_kindp = type_kind;
-	}
-
-	return s;
-
-err_out:
-	*type_kindp = FYTK_INVALID;
-	*namep = NULL;
-	*name_lenp = 0;
-	return NULL;
 }
 
 static inline int backend_reflection_setup(struct fy_reflection *rfl)
@@ -3252,6 +2799,11 @@ static void fy_reflection_cleanup(struct fy_reflection *rfl)
 
 	backend_reflection_cleanup(rfl);
 
+	if (rfl->cparse_allocator) {
+		fy_allocator_destroy(rfl->cparse_allocator);
+		rfl->cparse_allocator = NULL;
+	}
+
 	if (rfl->diag) {
 		fy_diag_unref(rfl->diag);
 		rfl->diag = NULL;
@@ -3944,24 +3496,242 @@ fy_type_info_unqualified(const struct fy_type_info *ti)
 	return fy_type_get_info(ft);
 }
 
-const char *fy_parse_c_base_type(const char *s, size_t len,
-	     enum fy_type_kind *type_kindp, const char **namep, size_t *name_lenp,
-	     unsigned int *qualsp)
+/*
+ * Type text is parsed by the C declaration front end (cparse); this maps what
+ * it makes onto the reflection's own types.
+ */
+
+static unsigned int cp_quals_to_fy(unsigned int quals)
 {
-	return parse_c_type(s, len, type_kindp, namep, name_lenp, qualsp);
+	return ((quals & CPQ_CONST) ? FY_QUALIFIER_CONST : 0) |
+	       ((quals & CPQ_VOLATILE) ? FY_QUALIFIER_VOLATILE : 0) |
+	       ((quals & CPQ_RESTRICT) ? FY_QUALIFIER_RESTRICT : 0);
+}
+
+/* the reflection kind of a cparse builtin type, FYTK_INVALID if there is none */
+static enum fy_type_kind cp_builtin_to_fy_kind(enum cp_type_kind k)
+{
+	switch (k) {
+	case CPTK_VOID: return FYTK_VOID;
+	case CPTK_BOOL: return FYTK_BOOL;
+	case CPTK_CHAR: return FYTK_CHAR;
+	case CPTK_SCHAR: return FYTK_SCHAR;
+	case CPTK_UCHAR: return FYTK_UCHAR;
+	case CPTK_SHORT: return FYTK_SHORT;
+	case CPTK_USHORT: return FYTK_USHORT;
+	case CPTK_INT: return FYTK_INT;
+	case CPTK_UINT: return FYTK_UINT;
+	case CPTK_LONG: return FYTK_LONG;
+	case CPTK_ULONG: return FYTK_ULONG;
+	case CPTK_LONGLONG: return FYTK_LONGLONG;
+	case CPTK_ULONGLONG: return FYTK_ULONGLONG;
+	case CPTK_INT128: return FYTK_INT128;
+	case CPTK_UINT128: return FYTK_UINT128;
+	case CPTK_FLOAT: return FYTK_FLOAT;
+	case CPTK_DOUBLE: return FYTK_DOUBLE;
+	case CPTK_LONGDOUBLE: return FYTK_LONGDOUBLE;
+	case CPTK_FLOAT16: return FYTK_FLOAT16;
+	case CPTK_FLOAT128: return FYTK_FLOAT128;
+	default: return FYTK_INVALID;
+	}
+}
+
+/*
+ * The base of a type as the reflection names it: its kind, its name and the
+ * qualifiers written on it. Returns false for anything that is not a plain
+ * (non pointer, array or function) type. The name is not copied: it is owned by
+ * the cparse type.
+ */
+static bool cp_type_base_info(const struct cp_type *cpt, enum fy_type_kind *kindp,
+			      const char **namep, unsigned int *qualsp)
+{
+	const struct cp_type *u = cpt->unqual;
+	enum fy_type_kind kind;
+
+	/* atomic, vectors, complex and the rest have no reflection type */
+	if (cpt->quals & CPQ_ATOMIC)
+		return false;
+
+	*qualsp = cp_quals_to_fy(cpt->quals);
+	if (u->kind < CPTK_BUILTIN_END) {
+		kind = cp_builtin_to_fy_kind(u->kind);
+		if (kind == FYTK_INVALID)
+			return false;
+		*namep = fy_type_kind_name(kind);
+	} else if (u->kind == CPTK_TYPEDEF) {
+		kind = FYTK_TYPEDEF;
+		*namep = u->name;
+	} else if (u->kind == CPTK_ELABORATED) {
+		kind = u->keyword == CPTK_STRUCT ? FYTK_STRUCT :
+		       u->keyword == CPTK_UNION ? FYTK_UNION : FYTK_ENUM;
+		*namep = u->name;
+	} else {
+		return false;
+	}
+	if (!*namep)
+		return false;
+	*kindp = kind;
+	return true;
+}
+
+/* a cparse TU for parsing type text, sharing the reflection's allocator */
+static struct cp_tu *rfl_cp_tu_create(struct fy_reflection *rfl)
+{
+	struct fy_auto_allocator_cfg acfg;
+	struct cp_options opts;
+
+	if (!rfl->cparse_allocator) {
+		memset(&acfg, 0, sizeof(acfg));
+		acfg.scenario = FYAST_PER_TAG_FREE;
+		rfl->cparse_allocator = fy_allocator_create("auto", &acfg);
+		if (!rfl->cparse_allocator)
+			return NULL;
+	}
+
+	memset(&opts, 0, sizeof(opts));
+	opts.allocator = rfl->cparse_allocator;
+	opts.std_c23 = true;		/* bool is a keyword */
+	return cp_tu_create(&opts);
+}
+
+/* report what cparse said, as the reflection's error */
+static void rfl_cp_report(struct fy_reflection *rfl, struct cp_tu *tu,
+			  const char *text, size_t len)
+{
+	if (tu->num_diags)
+		rfl_error(rfl, "%s: '%.*s': %s\n", __func__, (int)len, text,
+			  tu->diags[tu->num_diags - 1].msg);
+}
+
+char *fy_parse_c_base_type_dup(const char *s, size_t len, enum fy_type_kind *type_kindp,
+			       unsigned int *qualsp)
+{
+	struct fy_allocator *a = NULL;
+	struct fy_auto_allocator_cfg acfg;
+	struct cp_options opts;
+	struct cp_tu *tu = NULL;
+	struct cp_type *cpt;
+	enum fy_type_kind kind = FYTK_INVALID;
+	const char *name = NULL;
+	unsigned int quals = 0;
+	char *ret = NULL;
+
+	if (!s)
+		return NULL;
+	if (len == (size_t)-1)
+		len = strlen(s);
+
+	/* no reflection to borrow an allocator from: a short lived one */
+	memset(&acfg, 0, sizeof(acfg));
+	acfg.scenario = FYAST_PER_TAG_FREE;
+	a = fy_allocator_create("auto", &acfg);
+	if (!a)
+		return NULL;
+	memset(&opts, 0, sizeof(opts));
+	opts.allocator = a;
+	opts.std_c23 = true;
+	tu = cp_tu_create(&opts);
+	if (!tu)
+		goto out;
+
+	cpt = cp_parse_type_text(tu, s, len);
+	if (!cpt || !cp_type_base_info(cpt, &kind, &name, &quals))
+		goto out;
+
+	ret = strdup(name);
+	*type_kindp = kind;
+	*qualsp = quals;
+out:
+	cp_tu_destroy(tu);
+	fy_allocator_destroy(a);
+	return ret;
+}
+
+/*
+ * The reflection type for a cparse type, creating pointers and arrays as needed.
+ * A chain of pointers and arrays can be very long: walk down to the base type
+ * first and build the chain back up, so that the depth does not use the stack.
+ */
+static struct fy_type *fy_type_from_cp_type(struct fy_reflection *rfl, const struct cp_type *cpt)
+{
+	const struct cp_type *cur, *u, **chain = NULL, **nchain;
+	size_t depth = 0, cap = 0, i;
+	struct fy_type *ft = NULL, *ft_base = NULL;
+	enum fy_type_kind type_kind;
+	const char *type_name;
+	unsigned int quals;
+	bool ok;
+
+	for (cur = cpt; ; cur = u->base) {
+		u = cur->unqual;
+		if (u->kind != CPTK_PTR && u->kind != CPTK_ARRAY)
+			break;
+
+		if (depth == cap) {
+			cap = cap ? cap * 2 : 64;
+			nchain = realloc(chain, cap * sizeof(*chain));
+			RFL_ERROR_CHECK(nchain, "%s: out of memory", __func__);
+			chain = nchain;
+		}
+		chain[depth++] = cur;
+	}
+
+	ok = cp_type_base_info(cur, &type_kind, &type_name, &quals);
+	RFL_ERROR_CHECK(ok, "%s: unsupported type", __func__);
+
+	ft_base = fy_base_type_lookup_by_kind(rfl, type_kind, type_name, strlen(type_name), quals);
+	if (!ft_base && quals) {
+		/* try without the qualifiers */
+		ft_base = fy_base_type_lookup_by_kind(rfl, type_kind, type_name, strlen(type_name), 0);
+		if (ft_base) {
+			ft = fy_type_create_with_qualifiers(ft_base, quals, NULL);
+			RFL_ASSERT(ft);
+			fy_type_list_add_tail(&rfl->types, ft);
+			ft_base = ft;
+		}
+	}
+	RFL_ERROR_CHECK(ft_base, "%s: could not find base type '%s'\n", __func__, type_name);
+
+	rfl_debug(rfl, "%s: > found base type: %s\n", __func__, ft_base->fullname);
+
+	/* from the innermost level out */
+	for (i = depth; i > 0; i--) {
+		cur = chain[i - 1];
+		u = cur->unqual;
+
+		if (u->kind == CPTK_PTR) {
+			RFL_ERROR_CHECK(!(cur->quals & CPQ_ATOMIC), "atomic types are not supported");
+			quals = cp_quals_to_fy(cur->quals);
+			ft = fy_type_lookup_pointer(ft_base, quals);
+			if (!ft)
+				ft = fy_type_create_pointer(ft_base, quals);
+			RFL_ASSERT(ft);
+			rfl_debug(rfl, "%s: > created pointer %s\n", __func__, ft->fullname);
+		} else {
+			RFL_ERROR_CHECK(u->count >= 0, "incomplete arrays are not supported");
+			ft = fy_type_lookup_array(ft_base, 0, (uintmax_t)u->count);
+			if (!ft)
+				ft = fy_type_create_array(ft_base, 0, (uintmax_t)u->count);
+			RFL_ASSERT(ft);
+			rfl_debug(rfl, "%s: > created const array %s\n", __func__, ft->fullname);
+		}
+		ft_base = ft;
+	}
+
+	free(chain);
+	return ft_base;
+
+err_out:
+	free(chain);
+	return NULL;
 }
 
 struct fy_type *
 fy_type_lookup_or_create(struct fy_reflection *rfl, const char *name, size_t name_len)
 {
-	struct fy_type *ft = NULL, *ft_base = NULL;
-	const char *s, *e, *p;
-	char *nexts;
-	enum fy_type_kind type_kind;
-	unsigned int quals;
-	const char *type_name;
-	size_t type_name_len;
-	uintmax_t arrsz;
+	struct fy_type *ft = NULL;
+	struct cp_tu *tu = NULL;
+	struct cp_type *cpt;
 
 	if (!rfl || !name)
 		return NULL;
@@ -3969,108 +3739,22 @@ fy_type_lookup_or_create(struct fy_reflection *rfl, const char *name, size_t nam
 	if (name_len == (size_t)-1)
 		name_len = strlen(name);
 
-	s = name;
-	e = s + name_len;
+	rfl_debug(rfl, "%s: > '%.*s'", __func__, (int)name_len, name);
 
-	rfl_debug(rfl, "%s: > start='%.*s'", __func__, (int)(e - s), s);
+	tu = rfl_cp_tu_create(rfl);
+	RFL_ERROR_CHECK(tu, "%s: failed to create the type parser", __func__);
 
-	ft = NULL;
-	p = parse_c_type(s, (size_t)(e - s), &type_kind, &type_name, &type_name_len, &quals);
-	RFL_ERROR_CHECK(p, "%s: failed to parse base type", __func__);
-
-	rfl_debug(rfl, "%s: > tk=%s n='%.*s' left='%.*s' quals='%s%s%s'\n", __func__,
-			fy_type_kind_info_get_internal(type_kind)->name, (int)type_name_len, type_name,
-			(int)(e - p), p,
-			(quals & FY_QUALIFIER_CONST) ? " const" : "",
-			(quals & FY_QUALIFIER_VOLATILE) ? " volatile" : "",
-			(quals & FY_QUALIFIER_RESTRICT) ? " restrict" : "");
-
-	ft_base = fy_base_type_lookup_by_kind(rfl, type_kind, type_name, type_name_len, quals);
-	if (!ft_base && quals) {
-		/* try without the qualifiers */
-		ft_base = fy_base_type_lookup_by_kind(rfl, type_kind, type_name, type_name_len, 0);
-		if (ft_base) {
-			ft = fy_type_create_with_qualifiers(ft_base, quals, NULL);
-			RFL_ASSERT(ft);
-			fy_type_list_add_tail(&rfl->types, ft);
-			ft_base = ft;
-			ft = NULL;
-		}
+	cpt = cp_parse_type_text(tu, name, name_len);
+	if (!cpt) {
+		rfl_cp_report(rfl, tu, name, name_len);
+		goto err_out;
 	}
 
-	RFL_ERROR_CHECK(ft_base, "%s: could not find base type\n", __func__);
-
-	rfl_debug(rfl, "%s: > found base type: %s\n", __func__, ft_base->fullname);
-
-	ft = ft_base;
-	s = p;
-	while (s < e && isspace((unsigned char)*s))
-		s++;
-
-	while (s < e) {
-		if (*s == '*') {
-			s++;
-
-			p = parse_c_type_qualifiers(s, (size_t)(e - s), &quals);
-			if (p)
-				s = p;
-			while (s < e && isspace((unsigned char)*s))
-				s++;
-
-			ft_base = ft;
-
-			ft = fy_type_lookup_pointer(ft_base, quals);
-			if (!ft)
-				ft = fy_type_create_pointer(ft_base, quals);
-			RFL_ASSERT(ft);
-
-			rfl_debug(rfl, "%s: > created pointer %s\n", __func__, ft->fullname);
-
-		} else if (*s == '[') {
-			s++;
-			while (s < e && isspace((unsigned char)*s))
-				s++;
-			if (s >= e)
-				break;
-			/* strtoumax() accepts a sign, an array size is a plain number */
-			RFL_ERROR_CHECK(isdigit((unsigned char)*s),
-					"bad array size in '%.*s'", (int)name_len, name);
-			errno = 0;
-			arrsz = strtoumax(s, &nexts, 0);
-			RFL_ERROR_CHECK(errno != ERANGE,
-					"array size too large in '%.*s'", (int)name_len, name);
-			s = nexts;
-			while (s < e && isspace((unsigned char)*s))
-				s++;
-			if (s >= e)
-				break;
-			RFL_ERROR_CHECK(*s == ']',
-					"missing ] in '%.*s'", (int)name_len, name);
-
-			s++;
-			while (s < e && isspace((unsigned char)*s))
-				s++;
-
-			ft_base = ft;
-
-			quals = 0;
-
-			ft = fy_type_lookup_array(ft_base, quals, arrsz);
-			if (!ft)
-				ft = fy_type_create_array(ft_base, quals, arrsz);
-			RFL_ASSERT(ft);
-
-			rfl_debug(rfl, "%s: > created const array %s\n", __func__, ft->fullname);
-
-		} else
-			RFL_ERROR_CHECK(false,
-					"garbage left '%.*s'", (int)(e - s), s);
-	}
-
-	return ft;
+	ft = fy_type_from_cp_type(rfl, cpt);
 
 err_out:
-	return NULL;
+	cp_tu_destroy(tu);
+	return ft;
 }
 
 const struct fy_type_info *

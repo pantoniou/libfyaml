@@ -104,12 +104,13 @@ void fy_type_unregister_unresolved(struct fy_type *ft);
 #define FY_QUALIFIER_VOLATILE		FY_BIT(FY_QUALIFIER_BIT_START + FY_QUALIFIER_VOLATILE_IDX)
 #define FY_QUALIFIER_RESTRICT		FY_BIT(FY_QUALIFIER_BIT_START + FY_QUALIFIER_RESTRICT_IDX)
 
-const char *fy_parse_c_qualifiers(const char *s, size_t len, unsigned int *qualsp);
-const char *fy_parse_c_primitive_type(const char *s, size_t len,
-	     enum fy_type_kind *type_kindp);
-const char *fy_parse_c_base_type(const char *s, size_t len,
-	     enum fy_type_kind *type_kindp, const char **namep, size_t *name_lenp,
-	     unsigned int *qualsp);
+/*
+ * Parse a base type (no pointer, array or function) out of C text, e.g. a type
+ * spelling: its kind, the qualifiers on it, and its name (malloc'd). Returns NULL
+ * if the text is not a plain type.
+ */
+char *fy_parse_c_base_type_dup(const char *s, size_t len, enum fy_type_kind *type_kindp,
+			       unsigned int *qualsp);
 
 enum fy_type_flags {
 	/* those must be present */
@@ -412,6 +413,7 @@ struct fy_reflection {
 	void *backend;
 	struct fy_import *imp_curr;	/* the current import */
 	void *userdata;
+	struct fy_allocator *cparse_allocator;	/* for parsing type text */
 };
 
 struct fy_type *fy_type_create(struct fy_reflection *rfl, enum fy_type_kind type_kind,
@@ -434,6 +436,10 @@ struct fy_type *fy_type_create_ptr_dep(struct fy_type *ft);	/* for final referen
 int fy_type_update_elaborated(struct fy_type *ft, void *user);
 int fy_type_update_all_elaborated(struct fy_type *ft);
 struct fy_type *fy_type_with_qualifiers(struct fy_type *ft_src, unsigned int quals);
+struct fy_type *fy_type_lookup_pointer(struct fy_type *ft_base, unsigned int quals);
+struct fy_type *fy_type_lookup_array(struct fy_type *ft_base, unsigned int quals, uintmax_t arrsz);
+struct fy_type *fy_type_create_pointer(struct fy_type *ft_base, unsigned int quals);
+struct fy_type *fy_type_create_array(struct fy_type *ft_base, unsigned int quals, uintmax_t array_size);
 struct fy_type *fy_type_create_with_qualifiers(struct fy_type *ft_src, unsigned int quals, void *user);
 struct fy_type *fy_type_unqualified(struct fy_type *ft);
 

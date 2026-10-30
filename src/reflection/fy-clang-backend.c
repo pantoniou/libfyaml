@@ -2055,9 +2055,6 @@ static int clang_import_done(struct fy_import *imp)
 	struct fy_type *ft, *ft_final, *ft_dep;
 	struct clang_type_backend *ftb;
 	char *final_type_spell, *final_type_name = NULL;
-	const char *tmp_type;
-	const char *type_rem FY_DEBUG_UNUSED;
-	size_t tmp_type_len;
 	unsigned int tmp_quals;
 	enum fy_type_kind dep_type_kind, final_type_kind, tmp_type_kind;
 	enum fy_decl_type final_decl_type;
@@ -2125,15 +2122,9 @@ static int clang_import_done(struct fy_import *imp)
 
 			// fprintf(stderr, "%s: final_type_spell='%s'\n", __func__, final_type_spell);
 
-			type_rem = fy_parse_c_base_type(final_type_spell, (size_t)-1, &tmp_type_kind,
-					&tmp_type, &tmp_type_len, &tmp_quals);
-			RFL_ASSERT(type_rem && *type_rem == '\0');
-
-			final_type_name = malloc(tmp_type_len + 1);
+			final_type_name = fy_parse_c_base_type_dup(final_type_spell, (size_t)-1,
+					&tmp_type_kind, &tmp_quals);
 			RFL_ASSERT(final_type_name);
-
-			memcpy(final_type_name, tmp_type, tmp_type_len);
-			final_type_name[tmp_type_len] = '\0';
 
 			final_decl = fy_decl_create(rfl, imp, NULL, final_decl_type, final_type_name, declu);
 			RFL_ASSERT(final_decl);
