@@ -1,0 +1,31 @@
+struct vd def size=16 align=4 @4:1
+  field addr 'unsigned long long' off=0
+  field len 'unsigned int' off=8
+  field flags 'unsigned short' off=12
+  field next 'unsigned short' off=14
+typedef vd_t = 'struct vd' size=16 @12:1
+typedef vd2_t = 'struct vd' size=16 @13:1
+typedef int_a8 = 'int' size=4 @14:1
+typedef int_a2 = 'int' size=4 @15:1
+typedef ch_a4 = 'char[3]' size=3 @16:1
+typedef vd_arr_t = 'struct vd[2]' size=32 @17:1
+typedef int_a16 = 'int' size=4 @18:1
+typedef int_again = 'int_a16' size=4 @19:1
+struct u def size=32 align=16 @21:1
+  field a 'vd_t' off=0
+  field c 'char' off=16
+struct w def size=8 align=8 @22:1
+  field x 'int_a8' off=0
+  field c 'char' off=4
+struct x def size=6 align=2 @23:1
+  field c 'char' off=0
+  field v 'int_a2' off=2
+struct y def size=64 align=32 @24:1
+  field c 'char' off=0
+  field arr 'vd_arr_t' off=32
+struct z def size=32 align=16 @25:1
+  field c 'char' off=0
+  field v 'int_again' off=16
+struct v def size=8 align=4 @26:1
+  field c 'char' off=0
+  field s 'ch_a4' off=4

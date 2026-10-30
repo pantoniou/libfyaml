@@ -1,0 +1,7 @@
+typedef is_filc = 'int' size=4 @5:1
+typedef has_pizlonator = 'int' size=4 @11:1
+struct filc_ptrs def size=24 align=8 @15:1
+    comment: /* a pointer is 8 bytes in an object */
+  field c 'char' off=0
+  field p 'void *' off=8
+  field l 'long' off=16

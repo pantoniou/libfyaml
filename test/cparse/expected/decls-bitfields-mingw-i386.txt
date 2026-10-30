@@ -1,0 +1,56 @@
+struct unnamed_gap def size=12 align=4 @4:1
+  field a 'char' off=0
+  field (anon) 'int' bitpos=32 bits=3
+  field b 'char' off=8
+struct unnamed_wide def size=24 align=8 @5:1
+  field a 'char' off=0
+  field (anon) 'long long' bitpos=64 bits=5
+  field b 'char' off=16
+struct zero_char def size=2 align=1 @6:1
+  field a 'char' off=0
+  field (anon) 'int' bitpos=8 bits=0
+  field b 'char' off=1
+struct zero_short def size=16 align=8 @7:1
+  field a 'short' bitpos=0 bits=3
+  field (anon) 'long long' bitpos=64 bits=0
+  field b 'short' bitpos=64 bits=3
+struct zero_first def size=1 align=1 @8:1
+  field (anon) 'int' bitpos=0 bits=0
+  field a 'char' off=0
+struct llong_bits def size=24 align=8 @9:1
+  field a 'char' off=0
+  field b 'long long' bitpos=64 bits=40
+  field c 'char' off=16
+struct straddle def size=6 align=2 @10:1
+  field a 'char' off=0
+  field b 'unsigned short' bitpos=16 bits=12
+  field c 'unsigned short' bitpos=32 bits=12
+struct wide_straddle def size=12 align=4 @11:1
+  field a 'int' bitpos=0 bits=20
+  field b 'int' bitpos=32 bits=20
+  field c 'int' bitpos=64 bits=20
+struct packed_bits def size=12 align=4 @12:1
+  field a 'char' off=0
+  field b 'int' bitpos=32 bits=12
+  field c 'char' off=8
+struct align_bits def size=16 align=8 @13:1
+  field a 'char' off=0
+  field b 'int' bitpos=64 bits=4
+struct mixed def size=24 align=8 @14:1
+  field a 'char' bitpos=0 bits=3
+  field b 'short' bitpos=16 bits=9
+  field c 'long long' bitpos=64 bits=33
+  field d 'char' off=16
+struct only_unnamed def size=4 align=4 @15:1
+  field (anon) 'int' bitpos=0 bits=7
+struct bool_bits def size=8 align=4 @16:1
+  field a '_Bool' bitpos=0 bits=1
+  field b '_Bool' bitpos=1 bits=1
+  field c 'int' bitpos=32 bits=3
+union bit_union def size=8 align=1 @17:1
+  field a 'int' bitpos=0 bits=3
+  field b 'char' bitpos=0 bits=5
+  field c 'long long' bitpos=0 bits=40
+struct long_double_after def size=16 align=4 @18:1
+  field a 'char' bitpos=0 bits=2
+  field b 'long double' off=4

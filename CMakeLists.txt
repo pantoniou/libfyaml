@@ -1541,6 +1541,7 @@ endif()
 if(CAN_TEST)
     # Include TAP subtest registration functions
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/add-tap-subtests.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/add-cparse-tests.cmake)
 
     # Create test directory
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test)
@@ -1871,6 +1872,17 @@ int main(void) { return 0; }
     endif()
     if(HAVE_LIBYAML)
         list(APPEND TEST_DEPENDENCIES libfyaml-parser)
+    endif()
+
+    # The fuzz run of the cparse input is by hand only: target cparse-fuzz
+    if(HAVE_CPARSE_BACKEND)
+        add_cparse_fuzz_target()
+    endif()
+
+    # The cparse and round trip tests run shell scripts that run the tools directly;
+    # for Emscripten test/wasm/run-wasm-tests.sh runs them under node
+    if(HAVE_CPARSE_BACKEND AND BASH_EXECUTABLE AND NOT WIN32 AND NOT EMSCRIPTEN)
+        add_cparse_tests()
     endif()
 
     set(TEST_SUITES

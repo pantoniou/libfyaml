@@ -31,7 +31,6 @@ if CROSS_COMPILING
 check_PROGRAMS =
 else
 
-
 check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/test/ \
 			 -I$(top_srcdir)/src/valgrind/ \
@@ -152,6 +151,50 @@ endif
 
 if HAVE_REFLECTION_C
 TESTS += testreflection.test
+endif
+
+if HAVE_CPARSE_BACKEND
+
+# the cparse and round trip tools use private symbols, so they need the
+# static library
+if HAVE_STATIC
+check_PROGRAMS += cparse-tool
+
+cparse_tool_SOURCES = cparse/cparse-tool.c
+cparse_tool_CPPFLAGS = $(AM_CPPFLAGS) \
+		       -I$(top_srcdir)/src/lib \
+		       -I$(top_srcdir)/src/util \
+		       -I$(top_srcdir)/src/allocator \
+		       -I$(top_srcdir)/src/cparse
+cparse_tool_LDADD = $(top_builddir)/src/libfyaml.la
+cparse_tool_LDFLAGS = -static
+
+# The fuzz run of the cparse input is by hand only: it is not built by "make"
+# or "make check". Run "make cparse-fuzz"; FUZZ_ARGS sets the options, for
+# example "make cparse-fuzz FUZZ_ARGS='-s 7 -n 200000'".
+EXTRA_PROGRAMS = cparse-fuzz-input
+cparse_fuzz_input_SOURCES = cparse/fuzz-input.c
+cparse_fuzz_input_CPPFLAGS = $(cparse_tool_CPPFLAGS)
+cparse_fuzz_input_LDADD = $(top_builddir)/src/libfyaml.la
+cparse_fuzz_input_LDFLAGS = -static
+
+.PHONY: cparse-fuzz
+cparse-fuzz: cparse-fuzz-input$(EXEEXT)
+	./cparse-fuzz-input $(FUZZ_ARGS) $(srcdir)/cparse/decls-*.c \
+		$(srcdir)/cparse/comments-*.c $(srcdir)/cparse/pp-macros.c \
+		$(srcdir)/cparse/imacros.c
+
+TESTS += testcparse.test
+
+if HAVE_LIBCLANG
+check_PROGRAMS += cparse-libclang-dump
+cparse_libclang_dump_SOURCES = cparse/libclang-dump.c
+cparse_libclang_dump_CPPFLAGS = $(AM_CPPFLAGS) $(LIBCLANG_CPPFLAGS)
+cparse_libclang_dump_CFLAGS = $(AM_CFLAGS) $(LIBCLANG_CFLAGS)
+cparse_libclang_dump_LDFLAGS = $(LIBCLANG_LDFLAGS)
+cparse_libclang_dump_LDADD = $(LIBCLANG_LIBS)
+endif
+endif
 endif
 
 endif # !CROSS_COMPILING
@@ -383,3 +426,35 @@ EXTRA_DIST += \
 EXTRA_DIST += \
 	random4.sh \
 	run-reflection.sh
+
+# the cparse and round trip tests
+EXTRA_DIST += \
+	cparse/cases.txt \
+	cparse/run-cparse-test.sh \
+	cparse/cparse-tool.c \
+	cparse/fuzz-input.c \
+	cparse/fuzz-layout.py \
+	cparse/fuzz-msvc.py \
+	cparse/libclang-dump.c \
+	cparse/comments-basic.c \
+	cparse/comments-quirk.c \
+	cparse/decls-basic.c \
+	cparse/decls-bitfields.c \
+	cparse/decls-char.c \
+	cparse/decls-consts.c \
+	cparse/decls-enums.c \
+	cparse/decls-filc.c \
+	cparse/decls-ilp32.c \
+	cparse/decls-nullability.c \
+	cparse/decls-records.c \
+	cparse/decls-target.c \
+	cparse/decls-typedef-align.c \
+	cparse/decls-types.c \
+	cparse/imacros.c \
+	cparse/user-macros.h \
+	cparse/inc1.h \
+	cparse/inc2.h \
+	cparse/pp-macros.c \
+	cparse/predefs.c \
+	cparse/sweep-headers.sh \
+	cparse/expected

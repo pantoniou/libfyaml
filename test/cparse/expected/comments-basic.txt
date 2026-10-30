@@ -1,0 +1,43 @@
+struct A def size=16 align=4 @4:1
+    comment: /* leading block */
+  field x 'int' off=0
+    comment: /* trailing block */
+  field y 'int' off=4
+    comment: // trailing line
+  field z 'int' off=8
+    comment: // leading line for z
+  field w 'int' off=12
+    comment: ///< trailing doc
+struct B def size=4 align=4 @14:1
+    comment: // two\n// line leading
+  field a 'int' off=0
+typedef T = 'int' size=4 @15:12
+    comment: /** doc */
+enum E def underlying='unsigned int' size=4 @16:1
+  enumerator E1 = 0
+    comment: // after E1
+  enumerator E2 = 1
+    comment: /* after E2 */
+  enumerator E3 = 2
+    comment: /* before E3 */
+struct C fwd size=-1 align=-1 @21:1
+struct D def size=4 align=4 @24:1
+    comment: // blank line separated
+  field d 'int' off=0
+struct F def size=8 align=4 @26:1
+  field f1 'int' off=0
+    comment: /* between */
+  field f2 'int' off=4
+struct G def size=4 align=4 @28:1
+  field g 'int' off=0
+struct H def size=4 align=4 @34:1
+    comment: /* attached to H */
+  field h 'int' off=0
+struct I def size=16 align=4 @35:1
+  field i1 'int' off=0
+  field i2 'int' off=4
+    comment: // separated by a blank line
+  field i3 'int' off=8
+    comment: // t3
+  field i4 'int' off=12
+    comment: // t4

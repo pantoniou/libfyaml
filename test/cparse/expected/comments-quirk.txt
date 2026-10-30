@@ -1,0 +1,3 @@
+struct B def size=4 align=4 @7:1
+    comment: /*\n * libclang gives a comment after the closing brace of a struct to the last\n * field. cparse gives it to nothing. Only the expected output tests this.\n */
+  field a 'int' off=0

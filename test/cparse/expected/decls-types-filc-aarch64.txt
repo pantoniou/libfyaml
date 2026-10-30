@@ -1,0 +1,25 @@
+struct Point def size=8 align=4 @3:9
+  field x 'int' off=0
+  field y 'int' off=4
+typedef Point = 'struct Point' size=8 @3:1
+struct Nest def size=12 align=4 @4:1
+struct (anon) def size=8 align=4 @4:15
+  field a 'int' off=0
+  field b 'int' off=4
+union (anon) def size=4 align=4 @4:41
+  field u 'int' off=0
+  field f 'float' off=0
+  field un 'union (unnamed union at decls-types.c:4:41)' off=8
+typedef arr_t = 'int[4]' size=16 @5:1
+typedef fp_t = 'int (*)(int (*)[3], char *const *)' size=8 @6:1
+struct S2 def size=40 align=8 @7:1
+  field a 'int[3]' off=0
+  field names 'const char *[2]' off=16
+  field pa 'int (*)[4]' off=32
+enum (anon) def underlying='unsigned int' size=4 @8:1
+  enumerator ANON_A = 0
+  enumerator ANON_B = 1
+enum TE def underlying='unsigned int' size=4 @9:9
+  enumerator TE_A = 0
+  enumerator TE_B = 1
+typedef TE = 'enum TE' size=4 @9:1

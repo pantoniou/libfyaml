@@ -1,0 +1,10 @@
+typedef t_char = 'char' size=1 @4:1
+enum char_values def underlying='unsigned int' size=4 @6:1
+  enumerator CV_NEG = 255
+  enumerator CV_HIGH = 200
+  enumerator CV_SHIFT = 64
+enum char_cmp def underlying='unsigned int' size=4 @12:1
+  enumerator CC_SIGNED = 0
+  enumerator CC_SIZE = 1
+enum wide_char_values def underlying='unsigned int' size=4 @17:1
+  enumerator WV_CONV = 254

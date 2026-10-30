@@ -1,0 +1,59 @@
+struct p1 def size=4 align=1 @7:1
+  field a 'char' off=0
+  field b 'int' bitpos=8 bits=12
+  field c 'char' off=3
+struct p2 def size=4 align=1 @8:1
+  field a 'char' off=0
+  field b 'int' bitpos=8 bits=12
+  field c 'char' off=3
+struct p3 def size=6 align=1 @9:1
+  field a 'char' off=0
+  field b 'int' off=1
+  field c 'char' off=5
+struct p4 def size=2 align=1 @10:1
+  field a 'char' off=0
+  field b 'short' bitpos=8 bits=3
+  field c 'int' bitpos=11 bits=5
+struct p5 def size=4 align=1 @12:1
+  field a 'char' off=0
+  field b 'int' bitpos=8 bits=12
+  field c 'char' off=3
+struct p6 def size=8 align=2 @15:1
+  field a 'char' off=0
+  field b 'int' bitpos=8 bits=12
+  field c 'char' off=3
+  field d 'int' off=4
+struct p7 def size=4 align=4 @17:1
+  field a 'char' off=0
+  field b 'int' bitpos=8 bits=4
+union p8 def size=2 align=1 @18:1
+  field a 'char' off=0
+  field b 'int' bitpos=0 bits=12
+struct e0 def size=0 align=1 @20:1
+union e1 def size=0 align=1 @21:1
+struct e2 def size=0 align=1 @22:1
+  field (anon) 'int' bitpos=0 bits=0
+struct e3 def size=0 align=1 @23:1
+  field (anon) 'char' bitpos=0 bits=0
+struct e4 def size=0 align=1 @24:1
+  field (anon) 'long long' bitpos=0 bits=0
+struct e5 def size=0 align=4 @25:1
+  field a 'int[0]' off=0
+struct e6 def size=1 align=1 @26:1
+  field (anon) 'int' bitpos=0 bits=3
+struct e7 def size=4 align=1 @27:1
+  field c 'char' off=0
+  field (anon) 'int' bitpos=32 bits=0
+union e8 def size=0 align=1 @28:1
+  field (anon) 'char' bitpos=0 bits=0
+union e9 def size=0 align=1 @29:1
+  field (anon) 'long long' bitpos=0 bits=0
+union e10 def size=1 align=1 @30:1
+  field (anon) 'int' bitpos=0 bits=5
+struct e11 def size=0 align=16 @31:1
+  field (anon) 'int' bitpos=0 bits=0
+struct e12 def size=0 align=1 @32:1
+  field x 'struct e0' off=0
+struct e13 def size=1 align=1 @33:1
+  field c 'char' off=0
+  field x 'struct e0' off=1

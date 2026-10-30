@@ -1,0 +1,93 @@
+typedef t_char = 'char' size=1 @4:1
+typedef t_schar = 'signed char' size=1 @5:1
+typedef t_uchar = 'unsigned char' size=1 @6:1
+typedef t_short = 'short' size=2 @7:1
+typedef t_ushort = 'unsigned short' size=2 @8:1
+typedef t_int = 'int' size=4 @9:1
+typedef t_uint = 'unsigned int' size=4 @10:1
+typedef t_long = 'long' size=4 @11:1
+typedef t_ulong = 'unsigned long' size=4 @12:1
+typedef t_llong = 'long long' size=8 @13:1
+typedef t_ullong = 'unsigned long long' size=8 @14:1
+typedef t_float = 'float' size=4 @15:1
+typedef t_double = 'double' size=8 @16:1
+typedef t_ldouble = 'long double' size=8 @17:1
+typedef t_bool = '_Bool' size=1 @18:1
+typedef t_ptr = 'void *' size=4 @19:1
+typedef t_cptr = 'char *' size=4 @20:1
+typedef t_fp = 'int (*)(int)' size=4 @21:1
+typedef t_va = '__builtin_va_list' size=4 @22:1
+struct Members def size=56 align=8 @24:1
+  field c 'char' off=0
+  field s 'short' off=2
+  field i 'int' off=4
+  field l 'long' off=8
+  field ll 'long long' off=16
+  field f 'float' off=24
+  field d 'double' off=32
+  field ld 'long double' off=40
+  field p 'void *' off=48
+struct AfterChar_d def size=16 align=8 @25:1
+  field c 'char' off=0
+  field d 'double' off=8
+struct AfterChar_ll def size=16 align=8 @26:1
+  field c 'char' off=0
+  field ll 'long long' off=8
+struct AfterChar_ld def size=16 align=8 @27:1
+  field c 'char' off=0
+  field ld 'long double' off=8
+struct AfterChar_a def size=24 align=8 @28:1
+  field c 'char' off=0
+  field a 'double[2]' off=8
+struct AfterChar_p def size=8 align=4 @29:1
+  field c 'char' off=0
+  field p 'void *' off=4
+struct AfterChar_l def size=8 align=4 @30:1
+  field c 'char' off=0
+  field l 'long' off=4
+union Union def size=8 align=8 @31:1
+  field c 'char' off=0
+  field d 'double' off=0
+  field ld 'long double' off=0
+  field ll 'long long' off=0
+struct Bits def size=16 align=8 @32:1
+  field c 'char' off=0
+  field u 'unsigned int' bitpos=8 bits=3
+  field l 'long' bitpos=11 bits=5
+  field d 'char' bitpos=16 bits=7
+  field i 'int' bitpos=32 bits=20
+  field ll 'long long' bitpos=64 bits=40
+struct BitsZero def size=8 align=4 @33:1
+  field c 'char' off=0
+  field a 'int' bitpos=8 bits=3
+  field (anon) 'int' bitpos=32 bits=0
+  field b 'int' bitpos=32 bits=3
+struct PackedBits def size=4 align=1 @34:1
+  field c 'char' off=0
+  field i 'int' bitpos=8 bits=20
+struct Packed def size=9 align=1 @35:1
+  field c 'char' off=0
+  field d 'double' off=1
+struct Aligned def size=16 align=16 @36:1
+  field c 'char' off=0
+struct Flex def size=8 align=8 @37:1
+  field n 'int' off=0
+  field d 'double[]' off=8
+struct Vec def size=24 align=8 @38:1
+  field c 'char' off=0
+  field v '__attribute__((__vector_size__(4 * sizeof(int)))) int' off=8
+enum E1 def underlying='unsigned int' size=4 @39:1
+  enumerator E1_A = 0
+  enumerator E1_B = 5
+enum E2 def underlying='int' size=4 @40:1
+  enumerator E2_NEG = -1
+  enumerator E2_POS = 3
+enum E3 def underlying='unsigned int' size=4 @41:1
+  enumerator E3_BIG = -2147483648
+struct Nested def size=32 align=8 @42:1
+  field c 'char' off=0
+struct (anon) def size=16 align=8 @42:25
+  field a 'long long' off=0
+  field b 'char' off=8
+  field in 'struct (unnamed struct at decls-target.c:42:25)' off=8
+  field s 'short' off=24

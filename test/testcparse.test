@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+#
+# Run the cparse cases as TAP: the expected output and, when the libclang dump
+# tool is built, libclang.
+srcdir=${SRCDIR:-$(dirname "$0")}
+builddir=${BUILDDIR:-.}
+here=$(cd "$srcdir/cparse" && pwd)
+export TEST_DIR=$here
+export CPARSE_TOOL=$builddir/cparse-tool
+dump=$builddir/cparse-libclang-dump
+
+names=()
+kinds=()
+while read -r name kind rest; do
+	names+=("$name")
+	kinds+=("$kind")
+done < <(grep -v '^#' "$here/cases.txt")
+
+tests=()
+for i in "${!names[@]}"; do
+	tests+=("expected ${names[$i]}")
+	if [ -x "$dump" ] && { [ "${kinds[$i]}" = decls ] || [ "${kinds[$i]}" = comments ]; }; then
+		tests+=("libclang ${names[$i]}")
+	fi
+done
+
+echo "1..${#tests[@]}"
+n=0
+for t in "${tests[@]}"; do
+	n=$((n + 1))
+	# shellcheck disable=SC2086
+	CPARSE_LIBCLANG_DUMP=$dump "$here/run-cparse-test.sh" $t > /dev/null 2>&1
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo "ok $n - cparse $t"
+	elif [ $rc -eq 77 ]; then
+		echo "ok $n - cparse $t # SKIP"
+	else
+		echo "not ok $n - cparse $t"
+	fi
+done

@@ -1,0 +1,11 @@
+enum E def underlying='long' size=8 @3:1
+  enumerator A = -2147483648
+  enumerator B = 2147483648
+  enumerator C = -1
+  enumerator D = 3000000000
+  enumerator F = 2147483647
+  enumerator G = -2147483648
+struct V def size=32 align=16 @4:1
+  field n 'int' off=0
+  field v4 '__attribute__((__vector_size__(4 * sizeof(float)))) float' off=16
+typedef dv = '__attribute__((__vector_size__(4 * sizeof(double)))) double' size=32 @5:1

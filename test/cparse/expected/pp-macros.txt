@@ -1,0 +1,15 @@
+int from_inc1 = 5;
+int from_inc2;
+int x = ((3) * (1 + 2) + 1 + 2);
+char *s = "((1) * (2) + 1 + 2)", *t = "a + \"q\\\"w\" b";
+int foobar = 1 + 21;
+int y = foo + 1;
+int z = a + b;
+int w = F (1);printf("a") printf("a", 1, 2) printf("a",)f() g("") f(1) g("1") f(1, 2) g("1, 2")h() h(1,2)1 end 1, 2 ! end 1, 2, 3 ! end
+int cond1;
+int cond4;
+int alive;
+char *f = "pp-macros.c";
+int c0 = 0, c1 = 1, l = 54;
+int packed;<> <>3 2 1
+char *u = "HASH_HASH";

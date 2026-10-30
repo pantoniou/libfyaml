@@ -1,0 +1,195 @@
+# NAME KIND FIXTURE [cparse-tool options]
+#
+# KIND decls            declarations; also compared with libclang
+#      comments         declarations with comments; also compared with libclang
+#      comments-golden  declarations with comments; expected output only
+#      pp               preprocessed text; token stream also compared with clang -E
+#      error            the tool must fail; the message is the expected output
+#      predefs          the compiled in predefined macros against the ABI of the target
+#                       (-B NAME is the compiler, - is the one that built cparse)
+#
+# Options use the cparse-tool spelling. -T TRIPLE is -target TRIPLE for clang.
+decls-basic decls decls-basic.c -T x86_64-linux-gnu
+decls-types decls decls-types.c -T x86_64-linux-gnu
+decls-consts decls decls-consts.c -T x86_64-linux-gnu
+decls-nullability decls decls-nullability.c -T x86_64-linux-gnu
+decls-enums-lp64 decls decls-enums.c -T x86_64-linux-gnu
+decls-enums-ilp32 decls decls-enums.c -T i386-linux-gnu
+decls-typedef-align decls decls-typedef-align.c -T x86_64-linux-gnu
+decls-char-x86_64 decls decls-char.c -T x86_64-linux-gnu
+decls-char-aarch64 decls decls-char.c -T aarch64-linux-gnu
+decls-char-riscv64 decls decls-char.c -T riscv64-linux-gnu
+decls-char-i386 decls decls-char.c -T i386-linux-gnu
+decls-char-unsigned decls decls-char.c -T x86_64-linux-gnu -funsigned-char
+decls-char-signed decls decls-char.c -T aarch64-linux-gnu -fsigned-char
+decls-ilp32-lp64 decls decls-ilp32.c -T x86_64-linux-gnu
+decls-ilp32-ilp32 decls decls-ilp32.c -T i386-linux-gnu
+decls-target-x86_64 decls decls-target.c -T x86_64-linux-gnu
+decls-target-aarch64 decls decls-target.c -T aarch64-linux-gnu
+decls-target-riscv64 decls decls-target.c -T riscv64-linux-gnu
+decls-target-i386 decls decls-target.c -T i386-linux-gnu
+decls-target-m32 decls decls-target.c -T x86_64-linux-gnu -m32
+decls-target-uchar decls decls-target.c -T x86_64-linux-gnu -funsigned-char
+decls-target-aarch64-schar decls decls-target.c -T aarch64-linux-gnu -fsigned-char
+comments-basic comments comments-basic.c -T x86_64-linux-gnu
+comments-quirk comments-golden comments-quirk.c -T x86_64-linux-gnu
+pp-macros pp pp-macros.c
+predefs-x86_64-clang predefs predefs.c -T x86_64-linux-gnu -B clang
+predefs-x86_64-default predefs predefs.c -T x86_64-linux-gnu -B -
+predefs-aarch64-clang predefs predefs.c -T aarch64-linux-gnu -B clang
+predefs-aarch64-default predefs predefs.c -T aarch64-linux-gnu -B -
+predefs-riscv64-clang predefs predefs.c -T riscv64-linux-gnu -B clang
+predefs-riscv64-default predefs predefs.c -T riscv64-linux-gnu -B -
+predefs-i386-clang predefs predefs.c -T i386-linux-gnu -B clang
+predefs-i386-default predefs predefs.c -T i386-linux-gnu -B -
+predefs-native predefs predefs.c -B -
+predefs-unknown-compiler predefs predefs.c -T aarch64-linux-gnu -B tcc
+pp-imacros pp imacros.c -imacros user-macros.h
+target-android predefs predefs.c -T aarch64-linux-android -B -
+target-redhat predefs predefs.c -T x86_64-redhat-linux -B -
+target-bare-elf predefs predefs.c -T riscv64-unknown-elf -B -
+target-freebsd predefs predefs.c -T x86_64-unknown-freebsd -B -
+target-arch-only predefs predefs.c -T aarch64 -B -
+decls-bitfields-x86_64 decls decls-bitfields.c -T x86_64-linux-gnu
+decls-bitfields-aarch64 decls decls-bitfields.c -T aarch64-linux-gnu
+decls-bitfields-riscv64 decls decls-bitfields.c -T riscv64-linux-gnu
+decls-bitfields-i386 decls decls-bitfields.c -T i386-linux-gnu
+decls-bitfields-arm decls decls-bitfields.c -T armv7-linux-gnueabihf
+decls-bitfields-riscv32 decls decls-bitfields.c -T riscv32-linux-gnu
+decls-bitfields-ppc64le decls decls-bitfields.c -T powerpc64le-linux-gnu
+decls-bitfields-ppc64 decls decls-bitfields.c -T powerpc64-linux-gnu
+decls-bitfields-s390x decls decls-bitfields.c -T s390x-linux-gnu
+decls-bitfields-loongarch64 decls decls-bitfields.c -T loongarch64-linux-gnu
+decls-bitfields-mips decls decls-bitfields.c -T mipsel-linux-gnu
+decls-bitfields-mips64 decls decls-bitfields.c -T mips64el-linux-gnuabi64
+decls-target-arm decls decls-target.c -T armv7-linux-gnueabihf
+decls-char-arm decls decls-char.c -T armv7-linux-gnueabihf
+predefs-arm-clang predefs predefs.c -T armv7-linux-gnueabihf -B clang
+decls-target-riscv32 decls decls-target.c -T riscv32-linux-gnu
+decls-char-riscv32 decls decls-char.c -T riscv32-linux-gnu
+predefs-riscv32-clang predefs predefs.c -T riscv32-linux-gnu -B clang
+decls-target-ppc64le decls decls-target.c -T powerpc64le-linux-gnu
+decls-char-ppc64le decls decls-char.c -T powerpc64le-linux-gnu
+predefs-ppc64le-clang predefs predefs.c -T powerpc64le-linux-gnu -B clang
+decls-target-ppc64 decls decls-target.c -T powerpc64-linux-gnu
+decls-char-ppc64 decls decls-char.c -T powerpc64-linux-gnu
+predefs-ppc64-clang predefs predefs.c -T powerpc64-linux-gnu -B clang
+decls-target-s390x decls decls-target.c -T s390x-linux-gnu
+decls-char-s390x decls decls-char.c -T s390x-linux-gnu
+predefs-s390x-clang predefs predefs.c -T s390x-linux-gnu -B clang
+decls-target-loongarch64 decls decls-target.c -T loongarch64-linux-gnu
+decls-char-loongarch64 decls decls-char.c -T loongarch64-linux-gnu
+predefs-loongarch64-clang predefs predefs.c -T loongarch64-linux-gnu -B clang
+decls-target-mips decls decls-target.c -T mipsel-linux-gnu
+decls-char-mips decls decls-char.c -T mipsel-linux-gnu
+predefs-mips-clang predefs predefs.c -T mipsel-linux-gnu -B clang
+decls-target-mips64 decls decls-target.c -T mips64el-linux-gnuabi64
+decls-char-mips64 decls decls-char.c -T mips64el-linux-gnuabi64
+predefs-mips64-clang predefs predefs.c -T mips64el-linux-gnuabi64 -B clang
+decls-target-msvc-x86_64 decls decls-target.c -T x86_64-pc-windows-msvc
+decls-char-msvc-x86_64 decls decls-char.c -T x86_64-pc-windows-msvc
+decls-bitfields-msvc-x86_64 decls decls-bitfields.c -T x86_64-pc-windows-msvc
+decls-enums-msvc-x86_64 decls decls-enums.c -T x86_64-pc-windows-msvc
+decls-records-msvc-x86_64 decls decls-records.c -T x86_64-pc-windows-msvc
+decls-typedef-align-msvc-x86_64 decls decls-typedef-align.c -T x86_64-pc-windows-msvc
+predefs-msvc-x86_64-clang predefs predefs.c -T x86_64-pc-windows-msvc -B clang
+decls-target-msvc-aarch64 decls decls-target.c -T aarch64-pc-windows-msvc
+decls-char-msvc-aarch64 decls decls-char.c -T aarch64-pc-windows-msvc
+decls-bitfields-msvc-aarch64 decls decls-bitfields.c -T aarch64-pc-windows-msvc
+decls-enums-msvc-aarch64 decls decls-enums.c -T aarch64-pc-windows-msvc
+decls-records-msvc-aarch64 decls decls-records.c -T aarch64-pc-windows-msvc
+decls-typedef-align-msvc-aarch64 decls decls-typedef-align.c -T aarch64-pc-windows-msvc
+predefs-msvc-aarch64-clang predefs predefs.c -T aarch64-pc-windows-msvc -B clang
+decls-target-msvc-i386 decls decls-target.c -T i686-pc-windows-msvc
+decls-char-msvc-i386 decls decls-char.c -T i686-pc-windows-msvc
+decls-bitfields-msvc-i386 decls decls-bitfields.c -T i686-pc-windows-msvc
+decls-enums-msvc-i386 decls decls-enums.c -T i686-pc-windows-msvc
+decls-records-msvc-i386 decls decls-records.c -T i686-pc-windows-msvc
+decls-typedef-align-msvc-i386 decls decls-typedef-align.c -T i686-pc-windows-msvc
+predefs-msvc-i386-clang predefs predefs.c -T i686-pc-windows-msvc -B clang
+decls-target-mingw-x86_64 decls decls-target.c -T x86_64-w64-mingw32
+decls-char-mingw-x86_64 decls decls-char.c -T x86_64-w64-mingw32
+decls-bitfields-mingw-x86_64 decls decls-bitfields.c -T x86_64-w64-mingw32
+decls-enums-mingw-x86_64 decls decls-enums.c -T x86_64-w64-mingw32
+decls-records-mingw-x86_64 decls decls-records.c -T x86_64-w64-mingw32
+decls-typedef-align-mingw-x86_64 decls decls-typedef-align.c -T x86_64-w64-mingw32
+predefs-mingw-x86_64-clang predefs predefs.c -T x86_64-w64-mingw32 -B clang
+decls-target-mingw-aarch64 decls decls-target.c -T aarch64-w64-mingw32
+decls-char-mingw-aarch64 decls decls-char.c -T aarch64-w64-mingw32
+decls-bitfields-mingw-aarch64 decls decls-bitfields.c -T aarch64-w64-mingw32
+decls-enums-mingw-aarch64 decls decls-enums.c -T aarch64-w64-mingw32
+decls-records-mingw-aarch64 decls decls-records.c -T aarch64-w64-mingw32
+decls-typedef-align-mingw-aarch64 decls decls-typedef-align.c -T aarch64-w64-mingw32
+predefs-mingw-aarch64-clang predefs predefs.c -T aarch64-w64-mingw32 -B clang
+decls-target-mingw-i386 decls decls-target.c -T i686-w64-mingw32
+decls-char-mingw-i386 decls decls-char.c -T i686-w64-mingw32
+decls-bitfields-mingw-i386 decls decls-bitfields.c -T i686-w64-mingw32
+decls-enums-mingw-i386 decls decls-enums.c -T i686-w64-mingw32
+decls-records-mingw-i386 decls decls-records.c -T i686-w64-mingw32
+decls-typedef-align-mingw-i386 decls decls-typedef-align.c -T i686-w64-mingw32
+predefs-mingw-i386-clang predefs predefs.c -T i686-w64-mingw32 -B clang
+decls-target-darwin-x86_64 decls decls-target.c -T x86_64-apple-macosx
+decls-char-darwin-x86_64 decls decls-char.c -T x86_64-apple-macosx
+decls-bitfields-darwin-x86_64 decls decls-bitfields.c -T x86_64-apple-macosx
+decls-enums-darwin-x86_64 decls decls-enums.c -T x86_64-apple-macosx
+decls-records-darwin-x86_64 decls decls-records.c -T x86_64-apple-macosx
+decls-typedef-align-darwin-x86_64 decls decls-typedef-align.c -T x86_64-apple-macosx
+predefs-darwin-x86_64-clang predefs predefs.c -T x86_64-apple-macosx -B clang
+decls-target-darwin-aarch64 decls decls-target.c -T arm64-apple-macosx
+decls-char-darwin-aarch64 decls decls-char.c -T arm64-apple-macosx
+decls-bitfields-darwin-aarch64 decls decls-bitfields.c -T arm64-apple-macosx
+decls-enums-darwin-aarch64 decls decls-enums.c -T arm64-apple-macosx
+decls-records-darwin-aarch64 decls decls-records.c -T arm64-apple-macosx
+decls-typedef-align-darwin-aarch64 decls decls-typedef-align.c -T arm64-apple-macosx
+predefs-darwin-aarch64-clang predefs predefs.c -T arm64-apple-macosx -B clang
+decls-records-x86_64 decls decls-records.c -T x86_64-linux-gnu
+decls-records-aarch64 decls decls-records.c -T aarch64-linux-gnu
+decls-records-riscv64 decls decls-records.c -T riscv64-linux-gnu
+decls-records-i386 decls decls-records.c -T i386-linux-gnu
+decls-records-arm decls decls-records.c -T armv7-linux-gnueabihf
+decls-records-riscv32 decls decls-records.c -T riscv32-linux-gnu
+decls-records-ppc64le decls decls-records.c -T powerpc64le-linux-gnu
+decls-records-ppc64 decls decls-records.c -T powerpc64-linux-gnu
+decls-records-s390x decls decls-records.c -T s390x-linux-gnu
+decls-records-loongarch64 decls decls-records.c -T loongarch64-linux-gnu
+decls-records-mips decls decls-records.c -T mipsel-linux-gnu
+decls-records-mips64 decls decls-records.c -T mips64el-linux-gnuabi64
+decls-typedef-align-i386 decls decls-typedef-align.c -T i386-linux-gnu
+decls-typedef-align-aarch64 decls decls-typedef-align.c -T aarch64-linux-gnu
+decls-typedef-align-arm decls decls-typedef-align.c -T armv7-linux-gnueabihf
+target-cygwin error decls-basic.c -T x86_64-pc-cygwin
+target-windows-riscv error decls-basic.c -T riscv64-pc-windows-msvc
+target-haiku error decls-basic.c -T x86_64-unknown-haiku
+target-aix error decls-basic.c -T powerpc64-ibm-aix
+target-sparc error decls-basic.c -T sparc64-unknown-linux-gnu
+predefs-filc-x86_64 predefs predefs.c -T x86_64-unknown-linux-filc -B filc
+predefs-filc-aarch64 predefs predefs.c -T aarch64-unknown-linux-filc -B filc
+decls-filc comments-golden decls-filc.c -T x86_64-unknown-linux-filc -B filc
+decls-filc-aarch64 comments-golden decls-filc.c -T aarch64-unknown-linux-filc -B filc
+decls-types-filc-x86_64 decls decls-types.c -T x86_64-unknown-linux-filc
+decls-types-filc-aarch64 decls decls-types.c -T aarch64-unknown-linux-filc
+decls-bitfields-filc-x86_64 decls decls-bitfields.c -T x86_64-unknown-linux-filc
+decls-bitfields-filc-aarch64 decls decls-bitfields.c -T aarch64-unknown-linux-filc
+decls-records-filc-x86_64 decls decls-records.c -T x86_64-unknown-linux-filc
+target-filc-riscv64 error decls-basic.c -T riscv64-unknown-linux-filc
+target-filc-i386 error decls-basic.c -T i686-unknown-linux-filc
+target-filc-m32 error decls-basic.c -T x86_64-unknown-linux-filc -m32
+predefs-wasm32-clang predefs predefs.c -T wasm32-unknown-unknown -B clang
+predefs-wasm32-wasi-clang predefs predefs.c -T wasm32-unknown-wasi -B clang
+predefs-wasm32-emscripten-clang predefs predefs.c -T wasm32-unknown-emscripten -B clang
+predefs-wasm64-clang predefs predefs.c -T wasm64-unknown-unknown -B clang
+decls-types-wasm32 decls decls-types.c -T wasm32-unknown-unknown
+decls-types-wasm32-wasi decls decls-types.c -T wasm32-unknown-wasi
+decls-types-wasm32-emscripten decls decls-types.c -T wasm32-unknown-emscripten
+decls-types-wasm64 decls decls-types.c -T wasm64-unknown-unknown
+decls-bitfields-wasm32 decls decls-bitfields.c -T wasm32-unknown-unknown
+decls-bitfields-wasm64 decls decls-bitfields.c -T wasm64-unknown-unknown
+decls-records-wasm32 decls decls-records.c -T wasm32-unknown-unknown
+decls-records-wasm64 decls decls-records.c -T wasm64-unknown-unknown
+decls-enums-wasm32 decls decls-enums.c -T wasm32-unknown-unknown
+decls-char-wasm32 decls decls-char.c -T wasm32-unknown-unknown
+decls-ilp32-wasm32 decls decls-ilp32.c -T wasm32-unknown-unknown
+decls-target-wasm32 decls decls-target.c -T wasm32-unknown-emscripten
+decls-target-wasm64 decls decls-target.c -T wasm64-unknown-unknown
+target-wasm-wasi-x86 error decls-basic.c -T x86_64-unknown-wasi
+target-wasm-wasi-m64 error decls-basic.c -T wasm32-unknown-wasi -m64

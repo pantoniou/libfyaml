@@ -1,0 +1,49 @@
+struct S def size=16 align=8 @4:1
+  field a 'int' off=0
+  field b 'char' off=4
+  field c 'long' off=8
+typedef S_t = 'struct S' size=16 @5:1
+struct P def size=4 align=4 @6:1
+  field c 'char' off=0
+  field i 'int' bitpos=8 bits=3
+  field j 'int' bitpos=11 bits=5
+  field s 'short' off=2
+union U def size=16 align=8 @7:1
+  field i 'int' off=0
+  field c 'char[10]' off=0
+  field d 'double' off=0
+enum E def underlying='unsigned int' size=4 @8:1
+  enumerator A = 0
+  enumerator B = 5
+  enumerator C = 6
+enum F def underlying='int' size=4 @9:1
+  enumerator NEG = -1
+  enumerator POS = 3
+struct Point def size=8 align=4 @10:9
+  field x 'int' off=0
+  field y 'int' off=4
+typedef Point = 'struct Point' size=8 @10:1
+struct Pk def size=5 align=1 @11:1
+  field c 'char' off=0
+  field i 'int' off=1
+struct Flex def size=4 align=4 @12:1
+  field n 'int' off=0
+  field data 'char[]' off=4
+typedef cb_t = 'int (*)(int, const char *, ...)' size=8 @13:1
+typedef arr_t = 'unsigned long[4]' size=32 @14:1
+struct Nest def size=32 align=8 @15:1
+struct (anon) def size=8 align=4 @15:15
+  field a 'int' off=0
+  field b 'int' off=4
+union (anon) def size=4 align=4 @15:41
+  field u 'int' off=0
+  field f 'float' off=0
+  field un 'union (unnamed union at decls-basic.c:15:41)' off=8
+  field pt 'Point' off=12
+  field cb 'cb_t' off=24
+struct Packed2 def size=6 align=2 @18:1
+  field c 'char' off=0
+  field i 'int' off=2
+struct Packed2b def size=8 align=4 @20:1
+  field c 'char' off=0
+  field i 'int' off=4

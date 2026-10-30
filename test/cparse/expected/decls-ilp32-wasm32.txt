@@ -1,0 +1,8 @@
+enum (anon) def underlying='int' size=4 @3:1
+  enumerator A = -2147483648
+enum (anon) def underlying='unsigned int' size=4 @4:1
+  enumerator B = 1
+enum (anon) def underlying='unsigned int' size=4 @5:1
+  enumerator C = 0
+enum (anon) def underlying='unsigned int' size=4 @6:1
+  enumerator D = 0

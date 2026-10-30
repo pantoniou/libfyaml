@@ -1,0 +1,26 @@
+typedef u64 = 'unsigned long long' size=8 @4:1
+typedef u32 = 'unsigned int' size=4 @5:1
+enum small def underlying='unsigned int' size=4 @7:1
+  enumerator S_A = 0
+  enumerator S_B = 7
+enum negative def underlying='int' size=4 @8:1
+  enumerator N_A = -1
+  enumerator N_B = 2
+enum big_signed def underlying='unsigned long' size=8 @9:1
+  enumerator BS_A = 1
+  enumerator BS_B = 4294967296
+enum unsigned_cast def underlying='unsigned long' size=8 @10:1
+  enumerator UC_A = -32
+  enumerator UC_B = -128
+enum unsigned_shift def underlying='unsigned long' size=8 @11:1
+  enumerator US_MASK = -4294967296
+  enumerator US_LOW = 1
+enum unsigned_max def underlying='unsigned long' size=8 @12:1
+  enumerator UM_A = -1
+enum unsigned_int def underlying='unsigned int' size=4 @13:1
+  enumerator UI_A = -2147483648
+  enumerator UI_B = -1
+enum implicit_after_unsigned def underlying='unsigned long' size=8 @14:1
+  enumerator IU_A = -2
+  enumerator IU_B = -1
+  enumerator IU_C = 0

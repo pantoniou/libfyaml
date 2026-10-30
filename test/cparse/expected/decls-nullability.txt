@@ -1,0 +1,12 @@
+typedef fn_t = 'void (*)(void)' size=8 @3:1
+typedef ip_t = 'int *' size=8 @4:1
+struct F def size=48 align=8 @5:1
+  field a 'void *' off=0
+  field b 'void *' off=8
+  field c 'fn_t' off=16
+  field d 'fn_t' off=24
+  field e 'int * _Nullable *' off=32
+  field f 'ip_t' off=40
+typedef cb_t = 'void (*)(void * _Nullable, ip_t _Nonnull, int * _Nonnull)' size=8 @6:1
+typedef np_t = 'int *' size=8 @7:1
+typedef nt_t = 'ip_t' size=8 @8:1

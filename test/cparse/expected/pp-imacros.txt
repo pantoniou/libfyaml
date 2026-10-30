@@ -1,0 +1,3 @@
+int msvc = 1940;
+char buffer[7];
+int my_value;
