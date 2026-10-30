@@ -3772,6 +3772,24 @@ fy_type_info_prefixless_name(const struct fy_type_info *ti)
 	return fullname + adv;
 }
 
+/*
+ * Is the declaration of this type spelled with an anonymous tag's body? A
+ * typedef ends the walk: a use of the typedef names it, only the typedef's own
+ * declaration holds the body.
+ */
+static bool fy_type_info_inline_anon(const struct fy_type_info *ti)
+{
+	int n;
+
+	for (n = 0; ti && n < 256; ti = ti->dependent_type, n++) {
+		if (ti->kind == FYTK_TYPEDEF)
+			return false;
+		if (ti->flags & FYTIF_ANONYMOUS)
+			return true;
+	}
+	return false;
+}
+
 char *
 fy_type_info_generate_name(const struct fy_type_info *ti, const char *field)
 {
@@ -3783,7 +3801,7 @@ fy_type_info_generate_name(const struct fy_type_info *ti, const char *field)
 		return NULL;
 
 	flags = 0;
-	if (ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP))
+	if (fy_type_info_inline_anon(ti))
 		flags |= FYTGTF_NO_TYPE;
 
 	return fy_type_generate_c_declaration(ft, field, flags);
@@ -3804,7 +3822,7 @@ fy_field_info_generate_name(const struct fy_field_info *fi)
 	assert(ft);
 
 	flags = 0;
-	if (fi->type_info->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP))
+	if (fy_type_info_inline_anon(fi->type_info))
 		flags |= FYTGTF_NO_TYPE;
 
 	return fy_type_generate_c_declaration(ft, decl->name, flags);
@@ -4373,6 +4391,10 @@ c_generate_collect_co_dependents(struct fy_reflection *rfl, const struct fy_type
 			if (final_ti == ti || final_ti != final_start_ti)
 				continue;
 
+			/* `typedef A B;` names the first typedef, it does not share its body */
+			if (!fy_type_info_inline_anon(ti->dependent_type))
+				continue;
+
 			if (tis) {
 				/* the second pass must not see more types */
 				if (i >= count)
@@ -4395,6 +4417,42 @@ c_generate_collect_co_dependents(struct fy_reflection *rfl, const struct fy_type
 	return tis;
 }
 
+/*
+ * The layout attribute a record needs to come back the way it is: packed when
+ * its alignment is below what its members ask for, aligned when above.
+ */
+static const char *c_generate_record_attr(const struct fy_type_info *ti, char *buf, size_t bufsz)
+{
+	const struct fy_field_info *fi;
+	size_t i, fa, maxfa = 1;
+
+	if (!fy_type_kind_is_record(ti->kind) || !ti->count || !ti->align)
+		return "";
+
+	for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
+		if (!fi->type_info)
+			continue;
+		/* a flexible array has no alignment of its own */
+		fa = fi->type_info->align;
+		if (!fa && fi->type_info->kind == FYTK_INCOMPLETEARRAY && fi->type_info->dependent_type)
+			fa = fi->type_info->dependent_type->align;
+		if (fa > maxfa)
+			maxfa = fa;
+	}
+
+	if (ti->align < maxfa) {
+		if (ti->align == 1)
+			return " __attribute__((packed))";
+		snprintf(buf, bufsz, " __attribute__((packed, aligned(%zu)))", ti->align);
+		return buf;
+	}
+	if (ti->align > maxfa) {
+		snprintf(buf, bufsz, " __attribute__((aligned(%zu)))", ti->align);
+		return buf;
+	}
+	return "";
+}
+
 static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, const struct fy_type_info *ti, bool is_base, int level, const char *field_name, bool no_first_pad)
 {
 	const struct fy_type_kind_info *tki;
@@ -4402,6 +4460,12 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 	const struct fy_type_info *final_ti, *fwd_final_ti;
 	char *name = NULL, *fwd_name = NULL;
 	const char *indent, *indent_plus_1, *comment;
+	char attrbuf[64];
+	size_t prev_end, field_align;
+	bool pushed;
+	size_t fa;
+	size_t a;
+	size_t natural;
 	union {
 		uintmax_t uval;
 		intmax_t sval;
@@ -4442,11 +4506,12 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 		}
 		fprintf(fp, "%s", indent);
 	}
-	fprintf(fp, "%s%s%s%s",
+	fprintf(fp, "%s%s%s%s%s",
 		(ti->flags & FYTIF_CONST) ? "const " : "",
 		(ti->flags & FYTIF_VOLATILE) ? "volatile " : "",
 		(ti->flags & FYTIF_RESTRICT) ? "restrict " : "",
-		tki->name);
+		tki->name,
+		(ti->flags & FYTIF_UNRESOLVED) ? "" : c_generate_record_attr(ti, attrbuf, sizeof(attrbuf)));
 	if (!(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)))
 		fprintf(fp, " %s", fy_type_info_prefixless_name(ti));
 
@@ -4486,12 +4551,33 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 	}
 
 	next_enum_value.uval = 0;
+	/* a struct member placed further than its type needs carries an aligned attribute */
+	prev_end = 0;
 	for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
+
+		field_align = 0;
+		/* a packed record places its members by its own rule; an aligned one does not */
+		if (ti->kind == FYTK_STRUCT && !(fi->flags & FYFIF_BITFIELD) && fi->type_info &&
+		    fi->type_info->align &&
+		    !strstr(c_generate_record_attr(ti, attrbuf, sizeof(attrbuf)), "packed")) {
+			fa = fi->type_info->align;
+			natural = (prev_end + fa - 1) / fa * fa;
+
+			if (fi->offset > natural) {
+				for (a = fa * 2; a && a <= 4096; a *= 2)
+					if ((prev_end + a - 1) / a * a == fi->offset)
+						break;
+				if (a && a <= 4096)
+					field_align = a;
+			}
+		}
+		if (!(fi->flags & FYFIF_BITFIELD))
+			prev_end = fi->offset + (fi->type_info ? fi->type_info->size : 0);
 
 		final_ti = get_final_ti(fi->type_info);
 
 		/* skip field already generated */
-		if ((fi->type_info->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP)) &&
+		if (fy_type_info_inline_anon(fi->type_info) &&
 		     c_anon_decl_exists(cgen, final_ti))
 			continue;
 
@@ -4526,7 +4612,7 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 			fprintf(fp, ";\n");
 			lines++;
 
-		} else if (!(fi->type_info->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP))) {
+		} else if (!fy_type_info_inline_anon(fi->type_info)) {
 
 			fprintf(fp, "%s", indent_plus_1);
 			if (ti->kind == FYTK_ENUM) {
@@ -4550,6 +4636,8 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 				if (!name)
 					goto err_out;
 				fprintf(fp, "%s", name);
+				if (field_align)
+					fprintf(fp, " __attribute__((aligned(%zu)))", field_align);
 				if (!(fi->flags & FYFIF_BITFIELD))
 					fprintf(fp, ";");
 				else
@@ -4569,12 +4657,17 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 			if (!name)
 				goto err_out;
 
-			ret = c_push_ti_stack(cgen, ti);
-			if (ret < 0)
-				goto err_out;
+			/* an anonymous record in generation is on the stack already */
+			pushed = !c_in_ti_stack(cgen, ti);
+			if (pushed) {
+				ret = c_push_ti_stack(cgen, ti);
+				if (ret < 0)
+					goto err_out;
+			}
 
 			ret = c_generate_type_with_fields(cgen, fp, final_ti, false, level + 1, name, false);
-			(void)c_pop_ti_stack(cgen);
+			if (pushed)
+				(void)c_pop_ti_stack(cgen);
 			if (ret < 0)
 				goto err_out;
 			lines += ret;
@@ -4628,8 +4721,9 @@ static int c_generate_typedef(struct fy_c_generator *cgen, FILE *fp, const struc
 {
 	const struct fy_type_info *final_ti;
 	const struct fy_type_info **ti_codeps = NULL, **tip, *tit;
-	char *name = NULL, *codep_name = NULL;
+	char *name = NULL, *codep_name = NULL, *aligned_name = NULL;
 	const char *comment;
+	size_t len;
 	int ret, lines = 0;
 
 	/* not qualified typedef */
@@ -4641,7 +4735,7 @@ static int c_generate_typedef(struct fy_c_generator *cgen, FILE *fp, const struc
 	final_ti = get_final_ti(ti->dependent_type);
 
 	/* all anons are generated once */
-	if ((ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP)) && c_anon_decl_exists(cgen, final_ti))
+	if (fy_type_info_inline_anon(ti->dependent_type) && c_anon_decl_exists(cgen, final_ti))
 		return 0;
 
 	comment = fy_c_generator_yaml_comments(cgen) ? fy_type_info_get_yaml_comment(ti) :
@@ -4658,8 +4752,21 @@ static int c_generate_typedef(struct fy_c_generator *cgen, FILE *fp, const struc
 	if (!name)
 		goto err_out;
 
+	/* the typedef has an alignment of its own, the aligned attribute sets it */
+	if (ti->align && ti->dependent_type && ti->dependent_type->align &&
+	    ti->align != ti->dependent_type->align) {
+		len = strlen(name) + 40;
+		aligned_name = malloc(len);
+		if (!aligned_name)
+			goto err_out;
+		snprintf(aligned_name, len, "%s __attribute__((aligned(%zu)))", name, ti->align);
+		free(name);
+		name = aligned_name;
+		aligned_name = NULL;
+	}
+
 	fprintf(fp, "typedef ");
-	if (!(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_DEP))) {
+	if (!fy_type_info_inline_anon(ti->dependent_type)) {
 		fprintf(fp, "%s", name);
 	} else {
 
@@ -4707,6 +4814,16 @@ err_out:
 	return -1;
 }
 
+/* what the compiler itself provides; generating it would redefine it */
+static bool c_generate_is_compiler_builtin(const struct fy_type_info *ti)
+{
+	if (ti->kind != FYTK_TYPEDEF && ti->kind != FYTK_STRUCT)
+		return false;
+	if (!ti->name || (ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)))
+		return false;
+	return !strcmp(ti->name, ti->kind == FYTK_TYPEDEF ? "__builtin_va_list" : "struct __va_list_tag");
+}
+
 static int c_generate_fwd_decls(struct fy_c_generator *cgen, FILE *fp, const struct fy_type_info *ti, bool is_base, int level, const struct fy_type_info *top_ti)
 {
 	const struct fy_field_info *fi;
@@ -4729,7 +4846,7 @@ static int c_generate_fwd_decls(struct fy_c_generator *cgen, FILE *fp, const str
 	if (ret < 0)
 		return -1;
 
-	if (c_any_decl_exists(cgen, ti))
+	if (c_any_decl_exists(cgen, ti) || c_generate_is_compiler_builtin(ti))
 		goto out;
 
 	output_fwd_decl = (!(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)) &&
@@ -4792,6 +4909,9 @@ err_out:
 
 static bool c_generate_is_base_type(const struct fy_type_info *ti)
 {
+	if (c_generate_is_compiler_builtin(ti))
+		return false;
+
 	if ((ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)) && ti->kind != FYTK_ENUM)
 		return false;
 
@@ -4799,6 +4919,124 @@ static bool c_generate_is_base_type(const struct fy_type_info *ti)
 		return false;
 
 	return true;
+}
+
+/*
+ * The type a declaration needs defined before it: through pointers only a
+ * typedef (a tag can be forward declared), through arrays also a record.
+ */
+static const struct fy_type_info *c_generate_needed_type(const struct fy_type_info *ti)
+{
+	const struct fy_type_info *t = ti;
+	bool seen_ptr = false;
+	int n;
+
+	for (n = 0; t && fy_type_kind_is_like_ptr(t->kind) && t->dependent_type && n < 256; n++) {
+		if (t->kind == FYTK_PTR)
+			seen_ptr = true;
+		t = t->dependent_type;
+	}
+	if (!t || t == ti)
+		return ti;
+	if (t->kind == FYTK_TYPEDEF || (!seen_ptr && fy_type_kind_has_fields(t->kind)))
+		return t;
+	return ti;
+}
+
+/* a type whose own dependencies have to be looked at: base types, and the bodies of inline anonymous records */
+static bool c_generate_is_dep_candidate(const struct fy_type_info *ti)
+{
+	return c_generate_is_base_type(ti) ||
+	       (fy_type_kind_is_record(ti->kind) &&
+		(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)));
+}
+
+static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
+				       FILE *fp,
+				       const struct fy_type_info *ti,
+				       bool is_base,
+				       int level,
+				       const struct fy_type_info *top_ti);
+
+/*
+ * A function type only knows its argument types by their spelling; find the
+ * typedefs and tags in it and have them generated first.
+ */
+static int c_generate_function_deps(struct fy_c_generator *cgen, FILE *fp,
+				    const struct fy_type_info *ti, int level,
+				    const struct fy_type_info *top_ti)
+{
+	const struct fy_type_info *dep;
+	struct fy_type *ft;
+	const char *s, *e, *kw = NULL;
+	char *name;
+	size_t len, kwlen = 0;
+	int n, ret, lines = 0;
+
+	for (n = 0; ti && fy_type_kind_is_like_ptr(ti->kind) && ti->dependent_type && n < 256; n++)
+		ti = ti->dependent_type;
+	if (!ti || ti->kind != FYTK_FUNCTION || !ti->name)
+		return 0;
+
+	for (s = ti->name; *s; s = e) {
+		if (!(isalpha((unsigned char)*s) || *s == '_')) {
+			e = s + 1;
+			continue;
+		}
+		for (e = s; isalnum((unsigned char)*e) || *e == '_'; e++)
+			;
+		len = e - s;
+
+		if ((len == 6 && !strncmp(s, "struct", 6)) || (len == 5 && !strncmp(s, "union", 5)) ||
+		    (len == 4 && !strncmp(s, "enum", 4))) {
+			kw = s;
+			kwlen = len;
+			continue;
+		}
+
+		if (kw) {
+			name = malloc(kwlen + 1 + len + 1);
+			if (!name)
+				return -1;
+			sprintf(name, "%.*s %.*s", (int)kwlen, kw, (int)len, s);
+			kw = NULL;
+		} else {
+			name = strndup(s, len);
+			if (!name)
+				return -1;
+		}
+		ft = fy_type_lookup(cgen->rfl, name, strlen(name));
+		free(name);
+		if (!ft || (ft->type_kind != FYTK_TYPEDEF && !fy_type_kind_has_fields(ft->type_kind)))
+			continue;
+		dep = fy_type_get_info(ft);
+		if (!dep)
+			continue;
+
+		if (fy_type_kind_is_record(dep->kind) && !(dep->flags & FYTIF_ANONYMOUS)) {
+			/* a tag in an argument list only needs to be declared */
+			if (c_any_decl_exists(cgen, dep) || c_generate_is_compiler_builtin(dep))
+				continue;
+			fprintf(fp, "%s;\n", dep->name);
+			lines++;
+			if (c_add_fwd_decl(cgen, dep) < 0)
+				return -1;
+			continue;
+		}
+
+		if (dep->kind == FYTK_TYPEDEF && dep->dependent_type &&
+		    fy_type_kind_is_record(dep->dependent_type->kind) &&
+		    !fy_type_info_inline_anon(dep->dependent_type)) {
+			/* the same, through a typedef: the record's body can come later */
+			ret = c_generate_single_base_type(cgen, fp, dep);
+		} else {
+			ret = c_generate_direct_dep_types(cgen, fp, dep, false, level + 1, top_ti);
+		}
+		if (ret < 0)
+			return -1;
+		lines += ret;
+	}
+	return lines;
 }
 
 static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
@@ -4812,6 +5050,7 @@ static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
 	size_t i;
 	int ret, lines = 0;
 	bool output_decl;
+	const struct fy_type_info *need;
 
 	if (ti->flags & FYTIF_ELABORATED) {
 		ti = fy_type_info_unqualified(ti);
@@ -4820,7 +5059,7 @@ static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
 	}
 
 	/* only generate if it's a base type */
-	if (!c_generate_is_base_type(ti))
+	if (!c_generate_is_dep_candidate(ti))
 		return 0;
 
 	if (c_in_ti_stack(cgen, ti))
@@ -4833,13 +5072,16 @@ static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
 	if (c_decl_exists(cgen, ti))
 		goto out;
 
-	output_decl = !(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)) && ti != top_ti;
-	if (output_decl) {
-		fprintf(fp, "// decl-now %s\n", ti->name);
+	/*
+	 * `typedef struct S T;` only needs the tag, and what S holds may need T:
+	 * declare the typedef before looking into the record.
+	 */
+	if (ti->kind == FYTK_TYPEDEF && ti->dependent_type &&
+	    fy_type_kind_is_record(ti->dependent_type->kind) &&
+	    !fy_type_info_inline_anon(ti->dependent_type)) {
 		ret = c_generate_single_base_type(cgen, fp, ti);
 		if (ret < 0)
 			goto err_out;
-
 		lines += ret;
 	}
 
@@ -4847,27 +5089,58 @@ static int c_generate_direct_dep_types(struct fy_c_generator *cgen,
 
 		for (i = 0, fi = ti->fields; i < ti->count; i++, fi++) {
 
-			if (fy_type_kind_is_primitive(fi->type_info->kind))
+			need = c_generate_needed_type(fi->type_info);
+
+			ret = c_generate_function_deps(cgen, fp, fi->type_info, level, top_ti);
+			if (ret < 0)
+				goto err_out;
+			lines += ret;
+
+			if (fy_type_kind_is_primitive(need->kind))
 				continue;
 
-			if (!c_generate_is_base_type(fi->type_info))
+			if (!c_generate_is_dep_candidate(need))
 				continue;
 
-
-			ret = c_generate_direct_dep_types(cgen, fp, fi->type_info, false, level + 1, top_ti);
+			ret = c_generate_direct_dep_types(cgen, fp, need, false, level + 1, top_ti);
 			if (ret < 0)
 				goto err_out;
 			lines += ret;
 		}
 
-	} else if (fy_type_kind_is_dependent(ti->kind) && ti->dependent_type &&
-		   !fy_type_kind_is_primitive(ti->dependent_type->kind) && c_generate_is_base_type(ti->dependent_type)) {
+	} else if (fy_type_kind_is_dependent(ti->kind) && ti->dependent_type) {
 
-		ret = c_generate_direct_dep_types(cgen, fp, ti->dependent_type, false, level + 1, top_ti);
+		ret = c_generate_function_deps(cgen, fp, ti->dependent_type, level, top_ti);
 		if (ret < 0)
 			goto err_out;
 		lines += ret;
 	}
+
+	if (!fy_type_kind_has_fields(ti->kind) && fy_type_kind_is_dependent(ti->kind) && ti->dependent_type &&
+		   !fy_type_kind_is_primitive(c_generate_needed_type(ti->dependent_type)->kind) &&
+		   c_generate_is_dep_candidate(c_generate_needed_type(ti->dependent_type))) {
+
+		ret = c_generate_direct_dep_types(cgen, fp, c_generate_needed_type(ti->dependent_type),
+						  false, level + 1, top_ti);
+		if (ret < 0)
+			goto err_out;
+		lines += ret;
+	}
+
+	/*
+	 * What it is made of goes first, then the declaration itself; that one
+	 * pushes the type on the stack again, so it has to be off it by then.
+	 */
+	(void)c_pop_ti_stack(cgen);
+	output_decl = !(ti->flags & (FYTIF_ANONYMOUS | FYTIF_ANONYMOUS_RECORD_DECL)) && ti != top_ti;
+	if (output_decl) {
+		ret = c_generate_single_base_type(cgen, fp, ti);
+		if (ret < 0)
+			return -1;
+
+		lines += ret;
+	}
+	return lines;
 
 out:
 	(void)c_pop_ti_stack(cgen);
@@ -4882,7 +5155,7 @@ static int c_generate_single_base_type(struct fy_c_generator *cgen, FILE *fp, co
 {
 	int lines = 0, ret;
 
-	if (c_decl_exists(cgen, ti))
+	if (c_decl_exists(cgen, ti) || c_generate_is_compiler_builtin(ti))
 		return 0;
 
 	if (ti->kind == FYTK_TYPEDEF) {
