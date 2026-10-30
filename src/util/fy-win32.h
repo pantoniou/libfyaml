@@ -519,6 +519,31 @@ static inline int fy_win32_asprintf(char **strp, const char *fmt, ...)
 #define strdup _strdup
 #endif
 
+/* strndup() is not in the Microsoft C library */
+static inline char *fy_win32_strndup(const char *s, size_t n)
+{
+	size_t len = strnlen(s, n);
+	char *d = malloc(len + 1);
+
+	if (!d)
+		return NULL;
+	memcpy(d, s, len);
+	d[len] = '\0';
+	return d;
+}
+#ifndef strndup
+#define strndup fy_win32_strndup
+#endif
+
+/* realpath(path, NULL) only: the result is malloc'ed */
+static inline char *fy_win32_realpath(const char *path, char *resolved)
+{
+	return resolved ? NULL : _fullpath(NULL, path, 0);
+}
+#ifndef realpath
+#define realpath fy_win32_realpath
+#endif
+
 #ifndef link
 #define link _link
 #endif

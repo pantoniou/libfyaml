@@ -349,6 +349,8 @@ if have_reflection:
         # the C declaration front end (type text parsing and spelling)
         src_dir / "cparse" / "cparse-util.c",
         src_dir / "cparse" / "cparse-tokenize.c",
+        src_dir / "cparse" / "cparse-expr.c",
+        src_dir / "cparse" / "cparse-preprocess.c",
         src_dir / "cparse" / "cparse-target.c",
     ])
 

@@ -986,6 +986,8 @@ if(HAVE_REFLECTION)
         # the C declaration front end (type text parsing and spelling)
         src/cparse/cparse-util.c
         src/cparse/cparse-tokenize.c
+        src/cparse/cparse-expr.c
+        src/cparse/cparse-preprocess.c
         src/cparse/cparse-target.c
     )
     # Conditionally add clang backend if libclang is available

@@ -107,6 +107,8 @@ libfyaml_la_SOURCES += \
 	cparse/cparse-private.h \
 	cparse/cparse-util.c \
 	cparse/cparse-tokenize.c \
+	cparse/cparse-expr.c \
+	cparse/cparse-preprocess.c \
 	cparse/cparse-target.c
 
 if HAVE_LIBCLANG
