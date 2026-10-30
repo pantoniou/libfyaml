@@ -272,7 +272,11 @@ make check
 
 ### Optional dependencies
 
-* `llvm-dev libclang-dev`: author reflection metadata directly from C headers
+* reflection reads C headers with the built-in C parser (`src/cparse`); no LLVM is needed
+* `llvm-dev libclang-dev`: optional, use libclang for reflection instead
+  (`cmake -DENABLE_LIBCLANG=ON`, `./configure --with-libclang[=<version>]`);
+  the build fails if it is asked for and not found
+* `FY_REFLECTION_C_BACKEND=clang|cparse` picks the backend at run time when both are built
 * no runtime libclang is required when using packed reflection blobs
 
 ### Documentation builds

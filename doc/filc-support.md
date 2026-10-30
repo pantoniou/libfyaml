@@ -16,7 +16,8 @@ This guide covers FIL-C 0.687 on Linux x86-64.
 | Generics (builders, ops, emit, images, parse cache) | Works |
 | Allocators (linear, malloc, mremap, dedup, auto) | Works |
 | Durable arenas, persistent dedup, durable GC | Work, including sharing arenas with native processes |
-| Reflection (libclang) | Not tested; build it without |
+| Reflection (built-in C parser, cparse) | Works; the cparse tests pass |
+| Reflection (libclang) | Not available: libclang is a host library |
 | Python bindings | Not built |
 
 The full test suite passes.
@@ -61,8 +62,9 @@ cmake --build build-filc -j8
 CMake detects FIL-C. Since nothing built by the host compiler can be linked
 into a FIL-C program, it then looks for no host packages (the `check`
 unit-test library is fetched and built with FIL-C), and turns off the
-CPU-specific SIMD code, reflection (libclang is a host library) and the
-Python bindings.
+CPU-specific SIMD code, libclang (a host library) and the Python bindings.
+Reflection stays on and reads C with the built-in parser, which has the targets
+`x86_64-filc` and `aarch64-filc`.
 
 Use `-DCMAKE_BUILD_TYPE=Release` for timing runs.
 

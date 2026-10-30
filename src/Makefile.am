@@ -263,6 +263,7 @@ uninstall-hook:
 EXTRA_DIST =  \
 	cparse/gen-predefs.sh \
 	cparse/LICENSE.slimcc \
+	cparse/README.md \
 	getopt/getopt.c \
 	getopt/getopt.h \
 	util/fy-win32.h \

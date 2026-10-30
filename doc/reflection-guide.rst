@@ -65,7 +65,9 @@ Use this workflow when reflection should read C headers directly.
 
 * best for development and iteration
 * no intermediate packed artifact
-* requires a libfyaml build with libclang support
+* uses the built-in C parser by default; a build configured with libclang
+  (``-DENABLE_LIBCLANG=ON`` or ``--with-libclang``) uses libclang instead,
+  and ``FY_REFLECTION_C_BACKEND=cparse|clang`` chooses at run time
 
 The example ``examples/reflection-libclang.c`` demonstrates this path.
 
