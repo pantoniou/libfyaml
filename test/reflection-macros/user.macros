@@ -1,0 +1,5 @@
+#define USER_COMPILER 1
+#define USER_COMPILER_VERSION 4
+#define USER_BUFFER_SIZE 12
+#define USER_FIELDS(a, b) ((a) * (b) + 1)
+int dropped_with_the_text;

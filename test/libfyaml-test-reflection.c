@@ -47,7 +47,15 @@ static struct fy_parser *make_parser_from_string(const char *yaml)
 	return fyp;
 }
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
+/* the tests that read C files need the cparse backend or libclang */
+#if !defined(_WIN32) && ((defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND) || \
+			 (defined(HAVE_LIBCLANG) && HAVE_LIBCLANG))
+#define FY_TEST_READS_C 1
+#else
+#define FY_TEST_READS_C 0
+#endif
+
+#if FY_TEST_READS_C
 static char *write_temp_header(const char *content)
 {
 	char path[PATH_MAX + 1];
@@ -300,10 +308,10 @@ START_TEST(reflection_invalid_required_entry_meta_fails_cleanly)
 END_TEST
 
 /* ------------------------------------------------------------------ */
-/* Test: clang backend — struct field info  (requires HAVE_LIBCLANG)  */
+/* Test: clang backend — struct field info  (the built-in C parser or libclang)  */
 /* ------------------------------------------------------------------ */
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
+#if FY_TEST_READS_C
 
 /*
  * Minimal clang-backed smoke test for the C reflection API.
@@ -325,6 +333,52 @@ static const char baz_header[] =
 	"struct baz {\n"
 	"	int value;\n"
 	"};\n";
+
+static const char declarator_header[] =
+	"typedef int (*fn_t)(void *, const volatile int *restrict);\n"
+	"struct decls {\n"
+	"	int (*cb)(int x, char *y);\n"
+	"	const char *const names[3];\n"
+	"	fn_t table[2];\n"
+	"	unsigned int bits: 3;\n"
+	"	char tail[];\n"
+	"};\n";
+
+/* Test: C generation spells pointers, arrays, function pointers and bit-fields */
+START_TEST(reflection_generate_c_declarators)
+{
+	struct fy_reflection *rfl;
+	char *hdr_path, *gen;
+	const char *found;
+
+	hdr_path = write_temp_header(declarator_header);
+	ck_assert_ptr_ne(hdr_path, NULL);
+
+	rfl = fy_reflection_from_c_file_with_cflags(hdr_path, clang_header_cflags,
+						     false, true, NULL);
+	remove(hdr_path);
+	free(hdr_path);
+	ck_assert_ptr_ne(rfl, NULL);
+
+	gen = fy_reflection_generate_c_string(rfl, FYCGF_INDENT_TAB | FYCGF_COMMENT_NONE);
+	ck_assert_ptr_ne(gen, NULL);
+	found = strstr(gen, "typedef int (*fn_t)(void *, const volatile int *restrict);");
+	ck_assert_ptr_ne(found, NULL);
+	found = strstr(gen, "\tint (*cb)(int, char *);");
+	ck_assert_ptr_ne(found, NULL);
+	found = strstr(gen, "\tconst char *const names[3];");
+	ck_assert_ptr_ne(found, NULL);
+	found = strstr(gen, "\tfn_t table[2];");
+	ck_assert_ptr_ne(found, NULL);
+	found = strstr(gen, "\tunsigned int bits: 3;");
+	ck_assert_ptr_ne(found, NULL);
+	found = strstr(gen, "\tchar tail[];");
+	ck_assert_ptr_ne(found, NULL);
+	free(gen);
+
+	fy_reflection_destroy(rfl);
+}
+END_TEST
 
 /* Test: create reflection from C file, verify struct field info */
 START_TEST(reflection_clang_struct_info)
@@ -409,7 +463,7 @@ END_TEST
 /* ------------------------------------------------------------------ */
 
 /* Test: pack reflection and restore; verify struct baz still introspectable */
-/* (seeds from C file, so also requires HAVE_LIBCLANG) */
+/* (seeds from C file, so also needs a C parser) */
 START_TEST(reflection_packed_roundtrip)
 {
 	struct fy_reflection *rfl, *rfl2;
@@ -457,7 +511,7 @@ START_TEST(reflection_packed_roundtrip)
 }
 END_TEST
 
-#endif /* HAVE_LIBCLANG */
+#endif /* !_WIN32 */
 
 /* Test: packed backend parse — same YAML parse via packed reflection */
 /* (seeds from null backend, so no libclang required) */
@@ -529,19 +583,20 @@ void libfyaml_case_reflection(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, reflection_invalid_entry_meta_fails_cleanly);
 	fy_check_testcase_add_test(ctc, reflection_invalid_required_entry_meta_fails_cleanly);
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
+#if FY_TEST_READS_C
 	/* clang backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-clang");
 	fy_check_testcase_set_timeout(ctc, 30);
 
 	fy_check_testcase_add_test(ctc, reflection_clang_struct_info);
+	fy_check_testcase_add_test(ctc, reflection_generate_c_declarators);
 	fy_check_testcase_add_test(ctc, reflection_clang_struct_parse);
 #endif
 
 	/* packed backend tests */
 	ctc = fy_check_suite_add_test_case(cs, "reflection-packed");
 
-#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG && !defined(_WIN32)
+#if FY_TEST_READS_C
 	fy_check_testcase_add_test(ctc, reflection_packed_roundtrip);
 #endif
 	fy_check_testcase_add_test(ctc, reflection_packed_parse_int);

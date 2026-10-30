@@ -158,7 +158,7 @@ if HAVE_CPARSE_BACKEND
 # the cparse and round trip tools use private symbols, so they need the
 # static library
 if HAVE_STATIC
-check_PROGRAMS += cparse-tool
+check_PROGRAMS += cparse-tool reflection-backend-dump
 
 cparse_tool_SOURCES = cparse/cparse-tool.c
 cparse_tool_CPPFLAGS = $(AM_CPPFLAGS) \
@@ -168,6 +168,17 @@ cparse_tool_CPPFLAGS = $(AM_CPPFLAGS) \
 		       -I$(top_srcdir)/src/cparse
 cparse_tool_LDADD = $(top_builddir)/src/libfyaml.la
 cparse_tool_LDFLAGS = -static
+
+reflection_backend_dump_SOURCES = reflection-backend-dump.c
+reflection_backend_dump_CPPFLAGS = $(AM_CPPFLAGS) \
+				   -I$(top_srcdir)/src/lib \
+				   -I$(top_srcdir)/src/util \
+				   -I$(top_srcdir)/src/allocator \
+				   -I$(top_srcdir)/src/generic \
+				   -I$(top_srcdir)/src/reflection \
+				   -I$(top_srcdir)/src/cparse
+reflection_backend_dump_LDADD = $(top_builddir)/src/libfyaml.la
+reflection_backend_dump_LDFLAGS = -static
 
 # The fuzz run of the cparse input is by hand only: it is not built by "make"
 # or "make check". Run "make cparse-fuzz"; FUZZ_ARGS sets the options, for
@@ -184,7 +195,7 @@ cparse-fuzz: cparse-fuzz-input$(EXEEXT)
 		$(srcdir)/cparse/comments-*.c $(srcdir)/cparse/pp-macros.c \
 		$(srcdir)/cparse/imacros.c
 
-TESTS += testcparse.test
+TESTS += testcparse.test testreflection-roundtrip.test
 
 if HAVE_LIBCLANG
 check_PROGRAMS += cparse-libclang-dump
@@ -457,4 +468,9 @@ EXTRA_DIST += \
 	cparse/pp-macros.c \
 	cparse/predefs.c \
 	cparse/sweep-headers.sh \
-	cparse/expected
+	wasm/run-wasm-tests.sh \
+	cparse/expected \
+	reflection-backend-dump.c \
+	reflection-roundtrip \
+	reflection-macros \
+	run-reflection-roundtrip.sh

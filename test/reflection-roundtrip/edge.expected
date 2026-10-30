@@ -1,0 +1,19 @@
+enum 'callchain' 'enum callchain' enum size=8 align=8 flags=0x0
+  enum-value 'CALLCHAIN_HV' value=18446744073709551584 'unsigned long' unsigned long size=8 align=8
+  enum-value 'CALLCHAIN_KERNEL' value=18446744073709551488 'unsigned long' unsigned long size=8 align=8
+  enum-value 'CALLCHAIN_USER' value=18446744073709551104 'unsigned long' unsigned long size=8 align=8
+enum 'mask' 'enum mask' enum size=8 align=8 flags=0x0
+  enum-value 'MASK_HIGH' value=18446744069414584320 'unsigned long' unsigned long size=8 align=8
+  enum-value 'MASK_LOW' value=1 'int' int size=4 align=4
+struct '(anon)' 'struct (anon)' struct size=0 align=1 flags=0x10
+struct '(anon)' 'struct (anon)' struct size=0 align=4 flags=0x30
+  field 'empty' off=0 'struct (anon)' struct size=0 align=1
+  field 'items' off=0 'u32[]' iarray size=0 align=0
+struct 'flex_holder' 'struct flex_holder' struct size=8 align=4 flags=0x0
+  field 'count' off=0 'u32' typedef size=4 align=4
+  field '@anon-32' off=4 'union (anon)' union size=4 align=4
+typedef 'u32' 'u32' typedef size=4 align=4 flags=0x0
+typedef 'u64' 'u64' typedef size=8 align=8 flags=0x0
+union '(anon)' 'union (anon)' union size=4 align=4 flags=0x30
+  field 'fixed' off=0 'u32[1]' carray size=4 align=4
+  field '@anon-0' off=0 'struct (anon)' struct size=0 align=4

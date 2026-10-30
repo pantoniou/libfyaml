@@ -1,0 +1,5 @@
+struct 'user_buffer' 'struct user_buffer' struct size=40 align=4 flags=0x0
+  field 'data' off=0 'char[12]' carray size=12 align=1
+  field 'field_count' off=12 'int[7]' carray size=28 align=4
+typedef 'predefs_t' 'predefs_t' typedef size=1 align=1 flags=0x0
+typedef 'user_compiler_t' 'user_compiler_t' typedef size=4 align=1 flags=0x0

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+#
+# Generate C from the reflection of each header, read it back and compare. With
+# the clang backend the two backends are compared too.
+srcdir=${SRCDIR:-$(dirname "$0")}
+builddir=${BUILDDIR:-.}
+export BACKEND_DUMP=$builddir/reflection-backend-dump
+
+headers=("$srcdir"/reflection-roundtrip/*.h)
+modes=(roundtrip roundtrip-i386)
+if "$BACKEND_DUMP" clang /dev/null > /dev/null 2>&1; [ $? -ne 2 ]; then
+	modes+=(backends)
+fi
+
+tests=()
+for h in "${headers[@]}"; do
+	for m in "${modes[@]}"; do
+		tests+=("$m $h")
+	done
+	# the expected files are for a 64 bit host
+	if [ -e "${h%.h}.expected" ] && [ "$(getconf LONG_BIT)" = 64 ]; then
+		tests+=("layout $h")
+	fi
+done
+
+for h in "$srcdir"/reflection-macros/*.h; do
+	tests+=("macros $h")
+done
+
+echo "1..${#tests[@]}"
+n=0
+for t in "${tests[@]}"; do
+	m=${t%% *}
+	h=${t#* }
+	n=$((n + 1))
+	if "$srcdir/run-reflection-roundtrip.sh" "$m" "$h" > /dev/null 2>&1; then
+		echo "ok $n - reflection $m $(basename "$h")"
+	else
+		echo "not ok $n - reflection $m $(basename "$h")"
+	fi
+done

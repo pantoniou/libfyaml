@@ -1,17 +1,23 @@
 # SPDX-License-Identifier: MIT
 #
-# Tests of the cparse C front end.
+# Tests of the cparse C front end and of the reflection built on it.
 #
 # The cases of test/cparse/cases.txt run against expected output. With
-# libclang they run against libclang too.
+# libclang they run against libclang too. The round trip tests generate C from
+# the headers in test/reflection-roundtrip and read it back.
 
 function(add_cparse_tests)
     set(_test_dir "${CMAKE_CURRENT_SOURCE_DIR}/test")
     set(_tools_dir "${CMAKE_CURRENT_BINARY_DIR}/test")
 
-    # the tool needs the private symbols of the static library
-    foreach(_tool cparse-tool)
-        add_executable(${_tool} "${_test_dir}/cparse/cparse-tool.c")
+    # the tools need the private symbols of the static library
+    foreach(_tool cparse-tool reflection-backend-dump)
+        if(_tool STREQUAL "cparse-tool")
+            set(_tool_src "${_test_dir}/cparse/cparse-tool.c")
+        else()
+            set(_tool_src "${_test_dir}/reflection-backend-dump.c")
+        endif()
+        add_executable(${_tool} "${_tool_src}")
         target_compile_options(${_tool} PRIVATE ${COMMON_C_FLAGS})
         target_compile_definitions(${_tool} PRIVATE
             HAVE_CONFIG_H
@@ -94,6 +100,69 @@ function(add_cparse_tests)
                 ENVIRONMENT "CPARSE_TOOL=$<TARGET_FILE:cparse-tool>;CLANG=${CLANG_EXECUTABLE}"
             )
         endif()
+    endforeach()
+
+    # generate C from a header, read it back, compare the two reflections
+    file(GLOB _headers "${_test_dir}/reflection-roundtrip/*.h")
+    foreach(_header ${_headers})
+        get_filename_component(_name "${_header}" NAME_WE)
+
+        add_test(
+            NAME "reflection-roundtrip/${_name}"
+            COMMAND "${BASH_EXECUTABLE}" "${_test_dir}/run-reflection-roundtrip.sh" roundtrip "${_header}"
+        )
+        set_tests_properties("reflection-roundtrip/${_name}" PROPERTIES
+            LABELS "reflection;roundtrip"
+            ENVIRONMENT "BACKEND_DUMP=$<TARGET_FILE:reflection-backend-dump>"
+        )
+
+        # the 32 bit layout rules, on any host
+        add_test(
+            NAME "reflection-roundtrip-i386/${_name}"
+            COMMAND "${BASH_EXECUTABLE}" "${_test_dir}/run-reflection-roundtrip.sh" roundtrip-i386 "${_header}"
+        )
+        set_tests_properties("reflection-roundtrip-i386/${_name}" PROPERTIES
+            LABELS "reflection;roundtrip"
+            ENVIRONMENT "BACKEND_DUMP=$<TARGET_FILE:reflection-backend-dump>"
+        )
+
+        # the expected files are for a 64 bit host
+        if(EXISTS "${_test_dir}/reflection-roundtrip/${_name}.expected" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+            add_test(
+                NAME "reflection-layout/${_name}"
+                COMMAND "${BASH_EXECUTABLE}" "${_test_dir}/run-reflection-roundtrip.sh" layout "${_header}"
+            )
+            set_tests_properties("reflection-layout/${_name}" PROPERTIES
+                LABELS "reflection;layout"
+                ENVIRONMENT "BACKEND_DUMP=$<TARGET_FILE:reflection-backend-dump>"
+            )
+        endif()
+
+        if(HAVE_LIBCLANG)
+            add_test(
+                NAME "reflection-backends/${_name}"
+                COMMAND "${BASH_EXECUTABLE}" "${_test_dir}/run-reflection-roundtrip.sh" backends "${_header}"
+            )
+            set_tests_properties("reflection-backends/${_name}" PROPERTIES
+                LABELS "reflection;libclang"
+                ENVIRONMENT "BACKEND_DUMP=$<TARGET_FILE:reflection-backend-dump>"
+            )
+        endif()
+    endforeach()
+
+    # a header read with the macros of a file, and without the compiled-in ones
+    file(GLOB _macro_headers "${_test_dir}/reflection-macros/*.h")
+    foreach(_header ${_macro_headers})
+        get_filename_component(_name "${_header}" NAME_WE)
+
+        add_test(
+            NAME "reflection-macros/${_name}"
+            COMMAND "${BASH_EXECUTABLE}" "${_test_dir}/run-reflection-roundtrip.sh" macros "${_header}"
+        )
+        set_tests_properties("reflection-macros/${_name}" PROPERTIES
+            LABELS "reflection;macros"
+            ENVIRONMENT "BACKEND_DUMP=$<TARGET_FILE:reflection-backend-dump>"
+        )
     endforeach()
 endfunction()
 
