@@ -990,6 +990,7 @@ if(HAVE_REFLECTION)
         src/cparse/cparse-preprocess.c
         src/cparse/cparse-type.c
         src/cparse/cparse-parse.c
+        src/cparse/cparse-comments.c
         src/cparse/cparse-target.c
     )
     # Conditionally add clang backend if libclang is available

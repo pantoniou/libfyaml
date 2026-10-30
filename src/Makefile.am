@@ -111,6 +111,7 @@ libfyaml_la_SOURCES += \
 	cparse/cparse-preprocess.c \
 	cparse/cparse-type.c \
 	cparse/cparse-parse.c \
+	cparse/cparse-comments.c \
 	cparse/cparse-target.c
 
 if HAVE_LIBCLANG

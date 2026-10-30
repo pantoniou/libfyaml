@@ -353,6 +353,7 @@ if have_reflection:
         src_dir / "cparse" / "cparse-preprocess.c",
         src_dir / "cparse" / "cparse-type.c",
         src_dir / "cparse" / "cparse-parse.c",
+        src_dir / "cparse" / "cparse-comments.c",
         src_dir / "cparse" / "cparse-target.c",
     ])
 
