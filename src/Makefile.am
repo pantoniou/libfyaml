@@ -95,6 +95,7 @@ libfyaml_la_SOURCES += \
 	reflection/fy-registry.c \
 	reflection/fy-reflection-util.c \
 	reflection/fy-reflection-util.h \
+	reflection/fy-cparse-backend.c reflection/fy-cparse-backend.h \
 	reflection/fy-reflect-meta.h \
 	reflection/fy-type-meta.h \
 	reflection/fy-type-meta.c \

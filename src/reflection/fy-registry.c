@@ -9,6 +9,7 @@
 #include "config.h"
 #endif
 
+#include <stdlib.h>
 #include <string.h>
 
 #if HAVE_ALLOCA
@@ -21,12 +22,18 @@
 #include "fy-reflection-private.h"
 
 #include "fy-packed-backend.h"
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+#include "fy-cparse-backend.h"
+#endif
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 #include "fy-clang-backend.h"
 #endif
 
 extern const struct fy_reflection_backend fy_reflection_null_backend;
 extern const struct fy_reflection_backend fy_reflection_packed_backend;
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+extern const struct fy_reflection_backend fy_reflection_cparse_backend;
+#endif
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 extern const struct fy_reflection_backend fy_reflection_clang_backend;
 #endif
@@ -36,6 +43,10 @@ static const struct fy_reflection_backend *builtin_backends[] = {
 	&fy_reflection_null_backend,
 	/* the packed backend is always available */
 	&fy_reflection_packed_backend,
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+	/* the native C backend has no dependencies; the architecture must be one of its */
+	&fy_reflection_cparse_backend,
+#endif
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
 	/* the clang backend is optional */
 	&fy_reflection_clang_backend,
@@ -57,6 +68,80 @@ fy_reflection_backend_lookup(const char *name)
 }
 
 #if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+/*
+ * Which backend reads C files when libclang is built in: clang by default.
+ * FY_REFLECTION_C_BACKEND=clang|cparse overrides the default. Without libclang
+ * the cparse backend reads the C files, and without the cparse backend (an
+ * architecture without a target) libclang does.
+ */
+static const char *c_backend_name(void)
+{
+	const char *name = getenv("FY_REFLECTION_C_BACKEND");
+
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+	if (!name || (strcmp(name, "clang") && strcmp(name, "cparse")))
+		name = "clang";
+#else
+	name = "clang";
+#endif
+	return name;
+}
+#endif
+
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+static struct fy_reflection *
+from_c_files_cparse(int filec, const char * const filev[], int argc, const char * const argv[],
+		    bool display_diagnostics, struct fy_diag *diag)
+{
+	struct fy_cparse_backend_reflection_cfg rcfg;
+	struct fy_cparse_backend_import_cfg *icfgs;
+	const void **icfgps;
+	int i;
+
+	memset(&rcfg, 0, sizeof(rcfg));
+	rcfg.display_diagnostics = display_diagnostics;
+
+	icfgs = alloca(sizeof(*icfgs) * filec);
+	icfgps = alloca(sizeof(*icfgps) * filec);
+	memset(icfgs, 0, sizeof(*icfgs) * filec);
+	for (i = 0; i < filec; i++) {
+		icfgps[i] = &icfgs[i];
+		icfgs[i].file = filev[i];
+		icfgs[i].argc = argc;
+		icfgs[i].argv = argv;
+	}
+
+	return fy_reflection_from_imports("cparse", &rcfg, filec, icfgps, diag);
+}
+#endif
+
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+static struct fy_reflection *
+from_c_files_clang(int filec, const char * const filev[], int argc, const char * const argv[],
+		   bool display_diagnostics, struct fy_diag *diag)
+{
+	struct fy_clang_backend_reflection_cfg rcfg;
+	struct fy_clang_backend_import_cfg *icfgs;
+	const void **icfgps;
+	int i;
+
+	memset(&rcfg, 0, sizeof(rcfg));
+	rcfg.display_diagnostics = display_diagnostics;
+
+	icfgs = alloca(sizeof(*icfgs) * filec);
+	icfgps = alloca(sizeof(*icfgps) * filec);
+	memset(icfgs, 0, sizeof(*icfgs) * filec);
+	for (i = 0; i < filec; i++) {
+		icfgps[i] = &icfgs[i];
+		icfgs[i].file = filev[i];
+		icfgs[i].argc = argc;
+		icfgs[i].argv = argv;
+	}
+
+	return fy_reflection_from_imports("clang", &rcfg, filec, icfgps, diag);
+}
+#endif
+
 struct fy_reflection *
 fy_reflection_from_c_files(int filec,
 			   const char * const filev[],
@@ -66,27 +151,24 @@ fy_reflection_from_c_files(int filec,
 			   bool include_comments FY_UNUSED,
 			   struct fy_diag *diag)
 {
-	struct fy_clang_backend_reflection_cfg rcfg;
-	struct fy_clang_backend_import_cfg *icfgs;
-	const void **icfgps;
-	int i, num_imports;
+	if (filec <= 0)
+		return NULL;
 
-	memset(&rcfg, 0, sizeof(rcfg));
-	rcfg.display_diagnostics = display_diagnostics;
-
-	num_imports = filec;
-
-	icfgs = alloca(sizeof(*icfgs) * num_imports);
-	icfgps = alloca(sizeof(*icfgps) * num_imports);
-	memset(icfgs, 0, sizeof(*icfgs) * num_imports);
-	for (i = 0; i < num_imports; i++) {
-		icfgps[i] = &icfgs[i];
-		icfgs[i].file = filev[i];
-		icfgs[i].argc = argc;
-		icfgs[i].argv = argv;
-	}
-
-	return fy_reflection_from_imports("clang", &rcfg, num_imports, icfgps, diag);
+#if defined(HAVE_LIBCLANG) && HAVE_LIBCLANG
+	if (!strcmp(c_backend_name(), "clang"))
+		return from_c_files_clang(filec, filev, argc, argv, display_diagnostics, diag);
+#endif
+#if defined(HAVE_CPARSE_BACKEND) && HAVE_CPARSE_BACKEND
+	return from_c_files_cparse(filec, filev, argc, argv, display_diagnostics, diag);
+#else
+	/* this build has no way to read C files */
+	(void)filev;
+	(void)argc;
+	(void)argv;
+	(void)display_diagnostics;
+	(void)diag;
+	return NULL;
+#endif
 }
 
 struct fy_reflection *
@@ -118,44 +200,6 @@ fy_reflection_from_c_file_with_cflags(const char *file, const char *cflags,
 
 	return rfl;
 }
-
-#else
-
-struct fy_reflection *
-fy_reflection_from_c_files(int filec FY_UNUSED,
-			   const char * const filev[] FY_UNUSED,
-			   int argc FY_UNUSED,
-			   const char * const argv[] FY_UNUSED,
-			   bool display_diagnostics FY_UNUSED,
-			   bool include_comments FY_UNUSED,
-			   struct fy_diag *diag FY_UNUSED)
-{
-	return NULL;
-}
-
-
-struct fy_reflection *
-fy_reflection_from_c_file(const char *file FY_UNUSED,
-			  int argc FY_UNUSED,
-			  const char * const argv[] FY_UNUSED,
-			  bool display_diagnostics FY_UNUSED,
-			  bool include_comments FY_UNUSED,
-			  struct fy_diag *diag FY_UNUSED)
-{
-	return NULL;
-}
-
-struct fy_reflection *
-fy_reflection_from_c_file_with_cflags(const char *file FY_UNUSED,
-		const char *cflags FY_UNUSED,
-		bool display_diagnostics FY_UNUSED,
-		bool include_comments FY_UNUSED,
-		struct fy_diag *diag FY_UNUSED)
-{
-	return NULL;
-}
-
-#endif
 
 struct fy_reflection *
 fy_reflection_from_packed_blob(const void *blob, size_t blob_size, struct fy_diag *diag)

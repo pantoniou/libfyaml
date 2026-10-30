@@ -168,6 +168,12 @@ int main(void) {
 
 have_generic = have_statement_expressions and plat.is_64bit and is_little_endian
 have_reflection = have_statement_expressions
+# The C backend reads headers with cparse, which has a target for the architecture
+# of the build only for the ones in cparse-arch.h.
+have_cparse_backend = have_reflection and checks.try_compile(
+    '#include "%s"\n#ifndef CP_HOST_ARCH\n#error no cparse target for this architecture\n#endif\n'
+    'int main(void) { return 0; }' % (project_dir / "src" / "cparse" / "cparse-arch.h")
+).success
 # Skip libclang for now — optional and complex
 have_libclang = False
 
@@ -269,6 +275,8 @@ if have_generic:
     common_defines.append("HAVE_GENERIC")
 if have_reflection:
     common_defines.append("HAVE_REFLECTION")
+if have_cparse_backend:
+    common_defines.append("HAVE_CPARSE_BACKEND")
 if have_fblocks:
     env.cc.flags.append("-fblocks")
 if have_heap_trampolines:
@@ -370,6 +378,7 @@ if have_reflection:
         src_dir / "reflection" / "fy-type-context.c",
         src_dir / "reflection" / "fy-meta-serdes.c",
         src_dir / "reflection" / "fy-reflection-util.c",
+        src_dir / "reflection" / "fy-cparse-backend.c",
         # the C declaration front end (type text parsing and spelling)
         src_dir / "cparse" / "cparse-util.c",
         src_dir / "cparse" / "cparse-tokenize.c",

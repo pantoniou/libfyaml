@@ -452,9 +452,17 @@ AC_ARG_ENABLE([network],
 # check for libclang
 AC_ARG_WITH([libclang],
    [AS_HELP_STRING([--with-libclang=[<version>]],
-              [Enable support for libclang @<:@default=auto@:>@])],
+              [Use libclang for reflection instead of the built-in C parser; a version selects llvm-config-<version>, "auto" takes the first one found @<:@default=no@:>@])],
             [with_libclang="$withval"],
-            [with_libclang=auto])
+            [with_libclang=no])
+if test "x$with_libclang" = "xyes"; then
+	with_libclang=auto
+	libclang_required=yes
+elif test "x$with_libclang" != "xno" -a "x$with_libclang" != "xauto"; then
+	libclang_required=yes
+else
+	libclang_required=no
+fi
 
 HAVE_LIBCLANG=0
 LIBCLANG_CFLAGS=""
@@ -532,6 +540,10 @@ if test "x$with_libclang" != "xno"; then
 	CPPFLAGS=$orig_CPPFLAGS
 	LDFLAGS=$orig_LDFLAGS
 	LIBS=$orig_LIBS
+fi
+
+if test "x$libclang_required" = "xyes" -a "x$HAVE_LIBCLANG" != "x1"; then
+	AC_MSG_ERROR([--with-libclang was given but libclang was not found; drop it to use the built-in C parser])
 fi
 
 AC_SUBST(HAVE_LIBCLANG)
@@ -655,6 +667,26 @@ AC_SUBST(HAVE_REFLECTION)
 AM_CONDITIONAL([HAVE_GENERIC], [ test x$HAVE_GENERIC = x1 ])
 AM_CONDITIONAL([HAVE_REFLECTION], [ test x$HAVE_REFLECTION = x1 ])
 
+dnl The C backend of the library reads headers with cparse. cparse has a target for
+dnl the architecture of the build only for the ones in cparse-arch.h; elsewhere
+dnl libclang is the way to read C files.
+HAVE_CPARSE_BACKEND=0
+if test "x$HAVE_REFLECTION" = "x1"; then
+	AC_MSG_CHECKING([for a cparse target for this architecture])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include "$srcdir/src/cparse/cparse-arch.h"
+#ifndef CP_HOST_ARCH
+#error no cparse target for this architecture
+#endif
+]], [[]])],
+		[HAVE_CPARSE_BACKEND=1; AC_MSG_RESULT([yes])],
+		[AC_MSG_RESULT([no, C files are read with libclang only])])
+fi
+AC_SUBST(HAVE_CPARSE_BACKEND)
+AC_DEFINE_UNQUOTED([HAVE_CPARSE_BACKEND], [$HAVE_CPARSE_BACKEND], [Define to 1 if the cparse C backend is available])
+AM_CONDITIONAL([HAVE_CPARSE_BACKEND], [ test x$HAVE_CPARSE_BACKEND = x1 ])
+AM_CONDITIONAL([HAVE_REFLECTION_C], [ test x$HAVE_CPARSE_BACKEND = x1 -o x$HAVE_LIBCLANG = x1 ])
+
 FY_DEFINE_IF_YES([HAVE_GENERIC], [$HAVE_GENERIC], [Define to 1 if generics are enabled])
 FY_DEFINE_IF_YES([HAVE_REFLECTION], [$HAVE_REFLECTION], [Define to 1 if generics are enabled])
 
@@ -747,6 +779,7 @@ echo "
     HAVE_SPHINX:           ${HAVE_SPHINX}
     HAVE_GENERIC:          ${HAVE_GENERIC}
     HAVE_REFLECTION:       ${HAVE_REFLECTION}
+    HAVE_CPARSE_BACKEND:   ${HAVE_CPARSE_BACKEND}
     GIT:                   ${GIT}
     DOCKER:                ${DOCKER}
     HAVE_LIBCLANG:         ${HAVE_LIBCLANG}

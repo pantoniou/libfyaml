@@ -852,6 +852,26 @@ else()
     endif()
 endif()
 
+# The C backend of the library reads headers with cparse. cparse has a target for
+# the architecture of the build, the one the program runs on, only for the
+# architectures in cparse-arch.h; elsewhere libclang is the way to read C files.
+set(HAVE_CPARSE_BACKEND 0)
+if(HAVE_REFLECTION)
+    check_c_source_compiles("
+#include \"${CMAKE_CURRENT_SOURCE_DIR}/src/cparse/cparse-arch.h\"
+#ifndef CP_HOST_ARCH
+#error no cparse target for this architecture
+#endif
+int main(void) { return 0; }
+" HAVE_CPARSE_ARCH)
+    if(HAVE_CPARSE_ARCH)
+        set(HAVE_CPARSE_BACKEND 1)
+        list(APPEND COMMON_C_DEFINITIONS HAVE_CPARSE_BACKEND)
+    else()
+        message(STATUS "No cparse target for this architecture; C files are read with libclang only")
+    endif()
+endif()
+
 # the options for the libs
 set(LIB_OPTS "")
 if(NOT MSVC AND NOT WIN32)
@@ -983,6 +1003,7 @@ if(HAVE_REFLECTION)
         src/reflection/fy-type-context.c
         src/reflection/fy-meta-serdes.c
         src/reflection/fy-reflection-util.c
+        src/reflection/fy-cparse-backend.c
         # the C declaration front end (type text parsing and spelling)
         src/cparse/cparse-util.c
         src/cparse/cparse-tokenize.c
@@ -2241,6 +2262,7 @@ message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")
 message(STATUS "HAVE_GENERIC:          ${HAVE_GENERIC}")
 message(STATUS "HAVE_REFLECTION:       ${HAVE_REFLECTION}")
+message(STATUS "HAVE_CPARSE_BACKEND:   ${HAVE_CPARSE_BACKEND}")
 message(STATUS "HAVE_PYTHON_BINDINGS:  ${HAVE_PYTHON_BINDINGS}")
 message(STATUS "HAVE_CLANG_BLOCKS:     ${HAVE_CLANG_BLOCKS}")
 message(STATUS "HAVE_NETWORK:          ${HAVE_NETWORK}")
