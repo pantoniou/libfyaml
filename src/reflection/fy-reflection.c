@@ -41,11 +41,6 @@ static inline bool is_c_identifier(char c, bool first)
 		(!first && c >= '0' && c <= '9');
 }
 
-static inline bool c_identifier_needs_space(char c)
-{
-	return is_c_identifier(c, false) || c == '*' || c == '@' /* || c == '(' */ ;
-}
-
 static inline int backend_reflection_setup(struct fy_reflection *rfl)
 {
 	return rfl->cfg.backend->ops->reflection_setup(rfl);
@@ -510,31 +505,67 @@ const char *decl_type_txt[FYDT_COUNT] = {
 	[FYDT_PRIMARY]= "primary",
 };
 
+static struct cp_tu *rfl_cp_tu_create(struct fy_reflection *rfl);
+
+/* stand-ins for the base type (and a function's return type and arguments) */
+#define GEN_BASE	"__fy_base"
+#define GEN_RET		"__fy_ret"
+
+static unsigned int fy_flags_to_cp_quals(unsigned int flags)
+{
+	return ((flags & FYTF_CONST) ? CPQ_CONST : 0) |
+	       ((flags & FYTF_VOLATILE) ? CPQ_VOLATILE : 0) |
+	       ((flags & FYTF_RESTRICT) ? CPQ_RESTRICT : 0);
+}
+
+/* replace the first occurrence of key in str by with (and optionally a space after it) */
+static char *gen_subst(char *str, const char *key, const char *with, bool eat_space)
+{
+	char *at = strstr(str, key), *out;
+	size_t klen = strlen(key), wlen = strlen(with), pre, post;
+
+	if (!at)
+		return str;
+	pre = at - str;
+	post = strlen(at + klen);
+	if (eat_space && !wlen && at[klen] == ' ') {
+		klen++;
+		post--;
+	}
+	out = malloc(pre + wlen + post + 1);
+	if (!out) {
+		free(str);
+		return NULL;
+	}
+	memcpy(out, str, pre);
+	memcpy(out + pre, with, wlen);
+	memcpy(out + pre + wlen, at + klen, post + 1);
+	free(str);
+	return out;
+}
+
 char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsigned int flags)
 {
 	struct fy_reflection *rfl;
 	const struct fy_type_kind_info *tki;
 	struct fy_type *ftd, *slow, *fast;
 	struct fy_decl *decld;
-	enum fy_type_kind type_kind;
 	struct fy_type **ft_stack;
-	int i, stack_count;
-	int ret FY_DEBUG_UNUSED;
-	char buf[8192], numbuf[64];
-	char *start, *end, *p1, *p2;
-	const char *type_name, *type_prefix, *s, *e, *func_start;
-	char *ret_buf, *func_return, *func_args;
+	struct cp_tu *tu = NULL;
+	struct cp_type *cpt;
+	const char *type_name = NULL, *type_prefix = NULL, *s, *e, *decl;
+	char *func_return = NULL, *func_args = NULL;
+	char *ret = NULL, *base = NULL;
 	size_t len;
-	bool no_type;
+	int i, stack_count;
+	bool no_type, is_func;
+	unsigned int q;
+	char *paren;
 
 	if (!ft)
 		return NULL;
 
 	rfl = ft->rfl;
-
-	memset(buf, 0, sizeof(buf));
-	memset(numbuf, 0, sizeof(numbuf));
-
 	no_type = !!(flags & FYTGTF_NO_TYPE);
 
 	assert(ft->type_kind != FYTK_INVALID);
@@ -554,7 +585,7 @@ char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsi
 			return NULL;
 	}
 
-	/* create a stack of all deps, ending at no dep or typedef */
+	/* the chain of dependencies, ending at no dep or typedef */
 	ftd = ft;
 	for (i = 0; ftd->dependent_type && (ftd->type_kind != FYTK_TYPEDEF && ftd->type_kind != FYTK_ENUM); i++)
 		ftd = ftd->dependent_type;
@@ -564,226 +595,150 @@ char *fy_type_generate_c_declaration(struct fy_type *ft, const char *field, unsi
 	if (!ftd || fy_type_kind_is_like_ptr(ftd->type_kind))
 		return NULL;
 
-	/* safe? */
-	RFL_ASSERT(ftd->type_kind == FYTK_TYPEDEF || ftd->type_kind == FYTK_ENUM || !fy_type_kind_is_like_ptr(ftd->type_kind));
-
-	if (ftd->type_kind == FYTK_FUNCTION) {
-
-		decld = fy_type_decl(ftd);
-
-		if (decld) {
-			func_start = decld->name;
-
-			s = func_start;
-			e = s + strlen(func_start);
-
-			s = memchr(s, '(', (size_t)(e - s));
-		} else
-			s = NULL;
-		if (s != NULL) {
-			while (e > (s + 1) && isspace((unsigned char)e[-1]))
-				e--;
-			if (e > (s + 1) && e[-1] == ')')
-				e--;
-			len = e - (s + 1);
-			func_args = alloca(len + 1);
-			memcpy(func_args, s + 1, len);
-			func_args[len] = '\0';
-
-			while (s > func_start && isspace((unsigned char)s[-1]))
-				s--;
-			len = s - func_start;
-			func_return = alloca(len + 1);
-			memcpy(func_return, func_start, len);
-			func_return[len] = '\0';
-		} else {
-			func_return = "void";
-			func_args = "";
-		}
-	} else {
-		func_return = "";
-		func_args = "";
-	}
-
 	ft_stack = alloca(i * sizeof(*ft_stack));
 	stack_count = i;
 	for (ftd = ft, i = 0; i < stack_count; ftd = ftd->dependent_type, i++) {
 		assert(ftd);
 		ft_stack[i] = ftd;
 	}
-	ftd = NULL;
+	ftd = ft_stack[stack_count - 1];
+	is_func = ftd->type_kind == FYTK_FUNCTION;
 
-	rfl_debug(rfl, "%s: field=%s stack_count=%d\n", __func__, field ? field : "<NULL>", stack_count);
-
-	// ptr          > ptr -> int     / 'int **<f>'		/ int **
-	// const array -> int            / 'int <f>[2]'		/ int[2]
-	// const array -> ptr -> int     / 'int *<f>[2]'	/ int *[2]
-	// ptr         -> typedef        / 'u8 *<f>'		/ u8 *
-	// ptr         -> int f(int foo) / 'int (*<f>)(int foo)'/ int (*)(int foo)
-	// ptr         -> struct bar     / 'struct bar *<f>'	/ struct bar *
-
-	start = buf;
-	end = buf + sizeof(buf);
-	p1 = p2 = buf + (2 * sizeof(buf))/3;
-
-	/* append to the right of p2 */
-#undef PUT_P2
-#define PUT_P2(_x) \
-	do { \
-		s = (_x); \
-		len = strlen(s); \
-		if ((size_t)(end - p2) < len) \
-			goto err_out; \
-		rfl_debug(rfl, "PUT_P2'%s' #%d\n", s, __LINE__); \
-		memcpy(p2, s, len); \
-		p2 += len; \
-	} while(0)
-
-	/* prepend to the left of p1 */
-#undef PUT_P1
-#define PUT_P1(_x) \
-	do { \
-		s = (_x); \
-		len = strlen(s); \
-		if ((size_t)(p1 - start) < len) \
-			goto err_out; \
-		rfl_debug(rfl, "PUT_P1'%s' #%d" "\e[0m" "\n", s, __LINE__); \
-		p1 -= len; \
-		memcpy(p1, s, len); \
-	} while(0)
-
-#undef PUT_P1WORD
-#define PUT_P1WORD(_w) \
-	do { \
-		const char *__w = (_w); \
-		\
-		if (c_identifier_needs_space(*p1)) \
-			PUT_P1(" "); \
-		PUT_P1(__w); \
-	} while(0)
-
-#undef PUT_P1WORD_SPACE
-#define PUT_P1WORD_SPACE(_w) \
-	do { \
-		const char *__w = (_w); \
-		\
-		PUT_P1(" "); \
-		PUT_P1(__w); \
-	} while(0)
-
-#undef PUT_Q
-#define PUT_Q(_ftd) \
-	do { \
-		if ((_ftd)->flags & FYTF_RESTRICT) \
-			PUT_P1WORD("restrict"); \
-		if ((_ftd)->flags & FYTF_VOLATILE) \
-			PUT_P1WORD("volatile"); \
-		if ((_ftd)->flags & FYTF_CONST) \
-			PUT_P1WORD("const"); \
-	} while(0)
-
-	/* start with putting down the field (if any) */
-	if (field)
-		PUT_P2(field);
-
-	/* all the dependencies in reverse order */
-	for (i = 0; i < stack_count - 1; i++) {
-
-		ftd = ft_stack[i];
-
-		type_kind = ftd->type_kind;
-		switch (ftd->type_kind) {
-
-			case FYTK_PTR:
-				if (!no_type)
-					PUT_Q(ftd);
-				PUT_P1("*");
-				break;
-			case FYTK_INCOMPLETEARRAY:
-				PUT_P2("[]");
-				if (!no_type)
-					PUT_Q(ftd);
-				break;
-			case FYTK_CONSTARRAY:
-				ret = snprintf(numbuf, sizeof(numbuf) - 1, "[%ju]", ftd->element_count);
-				RFL_ASSERT(ret > 0 && ret < (int)(sizeof(numbuf) - 1));
-				PUT_P2(numbuf);
-				if (!no_type)
-					PUT_Q(ftd);
-				break;
-			default:
-				/* should only happen on the last */
-				// assert(i == (stack_count - 1));
-				break;
+	/* a function type is spelled "ret (args)" in its declaration name */
+	if (is_func) {
+		decld = fy_type_decl(ftd);
+		s = decld ? decld->name : NULL;
+		s = s ? strchr(s, '(') : NULL;
+		if (s) {
+			decl = decld->name;
+			e = decl + strlen(decl);
+			while (e > (s + 1) && isspace((unsigned char)e[-1]))
+				e--;
+			if (e > (s + 1) && e[-1] == ')')
+				e--;
+			len = e - (s + 1);
+			func_args = strndup(s + 1, len);
+			while (s > decl && isspace((unsigned char)s[-1]))
+				s--;
+			func_return = strndup(decl, s - decl);
+		} else {
+			func_return = strdup("void");
+			func_args = strdup("");
 		}
+		if (!func_return || !func_args)
+			goto out;
 	}
 
+	/* the base type's own name */
 	if (!no_type) {
-		ftd = ft_stack[stack_count - 1];
 		decld = fy_type_decl(ftd);
-
-		type_kind = ftd->type_kind;
-		tki = fy_type_kind_info_get_internal(type_kind);
-		if (fy_type_kind_has_prefix(type_kind)) {
+		tki = fy_type_kind_info_get_internal(ftd->type_kind);
+		if (fy_type_kind_has_prefix(ftd->type_kind)) {
 			/* a corrupt import can leave the type without a decl */
 			if (!decld)
-				goto err_out;
+				goto out;
 			type_prefix = tki->name;
 			type_name = decld->name;
-
-			rfl_debug(rfl, "%d: type_prefix=%s type_name=%s\n", __LINE__, type_prefix, type_name);
-
-		} else if (fy_type_kind_is_primitive(type_kind)) {
-			type_prefix = NULL;
+		} else if (fy_type_kind_is_primitive(ftd->type_kind)) {
 			type_name = tki->name;
-		} else if (type_kind == FYTK_TYPEDEF) {
+		} else if (ftd->type_kind == FYTK_TYPEDEF) {
 			if (!decld)
-				goto err_out;
-			type_prefix = NULL;
+				goto out;
 			type_name = decld->name;
-		} else if (type_kind == FYTK_FUNCTION) {
-			type_prefix = NULL;
-			type_name = NULL;
-			PUT_P1("(");
-			/* a corrupt import can leave the return type empty */
-			if (*func_return &&
-			    is_c_identifier(func_return[strlen(func_return) - 1], false))
-				PUT_P1(" ");
-			PUT_P1WORD(func_return);
-			if (field || stack_count > 1) {
-				PUT_P2(")");
-				PUT_P2("(");
-			}
-			PUT_P2(func_args);
-			PUT_P2(")");
-		} else
-			goto err_out;
-
-		if (type_name)
-			PUT_P1WORD(type_name);
-		if (type_prefix)
-			PUT_P1WORD_SPACE(type_prefix);
-
-		PUT_Q(ftd);
+		} else if (!is_func)
+			goto out;
 	}
 
-	/* strip trailing spaces */
-	while (p2 > p1 && isspace((unsigned char)p2[-1]))
-		p2--;
-	len = p2 - p1;
-	ret_buf = malloc(len + 1);
-	if (!ret_buf)
-		goto err_out;
+	tu = rfl_cp_tu_create(rfl);
+	if (!tu)
+		goto out;
 
-	memcpy(ret_buf, p1, len);
-	ret_buf[len] = '\0';
+	/* innermost first */
+	if (is_func) {
+		/* "ret ()" has no prototype; a parameter stand-in is dropped later */
+		s = *func_args ? GEN_RET " (int)" : GEN_RET " (void)";
+		cpt = cp_parse_type_text(tu, s, strlen(s));
+	} else {
+		cpt = cp_parse_type_text(tu, GEN_BASE, strlen(GEN_BASE));
+		if (cpt && !no_type && fy_flags_to_cp_quals(ftd->flags))
+			cpt = cp_type_qualified(tu, cpt, fy_flags_to_cp_quals(ftd->flags));
+	}
+	if (!cpt)
+		goto out;
 
-	rfl_debug(rfl, "%s: ret_buf=%s\n", __func__, ret_buf);
+	for (i = stack_count - 2; i >= 0 && cpt; i--) {
+		q = no_type ? 0 : fy_flags_to_cp_quals(ft_stack[i]->flags);
 
-	return ret_buf;
+		switch (ft_stack[i]->type_kind) {
+		case FYTK_PTR:
+			cpt = cp_type_pointer(tu, cpt);
+			if (cpt && q)
+				cpt = cp_type_qualified(tu, cpt, q);
+			break;
+		case FYTK_INCOMPLETEARRAY:
+		case FYTK_CONSTARRAY:
+			/* qualifiers on an array apply to its elements */
+			if (q)
+				cpt = cp_type_qualified(tu, cpt, q);
+			cpt = cp_type_array(tu, cpt, ft_stack[i]->type_kind == FYTK_CONSTARRAY ?
+						     (int64_t)ft_stack[i]->element_count : -1);
+			break;
+		default:
+			break;
+		}
+	}
+	if (!cpt)
+		goto out;
 
-err_out:
-	return NULL;
+	s = cp_type_declaration(tu, cpt, field);
+	if (!s)
+		goto out;
+	ret = strdup(s);
+	if (!ret)
+		goto out;
+
+	if (is_func) {
+		/* the arguments first, the return type text may hold "(int)" too */
+		if (*func_args) {
+			paren = malloc(strlen(func_args) + 3);
+
+			if (!paren) {
+				free(ret);
+				ret = NULL;
+				goto out;
+			}
+			sprintf(paren, "(%s)", func_args);
+			ret = gen_subst(ret, "(int)", paren, false);
+			free(paren);
+		} else if (ret) {
+			ret = gen_subst(ret, "(void)", "()", false);
+		}
+		if (ret)
+			ret = gen_subst(ret, GEN_RET, no_type ? "" : func_return, false);
+	} else if (type_name) {
+		base = malloc(strlen(type_prefix ? type_prefix : "") + strlen(type_name) + 2);
+		if (!base) {
+			free(ret);
+			ret = NULL;
+			goto out;
+		}
+		sprintf(base, "%s%s%s", type_prefix ? type_prefix : "", type_prefix ? " " : "", type_name);
+		ret = gen_subst(ret, GEN_BASE, base, false);
+	} else
+		ret = gen_subst(ret, GEN_BASE, "", true);
+
+	if (ret) {
+		len = strlen(ret);
+		while (len && isspace((unsigned char)ret[len - 1]))
+			ret[--len] = '\0';
+	}
+out:
+	free(base);
+	free(func_return);
+	free(func_args);
+	if (tu)
+		cp_tu_destroy(tu);
+	return ret;
 }
 
 int fy_type_generate_name(struct fy_type *ft)
