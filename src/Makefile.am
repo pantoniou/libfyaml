@@ -16,7 +16,8 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/util \
 	-I$(top_srcdir)/src/thread \
 	-I$(top_srcdir)/src/allocator \
-	-I$(top_srcdir)/src/generic
+	-I$(top_srcdir)/src/generic \
+	-I$(top_srcdir)/src/cparse
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
@@ -99,6 +100,14 @@ libfyaml_la_SOURCES += \
 	reflection/fy-type-context.c \
 	reflection/fy-meta-type-system.c \
 	reflection/fy-meta-serdes.c
+
+# the C declaration front end (type text parsing and spelling)
+libfyaml_la_SOURCES += \
+	cparse/cparse-arch.h \
+	cparse/cparse-private.h \
+	cparse/cparse-util.c \
+	cparse/cparse-tokenize.c \
+	cparse/cparse-target.c
 
 if HAVE_LIBCLANG
 libfyaml_la_SOURCES += \
@@ -234,6 +243,7 @@ uninstall-hook:
 	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join fy-ypath fy-compose)
 
 EXTRA_DIST =  \
+	cparse/LICENSE.slimcc \
 	getopt/getopt.c \
 	getopt/getopt.h \
 	util/fy-win32.h \

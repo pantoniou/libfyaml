@@ -276,6 +276,7 @@ if have_generic:
     env.cc.includes.append(src_dir / "generic")
 if have_reflection:
     env.cc.includes.append(src_dir / "reflection")
+    env.cc.includes.append(src_dir / "cparse")
 
 # =============================================================================
 # Source files
@@ -345,6 +346,10 @@ if have_reflection:
         src_dir / "reflection" / "fy-type-context.c",
         src_dir / "reflection" / "fy-meta-serdes.c",
         src_dir / "reflection" / "fy-reflection-util.c",
+        # the C declaration front end (type text parsing and spelling)
+        src_dir / "cparse" / "cparse-util.c",
+        src_dir / "cparse" / "cparse-tokenize.c",
+        src_dir / "cparse" / "cparse-target.c",
     ])
 
 # =============================================================================

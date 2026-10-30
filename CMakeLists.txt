@@ -983,6 +983,10 @@ if(HAVE_REFLECTION)
         src/reflection/fy-type-context.c
         src/reflection/fy-meta-serdes.c
         src/reflection/fy-reflection-util.c
+        # the C declaration front end (type text parsing and spelling)
+        src/cparse/cparse-util.c
+        src/cparse/cparse-tokenize.c
+        src/cparse/cparse-target.c
     )
     # Conditionally add clang backend if libclang is available
     if(HAVE_LIBCLANG)
@@ -1247,6 +1251,7 @@ target_include_directories(fyaml_static
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
         ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
         ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cparse
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -1320,6 +1325,7 @@ target_include_directories(fyaml
         ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3
         ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
         ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/cparse
 )
 
 if(NOT WIN32)
