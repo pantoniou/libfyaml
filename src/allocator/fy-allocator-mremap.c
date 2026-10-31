@@ -37,7 +37,8 @@
 
 // #define DEBUG_ARENA
 
-#if defined(__NetBSD__) || defined(_WIN32)
+/* WebAssembly has no mremap; Emscripten links a stub that fails */
+#if defined(__NetBSD__) || defined(_WIN32) || defined(__wasm__)
 #define DISABLE_MREMAP
 #endif
 
