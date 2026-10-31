@@ -3246,8 +3246,8 @@ int fy_emit_setup(struct fy_emitter *emit, const struct fy_emitter_cfg *cfg)
 			switch (emit->xcfg.xflags & (FYEXCF_COLOR_MASK << FYEXCF_COLOR_SHIFT)) {
 			case FYEXCF_COLOR_AUTO:
 				emit->output_colorize = emit->output_fp ?
-						isatty(fileno(emit->output_fp)) :
-						isatty(emit->output_fd);
+						fy_isatty(fileno(emit->output_fp)) :
+						fy_isatty(emit->output_fd);
 				break;
 			case FYEXCF_COLOR_FORCE:
 				emit->output_colorize = true;
@@ -5321,7 +5321,7 @@ int fy_document_default_emit_to_fp(struct fy_document *fyd, FILE *fp)
 
 	memset(d, 0, sizeof(*d));
 	d->fp = fp;
-	d->colorize = isatty(fileno(fp));
+	d->colorize = fy_isatty(fileno(fp));
 	d->visible = false;
 
 	memset(ecfg, 0, sizeof(*ecfg));

@@ -42,6 +42,19 @@
 #include "fy-win32.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+/*
+ * The isatty() of Emscripten says yes for the standard streams, also when they
+ * are a pipe, a file or /dev/null. Ask node: it knows.
+ */
+EM_JS(int, tool_emscripten_isatty, (int fd), {
+	return require('tty').isatty(fd) ? 1 : 0;
+});
+#define isatty(_fd) tool_emscripten_isatty(_fd)
+#endif
+
 #include <getopt.h>
 
 #include "fy-valgrind.h"

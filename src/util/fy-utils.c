@@ -50,6 +50,27 @@
 #include "fy-ctype.h"
 #include "fy-utils.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+EM_JS(int, fy_emscripten_isatty, (int fd), {
+	return require('tty').isatty(fd) ? 1 : 0;
+});
+#endif
+
+int fy_isatty(int fd)
+{
+#ifdef __EMSCRIPTEN__
+	/*
+	 * The isatty() of Emscripten says yes for the standard streams, also when
+	 * they are a pipe, a file or /dev/null. Ask node: it knows.
+	 */
+	return fy_emscripten_isatty(fd);
+#else
+	return isatty(fd);
+#endif
+}
+
 #include "xxhash.h"
 
 #if defined(__APPLE__) && (_POSIX_C_SOURCE < 200809L)
@@ -445,7 +466,7 @@ fy_term_set_raw(int fd, struct termios *oldt)
 	int ret;
 
 	/* must be a terminal */
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	ret = tcgetattr(fd, &t);
@@ -482,7 +503,7 @@ static int
 fy_term_restore(int fd, const struct termios *oldt)
 {
 	/* must be a terminal */
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	return tcsetattr(fd, TCSANOW, oldt);
@@ -493,7 +514,7 @@ fy_term_write(int fd, const void *data, size_t count)
 {
 	ssize_t wrn, r;
 
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 	r = 0;
 	wrn = 0;
@@ -515,7 +536,7 @@ fy_term_write(int fd, const void *data, size_t count)
 static int
 fy_term_safe_write(int fd, const void *data, size_t count)
 {
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	return fy_term_write(fd, data, count) == (ssize_t)count ? 0 : -1;
@@ -528,7 +549,7 @@ fy_term_read(int fd, void *data, size_t count, int timeout_us)
 	struct timeval tv, tvto, *tvp;
 	fd_set rdfds;
 
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	FD_ZERO(&rdfds);
@@ -632,7 +653,7 @@ fy_term_query_size_raw(int fd, int *rows, int *cols)
 	ssize_t r;
 
 	/* must be a terminal */
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	*rows = *cols = 0;
@@ -676,7 +697,7 @@ int fy_term_query_size(int fd, int *rows, int *cols)
 	struct termios old_term;
 	int ret, r;
 
-	if (!isatty(fd))
+	if (!fy_isatty(fd))
 		return -1;
 
 	r = fy_term_set_raw(fd, &old_term);

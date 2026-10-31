@@ -167,7 +167,7 @@ void fy_diag_cfg_default(struct fy_diag_cfg *cfg)
 
 	*cfg = default_diag_cfg_template;
 	cfg->fp = stderr;
-	cfg->colorize = isatty(fileno(stderr)) == 1;
+	cfg->colorize = fy_isatty(fileno(stderr)) == 1;
 }
 
 void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg FY_UNUSED,
@@ -178,7 +178,7 @@ void fy_diag_cfg_from_parser_flags(struct fy_diag_cfg *cfg FY_UNUSED,
 
 static bool fy_diag_isatty(struct fy_diag *diag)
 {
-	return diag && diag->cfg.fp && isatty(fileno(diag->cfg.fp));
+	return diag && diag->cfg.fp && fy_isatty(fileno(diag->cfg.fp));
 }
 
 static void fy_diag_update_term_info(struct fy_diag *diag)
@@ -188,7 +188,7 @@ static void fy_diag_update_term_info(struct fy_diag *diag)
 	/* start by setting things to the default */
 	diag->term_info = default_diag_term_info_template;
 
-	fd = diag->cfg.fp && isatty(fileno(diag->cfg.fp)) ?
+	fd = diag->cfg.fp && fy_isatty(fileno(diag->cfg.fp)) ?
 		fileno(diag->cfg.fp) : -1;
 
 	if (fd == -1)

@@ -82,6 +82,9 @@ int fy_tag_scan(const char *data, size_t len, struct fy_tag_scan_info *info);
 /* the non raw methods will set the terminal to raw and then restore */
 int fy_term_query_size(int fd, int *rows, int *cols);
 
+/* isatty(), correct for the standard streams of Emscripten too */
+int fy_isatty(int fd);
+
 struct fy_comment_iter {
 	const char *start;
 	size_t size;
