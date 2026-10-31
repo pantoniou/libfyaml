@@ -1258,8 +1258,16 @@ int fy_rename(const char *old_file, const char *new_file, bool no_replace)
 	 * but both names exist until the old one is unlinked */
 	if (no_replace) {
 		rc = link(old_file, new_file);
-		if (!rc)
+		if (!rc) {
 			(void)unlink(old_file);
+		} else if (errno != EEXIST) {
+			/* no hard links here (Emscripten, FAT): check, then rename; the
+			 * check and the rename are not atomic */
+			if (!access(new_file, F_OK))
+				errno = EEXIST;
+			else
+				rc = rename(old_file, new_file);
+		}
 	} else
 		rc = rename(old_file, new_file);
 #endif
