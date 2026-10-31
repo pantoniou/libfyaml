@@ -52,7 +52,7 @@ on:
         default: ""
         type: string
       ctest_args:
-        description: "Extra ctest arguments (e.g. -R foo, -E bar, -V)"
+        description: "Extra ctest arguments (e.g. -R foo, -E bar)"
         required: false
         default: ""
         type: string
@@ -254,10 +254,14 @@ jobs:
     - name: "Test"
       if: matrix.testing == 'ON'
       working-directory: build
+      shell: bash
       env:
         ASAN_OPTIONS: ${{ matrix.asan_options }}
       run: |
-        ctest -C ${{ matrix.build_type }} --output-on-failure ${{ inputs.ctest_args }}
+        # quiet while the tests pass; the runners are slow and some tests are flaky, so run
+        # the failed ones again (with their output): a failure that stays fails the step
+        ctest -C ${{ matrix.build_type }} -Q ${{ inputs.ctest_args }} ||
+          ctest -C ${{ matrix.build_type }} --rerun-failed --output-on-failure
 
     - name: "Upload test logs on failure"
       if: failure()

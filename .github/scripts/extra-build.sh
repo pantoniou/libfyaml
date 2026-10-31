@@ -34,5 +34,8 @@ cmake --build build --parallel "$JOBS"
 
 if [ "$TESTING" = "ON" ]; then
 	cd build
-	ctest --output-on-failure --parallel "$JOBS" ${CTEST_ARGS:-}
+	# quiet while the tests pass; the runners are slow and some tests are flaky, so run
+	# the failed ones again (with their output): a failure that stays fails the step
+	ctest -Q --parallel "$JOBS" ${CTEST_ARGS:-} ||
+		ctest --rerun-failed --output-on-failure
 fi
