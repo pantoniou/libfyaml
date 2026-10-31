@@ -57,22 +57,17 @@ static inline void *fy_durable_chunk_base(struct fy_durable_region *rg, uint64_t
 /* persisted links hold logical addresses; natively they are the runtime ones.
  * Under FIL-C they are accessed as integers, since a stored capability
  * would be process local */
+#ifdef __FILC__
 static inline uintptr_t fy_durable_encode(struct fy_durable_region *rg, const void *p)
 {
-#ifdef __FILC__
 	if (!p)
 		return 0;
 	return rg->region_base + ((uintptr_t)p - (uintptr_t)rg->region);
-#else
-	(void)rg;
-	return (uintptr_t)p;
-#endif
 }
 
 static inline struct fy_durable_chunk_hdr *
 fy_durable_decode(struct fy_durable_region *rg, uintptr_t word)
 {
-#ifdef __FILC__
 	uintptr_t off;
 
 	if (!word || word < rg->region_base)
@@ -83,11 +78,8 @@ fy_durable_decode(struct fy_durable_region *rg, uintptr_t word)
 	    off % rg->chunk_size != (off < rg->chunk_size ? rg->chunk0_reserve : 0))
 		return NULL;
 	return (void *)((char *)rg->region + off);
-#else
-	(void)rg;
-	return (void *)word;
-#endif
 }
+#endif
 
 static inline struct fy_durable_chunk_hdr *
 fy_durable_link_load(struct fy_durable_region *rg,

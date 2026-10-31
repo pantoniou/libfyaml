@@ -1358,7 +1358,7 @@ START_TEST(durable_separate_index_basic)
 	char dir[256], pl[80];
 	struct fy_allocator *da;
 	struct fy_allocator *a;
-	uintptr_t cbase, cend, ibase, iend;
+	uint64_t cbase, cend, ibase, iend;
 	const int K = 400;
 	int i, bad_range = 0, bad_dedup = 0;
 
