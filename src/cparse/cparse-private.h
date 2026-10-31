@@ -146,6 +146,33 @@ struct cp_target {
 /* the ABI of the machine cparse was built for */
 const struct cp_target *cp_target_host(void);
 /*
+ * Predefined macros that are compiled in, so that no compiler runs at run time.
+ *
+ * The sets of the compiler that built the library come from the build
+ * (gen-predefs.sh host): the native target, and -m32 when the compiler has it.
+ * The sets of a recent clang for the table targets are in the source
+ * (cparse-predefs-clang.inc).
+ */
+struct cp_predef_set {
+	const char *compiler;		/* "gcc", "clang", "filc" or "unknown" */
+	const char *arch;		/* the architecture, see cp_target_arch() */
+	const char *const *defines;	/* "NAME=VALUE", the form of cc -D */
+	size_t num_defines;
+	const char *const *includes;	/* the system include directories */
+	size_t num_includes;
+};
+
+/*
+ * The set of macros for a compiler and a target. A compiler of the build is a
+ * compiler by its name, "gcc" or "clang"; NULL is the one that built the
+ * library. A set of the build is used when it has the compiler and the
+ * architecture of the target. Any other compiler, and any other target of the
+ * build, get the clang set of the architecture. Returns NULL for an
+ * architecture without a set.
+ */
+const struct cp_predef_set *cp_predefs_find(const char *compiler, const struct cp_target *t);
+
+/*
  * The architecture of a target, the name of one of the table targets
  * ("x86_64", "i386", "aarch64", "riscv64"). The native target has the one of
  * the machine cparse was built for. NULL if there is none.

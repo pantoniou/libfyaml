@@ -991,8 +991,34 @@ if(HAVE_REFLECTION)
         src/cparse/cparse-type.c
         src/cparse/cparse-parse.c
         src/cparse/cparse-comments.c
+        src/cparse/cparse-predefs.c
         src/cparse/cparse-target.c
     )
+    # The predefined macros of the compiler that builds the library, so that no
+    # compiler runs when a header is read. A build without a shell has none and
+    # cparse uses the macros of clang.
+    set(CPARSE_PREDEFS_HOST "${CMAKE_CURRENT_BINARY_DIR}/cparse-predefs-host.inc")
+    if(WIN32)
+        file(WRITE "${CPARSE_PREDEFS_HOST}"
+            "static const struct cp_predef_set cp_predef_sets_host[] = {\n"
+            "\t{ NULL, NULL, NULL, 0, NULL, 0 }\n};\n")
+    else()
+        set(_predefs_cc "${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}")
+        if(CMAKE_C_COMPILER_TARGET)
+            set(_predefs_cc "${_predefs_cc} --target=${CMAKE_C_COMPILER_TARGET}")
+        endif()
+        add_custom_command(
+            OUTPUT "${CPARSE_PREDEFS_HOST}"
+            COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/src/cparse/gen-predefs.sh"
+                -o "${CPARSE_PREDEFS_HOST}" host "${_predefs_cc}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/cparse/gen-predefs.sh"
+            COMMENT "Generating the predefined macros of the compiler"
+            VERBATIM
+        )
+    endif()
+    set_source_files_properties(src/cparse/cparse-predefs.c PROPERTIES
+        OBJECT_DEPENDS "${CPARSE_PREDEFS_HOST}")
+
     # Conditionally add clang backend if libclang is available
     if(HAVE_LIBCLANG)
         list(APPEND LIBSRCS

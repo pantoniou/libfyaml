@@ -17,7 +17,8 @@ INTERNAL_INCLUDES = \
 	-I$(top_srcdir)/src/thread \
 	-I$(top_srcdir)/src/allocator \
 	-I$(top_srcdir)/src/generic \
-	-I$(top_srcdir)/src/cparse
+	-I$(top_srcdir)/src/cparse \
+	-I$(builddir)
 
 lib_LTLIBRARIES += libfyaml.la
 libfyaml_la_SOURCES = \
@@ -112,7 +113,18 @@ libfyaml_la_SOURCES += \
 	cparse/cparse-type.c \
 	cparse/cparse-parse.c \
 	cparse/cparse-comments.c \
+	cparse/cparse-predefs.c \
+	cparse/cparse-predefs-clang.inc \
+	cparse/cparse-predefs-filc.inc \
 	cparse/cparse-target.c
+
+# The predefined macros of the compiler that builds the library, so that no
+# compiler runs when a header is read.
+BUILT_SOURCES = cparse-predefs-host.inc
+CLEANFILES = cparse-predefs-host.inc
+
+cparse-predefs-host.inc: $(top_srcdir)/src/cparse/gen-predefs.sh
+	$(AM_V_GEN)$(SHELL) $(top_srcdir)/src/cparse/gen-predefs.sh -o $@ host "$(CC) $(CFLAGS)"
 
 if HAVE_LIBCLANG
 libfyaml_la_SOURCES += \
@@ -248,6 +260,7 @@ uninstall-hook:
 	(cd "$(DESTDIR)$(bindir)" && rm -f fy-dump fy-filter fy-testsuite fy-join fy-ypath fy-compose)
 
 EXTRA_DIST =  \
+	cparse/gen-predefs.sh \
 	cparse/LICENSE.slimcc \
 	getopt/getopt.c \
 	getopt/getopt.h \

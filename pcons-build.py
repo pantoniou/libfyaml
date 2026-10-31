@@ -13,6 +13,7 @@ Usage:
 """
 
 import os
+import subprocess
 from pathlib import Path
 
 from pcons import Project, configure_file, find_c_toolchain, get_platform, get_var, get_variant
@@ -171,6 +172,29 @@ have_reflection = have_statement_expressions
 have_libclang = False
 
 config.save()
+
+# =============================================================================
+# The predefined macros of the compiler, for cparse
+# =============================================================================
+
+def generate_cparse_predefs() -> None:
+    """Write cparse-predefs-host.inc; without a result cparse uses clang's macros."""
+    out = build_dir / "cparse-predefs-host.inc"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cc = os.environ.get("CC", "cc")
+    try:
+        subprocess.run(
+            ["sh", str(src_dir / "cparse" / "gen-predefs.sh"), "-o", str(out), "host", cc],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        out.write_text(
+            "static const struct cp_predef_set cp_predef_sets_host[] = {\n"
+            "\t{ NULL, NULL, NULL, 0, NULL, 0 }\n};\n"
+        )
+
+
+generate_cparse_predefs()
 
 # =============================================================================
 # Generate config.h
@@ -354,6 +378,7 @@ if have_reflection:
         src_dir / "cparse" / "cparse-type.c",
         src_dir / "cparse" / "cparse-parse.c",
         src_dir / "cparse" / "cparse-comments.c",
+        src_dir / "cparse" / "cparse-predefs.c",
         src_dir / "cparse" / "cparse-target.c",
     ])
 
