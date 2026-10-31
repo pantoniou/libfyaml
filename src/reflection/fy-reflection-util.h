@@ -232,7 +232,7 @@ fy_rfl_log(struct fy_rfl_log_ctx *ctx, enum fy_error_type error_type,
 		default: NULL)
 
 #define _FY_RFL_LOG(_ptr, _level, _save_error, _xtra, _fmt, ...) \
-	({ \
+	do { \
 		const enum fy_error_type __level = (_level); \
 		struct fy_rfl_log_ctx __ctx = { \
 			.op = _FY_RFL_SELECT_OP(_ptr), \
@@ -252,7 +252,7 @@ fy_rfl_log(struct fy_rfl_log_ctx *ctx, enum fy_error_type error_type,
 			.fyt = _FY_RFL_TOKEN(_xtra), \
 		}; \
 		fy_rfl_log(&__ctx, __level, (_fmt) , ## __VA_ARGS__); \
-	})
+	} while(0)
 
 #define _FY_RFL_ERROR_CHECK(_ptr, _expr, _label, _save_error, _xtra, _fmt, ...) \
 	do { \

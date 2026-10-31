@@ -1610,7 +1610,7 @@ static int packed_reflection_setup_blob(struct fy_reflection *rfl)
 	rflb->gen_type_info.types_count = Tc;
 	rflb->gen_type_info.decls = rflb->gen_decls;
 	rflb->gen_type_info.decls_count = Dc;
-	rflb->gen_type_info.strtab = (const char *)(rflb->blob + PGHDR_SIZE + Ts + Ds);
+	rflb->gen_type_info.strtab = (const char *)((const char *)rflb->blob + PGHDR_SIZE + Ts + Ds);
 	rflb->gen_type_info.strtab_size = Ss;
 
 	rflb->type_info = &rflb->gen_type_info;

@@ -1083,7 +1083,7 @@ uintmax_t integer_field_load(struct reflection_field_data *rfd, const void *data
 
 	if (rfd_is_bitfield(rfd))
 		return load_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, rfd->is_signed);
-	return load_le(data + rfd->fi->offset, rfd->fi->type_info->size, rfd->is_signed);
+	return load_le((const char *)data + rfd->fi->offset, rfd->fi->type_info->size, rfd->is_signed);
 }
 
 int unsigned_integer_field_store_check(struct reflection_field_data *rfd, uintmax_t v)
@@ -1135,7 +1135,7 @@ void integer_field_store(struct reflection_field_data *rfd, uintmax_t v, void *d
 	if (rfd_is_bitfield(rfd))
 		store_bitfield_le(data, rfd->fi->bit_offset, rfd->fi->bit_width, v);
 	else
-		store_le(data + rfd->fi->offset, rfd->fi->type_info->size, v);
+		store_le((char *)data + rfd->fi->offset, rfd->fi->type_info->size, v);
 }
 
 static inline void
@@ -1156,13 +1156,13 @@ struct_setup_field_rw(struct reflection_walker *rw, struct reflection_field_data
 	rw->flags |= RWF_FIELD_IDX;
 
 	if (!rfd_is_bitfield(rfd)) {
-		rw->data = data + (data ? rfd->fi->offset : 0);
+		rw->data = (char *)data + (data ? rfd->fi->offset : 0);
 		rw->data_size.bytes = rw->rtd->ti->size;
 	} else {
 		rw->flags |= RWF_BITFIELD_DATA;
 
 		bit_offset = rfd->fi->bit_offset;
-		rw->data = data + (data ? (bit_offset >> 3) : 0);
+		rw->data = (char *)data + (data ? (bit_offset >> 3) : 0);
 		rw->data_size.bit_offset = bit_offset & 7;
 		rw->data_size.bit_width = rfd->fi->bit_width;
 	}
@@ -1257,7 +1257,7 @@ struct_field_is_ptr_null(struct reflection_walker *rw, struct reflection_field_d
 
 	/* bit field can't store a pointer */
 	assert(!rfd_is_bitfield(rfd));
-	return *(const void **)(rw->data + rfd->fi->offset) == NULL;
+	return *(const void **)((const char *)rw->data + rfd->fi->offset) == NULL;
 }
 
 struct struct_instance_data *
@@ -1666,7 +1666,7 @@ array_info_load_item_count(struct array_info *info, void *data)
 		rw_item.data_size.bytes = item_size;
 		rw_item.flags = RWF_SEQ_IDX;
 
-		for (datat = data, count = 0; ; datat += item_size) {
+		for (datat = data, count = 0; ; datat = (char *)datat + item_size) {
 
 			if (count > INT_MAX)
 				return -1;
@@ -1741,21 +1741,21 @@ array_info_store_item_count(struct array_info *info, void *data, uintmax_t count
 		if (info->has_terminator_value) {
 
 			rw_item.idx = count;
-			rw_item.data = data + count * item_size;
+			rw_item.data = (char *)data + count * item_size;
 			count++;
 
 			rc = reflection_copy_rw(&rw_item, &info->rw_terminator);
 			if (rc)
 				return rc;
 		} else
-			memset(data + info->count * item_size, 0, item_size);
+			memset((char *)data + info->count * item_size, 0, item_size);
 	}
 
 	if (info->has_fill) {
 
 		while (count < info->rtd->ti->count) {
 			rw_item.idx = count;
-			rw_item.data = data + count * item_size;
+			rw_item.data = (char *)data + count * item_size;
 			count++;
 
 			rc = reflection_copy_rw(&rw_item, &info->rw_fill);
@@ -1961,7 +1961,7 @@ array_parse(struct array_info *info,
 			data_new = reflection_realloc(info->rtd->rts, data, new_data_count * item_size);
 			RP_ASSERT(data_new != NULL);
 
-			memset(data_new + data_count * item_size, 0, (new_data_count - data_count) * item_size);
+			memset((char *)data_new + data_count * item_size, 0, (new_data_count - data_count) * item_size);
 
 			item_count = new_item_count;
 			data_count = new_data_count;
@@ -1969,7 +1969,7 @@ array_parse(struct array_info *info,
 		}
 
 		rw_item.idx = idx;
-		rw_item.data = data + idx * item_size;
+		rw_item.data = (char *)data + idx * item_size;
 
 		if (!array_type_is_mapping(info->type)) {
 
@@ -2053,14 +2053,14 @@ out:
 		} else if (!array_type_is_mapping(info->type) && idx < data_count) {
 			/* the item that failed is zeroed, or it holds what was parsed of it */
 			rw_item.idx = idx;
-			rw_item.data = data + idx * item_size;
+			rw_item.data = (char *)data + idx * item_size;
 			reflection_dtor_rw(&rw_item);
 			if (array_type_is_const(info->type))
 				memset(rw_item.data, 0, item_size);
 		}
 		while (idx) {
 			rw_item.idx = --idx;
-			rw_item.data = data + idx * item_size;
+			rw_item.data = (char *)data + idx * item_size;
 			reflection_dtor_rw(&rw_item);
 			if (array_type_is_const(info->type))
 				memset(rw_item.data, 0, item_size);
@@ -2149,7 +2149,7 @@ array_emit(struct array_info *info,
 	rc = fy_emit_eventf(emit, info->start_type, FYNS_ANY, NULL, NULL);
 	RE_ASSERT(!rc);
 
-	for (idx = 0; idx < count; idx++, data += item_size) {
+	for (idx = 0; idx < count; idx++, data = (char *)data + item_size) {
 
 		rw_item.idx = idx;
 		rw_item.data = data;
@@ -2232,7 +2232,7 @@ array_dtor(struct array_info *info)
 
 	/* free in sequence */
 	is_terminator = false;
-	for (idx = 0, p = data; idx < count; idx++, p += item_size) {
+	for (idx = 0, p = data; idx < count; idx++, p = (char *)p + item_size) {
 
 		/* do not follow NULLs */
 		if (info->dep_is_ptr && *(const void **)p == NULL)
@@ -2331,7 +2331,7 @@ array_copy(struct array_info *info_dst, struct array_info *info_src)
 		ptr_dst = info_dst->rw->data;
 
 	for (idx = 0, dst = ptr_dst, src = ptr_src; idx < count;
-	     idx++, dst += item_size, src += item_size) {
+	     idx++, dst = (char *)dst + item_size, src = (char *)src + item_size) {
 
 		rw_item_dst.idx = rw_item_src.idx = idx;
 
@@ -2358,7 +2358,7 @@ err_out:
 		if (idx > 0) {
 			assert(dst);
 			while (idx--) {
-				dst -= item_size;
+				dst = (char *)dst - item_size;
 				rw_item_dst.idx = idx;
 				rw_item_dst.data = dst;
 
@@ -2450,8 +2450,8 @@ array_cmp(struct array_info *info_a, struct array_info *info_b)
 
 		rw_item_a.idx = rw_item_b.idx = idx;
 
-		rw_item_a.data = ptr_a + idx * item_size;
-		rw_item_b.data = ptr_b + idx * item_size;
+		rw_item_a.data = (char *)ptr_a + idx * item_size;
+		rw_item_b.data = (char *)ptr_b + idx * item_size;
 
 		rc = reflection_cmp_rw(&rw_item_a, &rw_item_b);
 		if (rc)
@@ -2545,8 +2545,8 @@ array_eq(struct array_info *info_a, struct array_info *info_b)
 
 		rw_item_a.idx = rw_item_b.idx = idx;
 
-		rw_item_a.data = ptr_a + idx * item_size;
-		rw_item_b.data = ptr_b + idx * item_size;
+		rw_item_a.data = (char *)ptr_a + idx * item_size;
+		rw_item_b.data = (char *)ptr_b + idx * item_size;
 
 		rc = reflection_eq_rw(&rw_item_a, &rw_item_b);
 		if (rc <= 0)
@@ -2738,7 +2738,7 @@ const_array_char_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	struct fy_event *fye = NULL;
 	struct reflection_type_data *rtd, *rtd_dep;
 	struct fy_token *fyt;
-	enum fy_type_kind type_kind __attribute__((unused));
+	enum fy_type_kind type_kind FY_UNUSED;
 	struct str_instance_data id_local, *id = &id_local;
 	const char *text;
 	size_t len, lenz;
@@ -2787,7 +2787,7 @@ const_array_char_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	if (!(flags & RPF_NO_STORE)) {
 		memcpy(data, text, len);
 		if (len < rtd->ti->count)
-			memset(data + len, 0, rtd->ti->count - len);
+			memset((char *)data + len, 0, rtd->ti->count - len);
 
 		if (id->rfd_counter)
 			struct_integer_field_store(id->rw_struct, id->rfd_counter, len);
@@ -2814,7 +2814,7 @@ const_array_char_emit(struct fy_emitter *emit,
 		      enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
-	enum fy_type_kind type_kind __attribute__((unused));
+	enum fy_type_kind type_kind FY_UNUSED;
 	struct str_instance_data id_local, *id = &id_local;
 	const char *text;
 	size_t len;
@@ -4085,12 +4085,12 @@ ptr_char_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 	struct fy_token *fyt;
 	struct reflection_type_data *rtd, *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size __attribute__((unused)), align __attribute__((unused));
+	size_t size FY_UNUSED, align FY_UNUSED;
 	const char *text;
 	size_t len, lenz;
 	char *p = NULL;
 	void *data;
-	size_t data_size __attribute__((unused));
+	size_t data_size FY_UNUSED;
 	struct str_instance_data id_local, *id = &id_local;
 	int rc;
 
@@ -4177,7 +4177,7 @@ ptr_char_emit(struct fy_emitter *emit,
 	      enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
-	enum fy_type_kind type_kind __attribute__((unused));
+	enum fy_type_kind type_kind FY_UNUSED;
 	struct str_instance_data id_local, *id = &id_local;
 	const char *text;
 	size_t len;
@@ -4514,9 +4514,9 @@ ptr_doc_parse(struct fy_parser *fyp, struct reflection_walker *rw,
 {
 	struct reflection_type_data *rtd, *rtd_dep;
 	enum fy_type_kind type_kind;
-	size_t size __attribute__((unused)), align __attribute__((unused));
+	size_t size FY_UNUSED, align FY_UNUSED;
 	void *data;
-	size_t data_size __attribute__((unused));
+	size_t data_size FY_UNUSED;
 	struct fy_document_builder *fydb = NULL;
 	struct fy_document *fyd;
 
@@ -4575,7 +4575,7 @@ ptr_doc_emit(struct fy_emitter *emit,
 	     enum reflection_emit_flags flags FY_UNUSED)
 {
 	struct reflection_type_data *rtd, *rtd_dep;
-	enum fy_type_kind type_kind __attribute__((unused));
+	enum fy_type_kind type_kind FY_UNUSED;
 	struct fy_document *fyd;
 	int rc;
 
@@ -6256,7 +6256,7 @@ reflection_type_system_create(const struct reflection_type_system_config *cfg)
 
 	rts->root_ref = reflection_reference_create(rts, rts->cfg.entry_type, rts->cfg.entry_meta);
 	RTS_ERROR_CHECK(rts->root_ref, "failed to create root reference for entry='%s' meta='%s'",
-			rts->cfg.entry_type, rts->cfg.entry_meta ? : "");
+			rts->cfg.entry_type, rts->cfg.entry_meta ? rts->cfg.entry_meta : "");
 
 	if (rts->cfg.flags & RTSCF_DUMP_REFLECTION) {
 		fprintf(stderr, "%s: type system dump after simplification\n", __func__);

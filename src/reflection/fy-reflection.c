@@ -4305,26 +4305,31 @@ static inline const struct fy_type_info *c_pop_ti_stack(struct fy_c_generator *c
 
 static int c_generate_single_base_type(struct fy_c_generator *cgen, FILE *fp, const struct fy_type_info *ti);
 
-#define c_indent_alloca(_flags, _level) \
-	({	\
-		char *_indent_buf; \
-		unsigned int _spaces; \
-		char _c; \
-		int _count; \
+/* the indentation of a level: one tab, or the spaces that the flags ask for */
+static size_t c_indent_len(unsigned int flags, int level)
+{
+	unsigned int spaces = (flags >> FYCGF_INDENT_SHIFT) & FYCGF_INDENT_MASK;
+
+	return spaces ? (size_t)level * spaces : (size_t)level;
+}
+
+static void c_indent_fill(char *buf, unsigned int flags, int level)
+{
+	unsigned int spaces = (flags >> FYCGF_INDENT_SHIFT) & FYCGF_INDENT_MASK;
+	size_t len = c_indent_len(flags, level);
+
+	memset(buf, spaces ? ' ' : '\t', len);
+	buf[len] = '\0';
+}
+
+/* the buffer is on the stack of the caller, so this is a macro */
+#define c_indent_alloca(_var, _flags, _level) \
+	do { \
+		char *_buf = alloca(c_indent_len((_flags), (_level)) + 1); \
 		\
-		_count = (_level); \
-		_spaces = (unsigned int)((_flags) >> FYCGF_INDENT_SHIFT) & FYCGF_INDENT_MASK; \
-		if (!_spaces) { \
-			_c = '\t'; \
-		} else { \
-			_c = ' '; \
-	 		_count *= _spaces; \
-		} \
-		_indent_buf = alloca(_count + 1); \
-		memset(_indent_buf, _c, _count); \
-		_indent_buf[_count] = '\0'; \
-	 	_indent_buf; \
-	})
+		c_indent_fill(_buf, (_flags), (_level)); \
+		(_var) = _buf; \
+	} while(0)
 
 static int c_comment(FILE *fp, const char *indent, const char *pfx, const char *comment)
 {
@@ -4489,7 +4494,7 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 	if ((ti->flags & FYTIF_UNRESOLVED) && c_fwd_decl_exists(cgen, ti))
 		return 0;
 
-	indent = c_indent_alloca(cgen->flags, level);
+	c_indent_alloca(indent, cgen->flags, level);
 
 	tki = fy_type_kind_info_get(ti->kind);
 	assert(tki);
@@ -4519,7 +4524,7 @@ static int c_generate_type_with_fields(struct fy_c_generator *cgen, FILE *fp, co
 	if (ti->flags & FYTIF_UNRESOLVED)
 		goto out;
 
-	indent_plus_1 = c_indent_alloca(cgen->flags, level + 1);
+	c_indent_alloca(indent_plus_1, cgen->flags, level + 1);
 
 	fprintf(fp, " {");
 

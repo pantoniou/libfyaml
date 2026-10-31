@@ -160,6 +160,7 @@ struct fy_packed_backend_reflection_cfg {
 
 struct fy_packed_backend_import_cfg {
 	/* nothing, there is only a single import per this backend */
+	char unused;	/* C does not allow an empty struct */
 };
 
 extern const struct fy_reflection_backend fy_reflection_packed_backend;

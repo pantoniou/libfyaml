@@ -865,7 +865,7 @@ fy_rfl_vlog(struct fy_rfl_log_ctx *ctx, enum fy_error_type error_type,
 	struct fy_event *fye;
 	struct fy_diag_ctx *diag_ctx;
 	bool diag_needs_unref, saved_error;
-	int rc __attribute__((unused));
+	int rc FY_UNUSED;
 
 	assert(ctx);
 
@@ -1031,7 +1031,7 @@ void reflection_meta_dump(struct reflection_meta *rm)
 
 		fprintf(stderr, "%s: %c %s\n", name,
 				reflection_meta_value_get_explicit(rm, id) ? 'E' : '-',
-				reflection_meta_value_str(rm, id) ? : "<NULL>");
+				reflection_meta_value_str(rm, id) ? reflection_meta_value_str(rm, id) : "<NULL>");
 	}
 }
 
