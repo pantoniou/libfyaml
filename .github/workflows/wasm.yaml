@@ -62,6 +62,8 @@ jobs:
     - name: "Test"
       working-directory: build-wasm
       run: |
+        # quiet runs print no test lines: say how many tests are enabled
+        ctest -N | tail -n 1
         # quiet while the tests pass; the runners are slow and some tests are flaky, so run
         # the failed ones again (with their output): a failure that stays fails the step
         ctest -j$(nproc) -Q ||

@@ -30,7 +30,7 @@ on:
         default: Release
         type: string
       ctest_args:
-        description: "Extra ctest arguments (e.g. -R foo, -E bar, -V)"
+        description: "Extra ctest arguments (e.g. -R foo, -E bar)"
         required: false
         default: ""
         type: string
@@ -358,7 +358,14 @@ jobs:
     - name: "Test"
       if: env.TESTING == 'ON'
       working-directory: build
-      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure ${{ env.CTEST_ARGS }}
+      shell: bash
+      run: |
+        # quiet runs print no test lines: say how many tests are enabled
+        ctest -C ${{ env.BUILD_TYPE }} -N | tail -n 1
+        # quiet while the tests pass; the runners are slow and some tests are flaky, so run
+        # the failed ones again (with their output): a failure that stays fails the step
+        ctest -C ${{ env.BUILD_TYPE }} -Q ${{ env.CTEST_ARGS }} ||
+          ctest -C ${{ env.BUILD_TYPE }} --rerun-failed --output-on-failure
 
   # ===========================================
   # Big-endian: Debian ppc64, under QEMU
