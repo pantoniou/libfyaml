@@ -211,17 +211,66 @@ else()
     set(CROSS_COMPILING 0)
 endif()
 
-# When cross-compiling for Windows, look for wine to run target executables
-set(HAVE_WINE 0)
+# When cross-compiling, look for the program that runs the target executables:
+# wine for Windows, node for Emscripten
+set(HAVE_TEST_EMULATOR 0)
+set(TEST_EMULATOR "")
 if(CROSS_COMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
     find_program(WINE_EXECUTABLE NAMES wine64 wine)
     if(WINE_EXECUTABLE)
-        set(HAVE_WINE 1)
+        set(HAVE_TEST_EMULATOR 1)
+        set(TEST_EMULATOR "${WINE_EXECUTABLE}")
         set(CMAKE_CROSSCOMPILING_EMULATOR "${WINE_EXECUTABLE}"
             CACHE STRING "Wine emulator for Windows cross-compilation tests" FORCE)
         message(STATUS "Found wine: ${WINE_EXECUTABLE} (tests will run under wine)")
     else()
         message(STATUS "wine not found; tests disabled for Windows cross-compilation")
+    endif()
+elseif(CROSS_COMPILING AND EMSCRIPTEN)
+    # the node of the emsdk, when there is one, fits the Emscripten
+    if(DEFINED ENV{EMSDK_NODE} AND EXISTS "$ENV{EMSDK_NODE}")
+        set(NODE_EXECUTABLE "$ENV{EMSDK_NODE}" CACHE FILEPATH "node, that runs the WebAssembly programs")
+    endif()
+    find_program(NODE_EXECUTABLE NAMES node nodejs)
+    if(NODE_EXECUTABLE)
+        set(HAVE_TEST_EMULATOR 1)
+        set(TEST_EMULATOR "${NODE_EXECUTABLE}")
+        message(STATUS "Found node: ${NODE_EXECUTABLE} (tests will run under node)")
+    else()
+        message(STATUS "node not found; tests disabled for Emscripten")
+    endif()
+endif()
+
+# The programs run under node: they read the files of the host, they exit through
+# the runtime so that the output is flushed, and their stack has the size that the
+# parser and the tests need (the default of Emscripten is 64 KiB). The thread pools,
+# and so the BLAKE3 hashing and the parallel operations of the generics, need
+# threads: node runs them in workers, and the pool of workers is made at the start
+# because a thread that waits for a worker cannot start it. The memory is shared by
+# the threads, so it has an initial size (the tests have a large static footprint).
+# The script cmake/emscripten-node.js gives the program the environment of node, and
+# makes the pipes wait instead of failing (node makes them non-blocking).
+if(EMSCRIPTEN)
+    set(FY_EMSCRIPTEN_PRE_JS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/emscripten-node.js")
+    add_compile_options(-pthread)
+    add_link_options(-pthread -sPTHREAD_POOL_SIZE=2 -sPROXY_TO_PTHREAD -sENVIRONMENT=node -sNODERAWFS=1
+                     -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sEXIT_RUNTIME=1
+                     -sSTACK_SIZE=8388608 -Wno-pthreads-mem-growth
+                     --pre-js ${FY_EMSCRIPTEN_PRE_JS})
+
+    # the link of a program depends on the script: link again when it changes. This
+    # runs at the end of the directory, when all the programs exist (CMake 3.19).
+    function(fy_emscripten_link_depends)
+        get_property(_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_target IN LISTS _targets)
+            get_target_property(_type ${_target} TYPE)
+            if(_type STREQUAL "EXECUTABLE")
+                set_property(TARGET ${_target} APPEND PROPERTY LINK_DEPENDS ${FY_EMSCRIPTEN_PRE_JS})
+            endif()
+        endforeach()
+    endfunction()
+    if(NOT CMAKE_VERSION VERSION_LESS 3.19)
+        cmake_language(DEFER CALL fy_emscripten_link_depends)
     endif()
 endif()
 
@@ -1478,7 +1527,7 @@ if(ENABLE_STATIC_TOOLS AND NOT MSVC)
     target_link_options(fy-tool PRIVATE -static)
 endif()
 
-if(BUILD_TESTING AND HAVE_BASH AND (NOT CROSS_COMPILING OR HAVE_WINE))
+if(BUILD_TESTING AND HAVE_BASH AND (NOT CROSS_COMPILING OR HAVE_TEST_EMULATOR))
     set(CAN_TEST 1)
 else()
     set(CAN_TEST 0)
@@ -2266,10 +2315,10 @@ message(STATUS "JSONTESTSUITEURL:      ${JSONTESTSUITEURL}")
 message(STATUS "JSONTESTSUITECHECKOUT: ${JSONTESTSUITECHECKOUT}")
 message(STATUS "CAN_TEST:              ${CAN_TEST}")
 message(STATUS "")
-if(CROSS_COMPILING AND NOT HAVE_WINE)
+if(CROSS_COMPILING AND NOT HAVE_TEST_EMULATOR)
     message(STATUS "Tests disabled when cross-compiling (target binaries cannot execute on build host)")
     message(STATUS "")
-elseif(CROSS_COMPILING AND HAVE_WINE)
-    message(STATUS "Tests enabled via wine: ${WINE_EXECUTABLE}")
+elseif(CROSS_COMPILING AND HAVE_TEST_EMULATOR)
+    message(STATUS "Tests enabled via ${TEST_EMULATOR}")
     message(STATUS "")
 endif()

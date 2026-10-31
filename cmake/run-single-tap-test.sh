@@ -45,12 +45,12 @@ if [ x"$JSON_TEST_SUITE" = x ]; then
 	JSON_TEST_SUITE="${TEST_DIR}/json-test-suite-data"
 fi
 
-# run_tool: invoke a target executable, prepending wine when cross-running
-# Windows binaries on Linux.  When WINE_EXECUTABLE is unset this is a no-op
-# wrapper so all call-sites are identical for native and wine runs.
+# run_tool: invoke a target executable, prepending the emulator when cross-running
+# (wine for Windows binaries, node for Emscripten).  When TEST_EMULATOR is unset
+# this is a no-op wrapper so all call-sites are identical for native and emulated runs.
 function run_tool() {
-    if [ -n "$WINE_EXECUTABLE" ]; then
-        "$WINE_EXECUTABLE" "$@"
+    if [ -n "$TEST_EMULATOR" ]; then
+        "$TEST_EMULATOR" "$@"
     else
         "$@"
     fi
@@ -118,10 +118,9 @@ case "$test_suite" in
         ;;
 esac
 
-# Validate tool exists.  When running Windows cross-compiled binaries under
-# wine the .exe is not marked executable on the host, so we only require the
-# +x bit when wine is not in use.
-if [ -n "$WINE_EXECUTABLE" ]; then
+# Validate tool exists.  Under an emulator the program (.exe, .js) is not marked
+# executable on the host, so we only require the +x bit when no emulator is in use.
+if [ -n "$TEST_EMULATOR" ]; then
     if [ ! -f "$FY_TOOL" ]; then
         echo "Error: fy-tool not found: $FY_TOOL" >&2
         exit 1
