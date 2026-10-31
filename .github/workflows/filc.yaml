@@ -74,7 +74,7 @@ jobs:
           -DCMAKE_C_COMPILER="$FILC/build/bin/clang" \
           -DCMAKE_CXX_COMPILER="$FILC/build/bin/clang++" \
           -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=-O1 \
-          -DENABLE_NETWORK=OFF \
+          -DENABLE_NETWORK=OFF -DENABLE_REFLECTION=ON \
           -DDURABLE_PEER_PROBE="$PWD/build-native/test/durable-probe"
 
     - name: "Build"
