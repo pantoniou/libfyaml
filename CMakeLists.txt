@@ -48,6 +48,10 @@ endif()
 # Usage: cmake -DMSVC_WINE_DIR=/path/to/msvc [-DMSVC_WINE_COMPILER=cl|clang-cl|clang] ..
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/MSVCCrossCompile.cmake OPTIONAL)
 
+# Optional WebAssembly support with Emscripten
+# Usage: cmake -DWASM=32|64 ..   (see cmake/EmscriptenCrossCompile.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmscriptenCrossCompile.cmake OPTIONAL)
+
 project(libfyaml LANGUAGES C ASM VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 
 if(NOT DEFINED PROJECT_IS_TOP_LEVEL)

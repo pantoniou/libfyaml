@@ -31,6 +31,8 @@ EXTRA_DIST = \
 	cmake/MSVCCrossCompile.cmake \
 	cmake/add-tap-subtests.cmake \
 	cmake/clang-windows-toolchain.cmake \
+	cmake/EmscriptenCrossCompile.cmake \
+	cmake/emscripten-node.js \
 	cmake/config.h.in \
 	cmake/fyaml-config.cmake.in \
 	cmake/generate-def.cmake \
