@@ -1613,9 +1613,26 @@ if(CAN_TEST)
         )
     endif()
 
+    # The garbage collection of a durable arena swaps two directories in one step:
+    # Linux has renameat2() and macOS has renamex_np(); the other systems have
+    # nothing like it. Test the same macros as fy_rename_exchange_supported().
+    check_c_source_compiles("
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/syscall.h>
+#if defined(__linux__) && (defined(RENAME_EXCHANGE) || defined(SYS_renameat2))
+#elif defined(__APPLE__) && defined(__MACH__) && defined(RENAME_SWAP)
+#else
+#error no atomic exchange of two directories
+#endif
+int main(void) { return 0; }
+" HAVE_RENAME_EXCHANGE)
+
     # Durable arena tests across processes; DURABLE_PEER_PROBE, a durable-probe
-    # built for another runtime (FIL-C or native), alternates with this one
-    if(HAVE_GENERIC AND NOT WIN32)
+    # built for another runtime (FIL-C or native), alternates with this one. A
+    # durable arena has a fixed address in a 64 bit address space.
+    if(HAVE_GENERIC AND NOT WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(DURABLE_PEER_PROBE "" CACHE STRING "durable-probe of another runtime")
         add_executable(durable-probe test/durable-probe.c)
         target_compile_options(durable-probe PRIVATE ${COMMON_C_FLAGS})
@@ -1697,12 +1714,14 @@ if(CAN_TEST)
         durable_probe_test(dedup store-again ${P} dedup)
 
         # compaction keeps a generic root intact, whichever runtime runs it
-        durable_probe_test(gc seed ${P} gc-seed)
-        durable_probe_test(gc gc ${P} gc)
-        durable_probe_test(gc read ${P} gc-read)
-        durable_probe_test(gc peer-reads ${Q} gc-read)
-        durable_probe_test(gc peer-gc ${Q} gc)
-        durable_probe_test(gc read-peer-gc ${P} gc-read)
+        if(HAVE_RENAME_EXCHANGE)
+            durable_probe_test(gc seed ${P} gc-seed)
+            durable_probe_test(gc gc ${P} gc)
+            durable_probe_test(gc read ${P} gc-read)
+            durable_probe_test(gc peer-reads ${Q} gc-read)
+            durable_probe_test(gc peer-gc ${Q} gc)
+            durable_probe_test(gc read-peer-gc ${P} gc-read)
+        endif()
 
         durable_probe_test(processes seed ${P} seed)
         durable_probe_test(processes concurrent ${P} concurrent ${P} ${P} ${P} ${P})
