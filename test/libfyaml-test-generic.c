@@ -7986,7 +7986,8 @@ START_TEST(generic_image_inline_root)
 	values[1] = fy_null;
 	values[2] = fy_true;
 	values[3] = fy_seq_empty;
-	values[4] = fy_value(gb, "abc");
+	/* the longest string that is inline on a 32 bit target has 2 bytes */
+	values[4] = fy_value(gb, "ab");
 	first_size = 0;
 	for (i = 0; i < ARRAY_SIZE(values); i++) {
 		ck_assert(fy_generic_is_in_place(values[i]));
