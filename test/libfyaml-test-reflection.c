@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <stdalign.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 #include <libfyaml/libfyaml-reflection.h>

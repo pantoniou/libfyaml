@@ -31,10 +31,8 @@
 #cmakedefine HAVE_LIBYAML
 
 /* Define to 1 if you have check available */
-#cmakedefine HAVE_CHECK
 
 /* Define to 1 if you have a compatible version of check available */
-#cmakedefine HAVE_COMPATIBLE_CHECK
 
 /* Define to 1 if static linking is available */
 #cmakedefine HAVE_STATIC

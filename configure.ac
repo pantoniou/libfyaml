@@ -304,35 +304,6 @@ AC_SUBST(LIBYAML_LIBS)
 AC_DEFINE_UNQUOTED([HAVE_LIBYAML], [$HAVE_LIBYAML], [Define to 1 if you have libyaml available])
 AM_CONDITIONAL([HAVE_LIBYAML], [ test x$HAVE_LIBYAML = x1 ])
 
-PKG_CHECK_MODULES(CHECK, [ check ], HAVE_CHECK=1, HAVE_CHECK=0)
-
-AC_SUBST(HAVE_CHECK)
-AC_SUBST(CHECK_CFLAGS)
-AC_SUBST(CHECK_LDFLAGS)
-AC_SUBST(CHECK_LIBS)
-AC_DEFINE_UNQUOTED([HAVE_CHECK], [$HAVE_CHECK], [Define to 1 if you have check available])
-AM_CONDITIONAL([HAVE_CHECK], [ test x$HAVE_CHECK = x1 ])
-
-HAVE_COMPATIBLE_CHECK=0
-if test "x$HAVE_CHECK" = "x1" ; then
-	save_LIBS="$LIBS"
-	save_CFLAGS="$CFLAGS"
-	LIBS="$LIBS $CHECK_LIBS"
-	CFLAGS="$CFLAGS $CHECK_CFLAGS"
-
-	# check if libcheck has srunner_set_tap (jessie has outdated libcheck)
-	AC_CHECK_FUNC([srunner_set_tap],
-		      HAVE_COMPATIBLE_CHECK=1,
-		      HAVE_COMPATIBLE_CHECK=0)
-
-	LIBS="$save_LIBS"
-	CFLAGS="$save_CFLAGS"
-fi
-
-AC_SUBST(HAVE_COMPATIBLE_CHECK)
-AC_DEFINE_UNQUOTED([HAVE_COMPATIBLE_CHECK], [$HAVE_COMPATIBLE_CHECK], [Define to 1 if you have a compatible version of check available])
-AM_CONDITIONAL([HAVE_COMPATIBLE_CHECK], [ test x$HAVE_COMPATIBLE_CHECK = x1 ])
-
 dnl enable internet available when checking
 AC_ARG_ENABLE([network],
 	      AS_HELP_STRING([--disable-network],
@@ -771,8 +742,6 @@ echo "
     LDFLAGS:               ${LDFLAGS}
     LIBS:                  ${LIBS}
     HAVE_ASAN:             ${HAVE_ASAN}
-    HAVE_CHECK:            ${HAVE_CHECK}
-    HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}
     HAVE_NETWORK:          ${HAVE_NETWORK}
     HAVE_DEVMODE:          ${HAVE_DEVMODE}
     HAVE_SPHINX:           ${HAVE_SPHINX}

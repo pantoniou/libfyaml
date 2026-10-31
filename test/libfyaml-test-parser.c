@@ -23,7 +23,6 @@
 #include "fy-win32.h"
 #endif
 
-#include <check.h>
 
 #include <libfyaml.h>
 

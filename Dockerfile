@@ -4,7 +4,7 @@ FROM ${IMAGE}
 RUN apt-get update -qq
 RUN apt-get install --no-install-recommends -y \
       gcc autoconf automake libtool git make libyaml-dev libltdl-dev \
-      pkg-config check python3 python3-pip python3-setuptools
+      pkg-config python3 python3-pip python3-setuptools
 # install sphinx doc dependencies globally (without venv)
 RUN pip3 install --break-system-packages wheel sphinx git+http://github.com/return42/linuxdoc.git sphinx_rtd_theme sphinx-markdown-builder
 # configure argument

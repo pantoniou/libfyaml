@@ -20,7 +20,6 @@
 #include <alloca.h>
 #endif
 
-#include <check.h>
 
 #include <libfyaml.h>
 

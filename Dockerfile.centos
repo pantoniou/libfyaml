@@ -13,4 +13,3 @@ RUN make maintainer-clean >/dev/null 2>&1|| true
 RUN ./bootstrap.sh 2>&1
 RUN ./configure 2>&1 ${CONFIG_ARGS}
 RUN make
-# NOTE: no check, since alpine it's only a build test distro

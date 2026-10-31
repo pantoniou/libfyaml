@@ -16,7 +16,6 @@
 #include <assert.h>
 #include <limits.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 

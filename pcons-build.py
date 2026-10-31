@@ -186,8 +186,6 @@ config_vars: dict[str, str] = {
     "HAVE_MREMAP": "1" if have_mremap else "0",
     "HAVE_DECL_ENVIRON": "1" if have_decl_environ else "",
     "HAVE_LIBYAML": "",
-    "HAVE_CHECK": "",
-    "HAVE_COMPATIBLE_CHECK": "",
     "HAVE_STATIC": "1",
     "HAVE_STATIC_TOOLS": "",
     "HAVE_ASAN": "1" if have_asan else "",
@@ -551,48 +549,43 @@ def link_whole_archive(prog: object, static_lib: object) -> None:
         ])
 
 
-# --- libfyaml-test (requires the check unit testing framework) ---
+# --- libfyaml-test (the framework is the header src/check/fy-check.h) ---
 
-check_pkg = project.find_package("check", required=False)
-have_check = check_pkg is not None
+test_sources: list[Path] = [
+    test_dir / "libfyaml-test.c",
+    test_dir / "libfyaml-test-core.c",
+    test_dir / "libfyaml-test-meta.c",
+    test_dir / "libfyaml-test-emit.c",
+    test_dir / "libfyaml-test-emit-bugs.c",
+    test_dir / "libfyaml-test-parse-bugs.c",
+    test_dir / "libfyaml-test-allocator.c",
+    test_dir / "libfyaml-test-fuzzing.c",
+    test_dir / "libfyaml-test-private.c",
+    test_dir / "libfyaml-test-private-id.c",
+    test_dir / "libfyaml-test-private-range.c",
+    test_dir / "libfyaml-test-parser.c",
+    test_dir / "libfyaml-test-thread.c",
+    test_dir / "libfyaml-test-atom-analysis.c",
+    test_dir / "libfyaml-test-durable-arena.c",
+]
+if have_generic:
+    test_sources.extend([
+        test_dir / "libfyaml-test-generic.c",
+        test_dir / "libfyaml-test-generic-scalars.c",
+        test_dir / "libfyaml-test-generic-binary.c",
+    ])
+if have_reflection:
+    test_sources.append(test_dir / "libfyaml-test-reflection.c")
 
-if have_check:
-    test_sources: list[Path] = [
-        test_dir / "libfyaml-test.c",
-        test_dir / "libfyaml-test-core.c",
-        test_dir / "libfyaml-test-meta.c",
-        test_dir / "libfyaml-test-emit.c",
-        test_dir / "libfyaml-test-emit-bugs.c",
-        test_dir / "libfyaml-test-parse-bugs.c",
-        test_dir / "libfyaml-test-allocator.c",
-        test_dir / "libfyaml-test-fuzzing.c",
-        test_dir / "libfyaml-test-private.c",
-        test_dir / "libfyaml-test-private-id.c",
-        test_dir / "libfyaml-test-private-range.c",
-        test_dir / "libfyaml-test-parser.c",
-        test_dir / "libfyaml-test-thread.c",
-        test_dir / "libfyaml-test-atom-analysis.c",
-        test_dir / "libfyaml-test-durable-arena.c",
-    ]
-    if have_generic:
-        test_sources.extend([
-            test_dir / "libfyaml-test-generic.c",
-            test_dir / "libfyaml-test-generic-scalars.c",
-            test_dir / "libfyaml-test-generic-binary.c",
-        ])
-    if have_reflection:
-        test_sources.append(test_dir / "libfyaml-test-reflection.c")
+test_env = env.clone()
+test_env.cc.includes.append(src_dir / "check")
 
-    test_env = env.clone()
-    test_env.cc.includes.append(src_dir / "check")
+libfyaml_test = project.Program("libfyaml-test", test_env, sources=test_sources)
+link_whole_archive(libfyaml_test, fyaml_static)
+libfyaml_test.link(fyaml_static)  # for public includes and link libs
+test_programs.append(libfyaml_test)
 
-    libfyaml_test = project.Program("libfyaml-test", test_env, sources=test_sources)
-    link_whole_archive(libfyaml_test, fyaml_static)
-    libfyaml_test.link(fyaml_static)  # for public includes and link libs
-    libfyaml_test.link(check_pkg)
-    test_programs.append(libfyaml_test)
-
-# --- Internal test tools (no check dependency) ---
+# --- Internal test tools ---
 
 # =============================================================================
 # Default targets and generate

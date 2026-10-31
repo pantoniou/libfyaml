@@ -16,7 +16,6 @@
 #include <assert.h>
 #include <limits.h>
 
-#include <check.h>
 
 #ifndef _WIN32
 #include <unistd.h>

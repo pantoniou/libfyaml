@@ -14,9 +14,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include <check.h>
-
 #include "fy-valgrind.h"
+
+#define FY_CHECK_IMPLEMENTATION
 #include "fy-check.h"
 
 #define QUIET_DEFAULT			false
@@ -123,7 +123,6 @@ int main(int argc, char *argv[])
 	bool tests_only = true;
 	int i, start_of_tests, number_failed;
 	struct fy_check_runner *cr;
-	SRunner *sr;
 
 	fy_valgrind_check(&argc, &argv);
 
@@ -153,10 +152,7 @@ int main(int argc, char *argv[])
 	number_failed = 0;
 
 	if (!do_list) {
-		sr = fy_check_runner_get_SRunner(cr);
-		srunner_set_tap(sr, "-");
-		srunner_run_all(sr, quiet ? CK_SILENT : CK_NORMAL);
-		number_failed += srunner_ntests_failed(sr);
+		number_failed += fy_check_runner_run(cr, quiet);
 	} else if (do_list) {
 		list_tests(cr->suite, tests_only);
 	}

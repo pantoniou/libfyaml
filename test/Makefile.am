@@ -31,7 +31,6 @@ if CROSS_COMPILING
 check_PROGRAMS =
 else
 
-if HAVE_COMPATIBLE_CHECK
 
 check_PROGRAMS = libfyaml-test
 libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/test/ \
@@ -43,9 +42,9 @@ libfyaml_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/test/ \
 			 -I$(top_srcdir)/src/allocator \
 			 -I$(top_srcdir)/src/generic \
 			 -I$(top_srcdir)/src/reflection
-libfyaml_test_LDADD = $(AM_LDADD) $(CHECK_LIBS) $(top_builddir)/src/libfyaml.la
-libfyaml_test_CFLAGS = $(AM_CFLAGS) $(CHECK_CFLAGS) @CLANG_BLOCKS_CFLAGS@
-libfyaml_test_LDFLAGS = $(AM_LDFLAGS) $(CHECK_LDFLAGS) @CLANG_BLOCKS_LIBS@
+libfyaml_test_LDADD = $(AM_LDADD) $(top_builddir)/src/libfyaml.la
+libfyaml_test_CFLAGS = $(AM_CFLAGS) @CLANG_BLOCKS_CFLAGS@
+libfyaml_test_LDFLAGS = $(AM_LDFLAGS) @CLANG_BLOCKS_LIBS@
 
 # the allocation failure injection needs a linker that wraps malloc,
 # which the autotools build does not probe for; the tests that use it
@@ -84,8 +83,6 @@ libfyaml_test_LDFLAGS += -static
 endif
 
 TESTS += libfyaml.test
-
-endif
 
 if HAVE_NETWORK
 if HAVE_GIT

@@ -20,7 +20,6 @@
 #include <math.h>
 #include <float.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 

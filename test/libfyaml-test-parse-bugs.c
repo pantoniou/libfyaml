@@ -18,7 +18,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 

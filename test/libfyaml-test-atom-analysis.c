@@ -15,7 +15,6 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 

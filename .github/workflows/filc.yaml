@@ -35,7 +35,7 @@ jobs:
     - name: "Install dependencies"
       run: |
         sudo apt-get update -qq
-        sudo apt-get install --no-install-recommends -y check linux-libc-dev
+        sudo apt-get install --no-install-recommends -y linux-libc-dev
 
     - name: "Cache FIL-C"
       uses: actions/cache@v4

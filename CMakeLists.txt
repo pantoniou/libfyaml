@@ -288,136 +288,6 @@ else()
     endif()
 endif()
 
-# check framework detection - try CMake config first, then pkg-config, then FetchContent
-# When cross-compiling with wine we skip find_package/pkg-config (those would
-# find host libraries) and go straight to FetchContent so check is built for
-# the target platform.
-function(fy_target_compile_definition_if_exists _target_name)
-    if(NOT TARGET ${_target_name})
-        return()
-    endif()
-
-    get_target_property(_aliased_target ${_target_name} ALIASED_TARGET)
-    if(_aliased_target)
-        set(_target_name ${_aliased_target})
-    endif()
-
-    target_compile_definitions(${_target_name} PRIVATE _CRT_SECURE_NO_WARNINGS)
-endfunction()
-
-set(HAVE_CHECK 0)
-set(HAVE_COMPATIBLE_CHECK 0)
-if(BUILD_TESTING AND (NOT CMAKE_CROSSCOMPILING OR HAVE_WINE))
-    if(NOT CMAKE_CROSSCOMPILING AND NOT HAVE_FILC)
-        find_package(check QUIET CONFIG)
-        if(check_FOUND)
-            set(HAVE_CHECK 1)
-            set(CHECK_LIBRARIES check)
-            if(TARGET Check::check)
-                set(CHECK_TARGET Check::check)
-            elseif(TARGET Check::checkShared)
-                # some distros (e.g. Arch) ship only the shared library
-                set(CHECK_TARGET Check::checkShared)
-            else()
-                set(CHECK_TARGET check)
-            endif()
-            get_target_property(CHECK_INCLUDE_DIRS ${CHECK_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
-            # Get library location to extract directory
-            get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} IMPORTED_LOCATION)
-            if(NOT CHECK_LIB_LOCATION)
-                get_target_property(CHECK_LIB_LOCATION ${CHECK_TARGET} LOCATION)
-            endif()
-            if(CHECK_LIB_LOCATION)
-                get_filename_component(CHECK_LIBRARY_DIRS "${CHECK_LIB_LOCATION}" DIRECTORY)
-            endif()
-            message(STATUS "Found check framework via CMake config")
-        elseif(PKG_CONFIG_FOUND)
-            # Fall back to pkg-config
-            pkg_check_modules(CHECK check)
-            if(CHECK_FOUND)
-                set(HAVE_CHECK 1)
-                message(STATUS "Found check framework via pkg-config")
-            endif()
-        endif()
-    endif()
-
-    # Fall back to FetchContent if check not found.
-    # Always used when cross-compiling (skips host detection above) so that
-    # check is compiled for the target platform and can run under wine.
-    if(NOT HAVE_CHECK)
-        message(STATUS "check framework not found, fetching via FetchContent...")
-        FetchContent_Declare(
-            check
-            GIT_REPOSITORY https://github.com/libcheck/check.git
-            GIT_TAG        0.15.2
-        )
-        # Disable check's own tests and docs
-        set(CHECK_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-        set(CHECK_ENABLE_GCOV OFF CACHE BOOL "" FORCE)
-        if(WIN32)
-            # check's itimerspec/clock_gettime detection is unreliable on
-            # Windows (both MinGW and MSVC/Clang): probe them explicitly.
-            include(CheckTypeSize)
-            check_type_size("struct itimerspec" ITIMERSPEC LANGUAGE C)
-            if(NOT HAVE_ITIMERSPEC)
-                set(STRUCT_ITIMERSPEC_DEFINITION_MISSING 1 CACHE INTERNAL "" FORCE)
-                add_compile_definitions(STRUCT_ITIMERSPEC_DEFINITION_MISSING=1)
-            endif()
-            # Windows always provides clock_gettime (MinGW via winpthread,
-            # MSVC via Windows SDK), but check_function_exists may fail to
-            # detect it. Force it so check's configure_file emits
-            # #define HAVE_CLOCK_GETTIME 1 and skips its own stub.
-            set(HAVE_CLOCK_GETTIME 1 CACHE INTERNAL "" FORCE)
-        endif()
-        FetchContent_MakeAvailable(check)
-        if(WIN32)
-            fy_target_compile_definition_if_exists(check)
-            fy_target_compile_definition_if_exists(Check::check)
-            fy_target_compile_definition_if_exists(checkShared)
-            fy_target_compile_definition_if_exists(Check::checkShared)
-        endif()
-        if(TARGET checkShared)
-            # check unconditionally creates a checkShared SHARED target alongside
-            # the static check target. We only need the static library; exclude the
-            # shared target and give it a distinct output name so that Ninja never
-            # sees two rules generating the same check.lib import library.
-            set_target_properties(checkShared PROPERTIES
-                EXCLUDE_FROM_ALL TRUE
-                OUTPUT_NAME checkDynamic)
-        endif()
-
-        set(HAVE_CHECK 1)
-        set(CHECK_LIBRARIES check)
-        set(CHECK_INCLUDE_DIRS "${check_SOURCE_DIR}/src" "${check_BINARY_DIR}" "${check_BINARY_DIR}/src")
-        set(HAVE_SRUNNER_SET_TAP 1)  # 0.15.2 has srunner_set_tap
-        set(HAVE_COMPATIBLE_CHECK 1)
-        message(STATUS "Found check framework via FetchContent")
-    endif()
-
-    # Check if libcheck has srunner_set_tap (jessie has outdated libcheck).
-    # FetchContent always has it (set above); only probe when using a system library.
-    if(HAVE_CHECK AND NOT HAVE_COMPATIBLE_CHECK)
-        set(_SAVED_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
-        set(_SAVED_CMAKE_REQUIRED_INCLUDES  "${CMAKE_REQUIRED_INCLUDES}")
-        set(_SAVED_CMAKE_REQUIRED_LINK_OPTIONS "${CMAKE_REQUIRED_LINK_OPTIONS}")
-        set(CMAKE_REQUIRED_LIBRARIES ${CHECK_LIBRARIES})
-        set(CMAKE_REQUIRED_INCLUDES ${CHECK_INCLUDE_DIRS})
-        foreach(libdir ${CHECK_LIBRARY_DIRS})
-            list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "-L${libdir}")
-        endforeach()
-        check_symbol_exists(srunner_set_tap "check.h" HAVE_SRUNNER_SET_TAP)
-        set(CMAKE_REQUIRED_LIBRARIES "${_SAVED_CMAKE_REQUIRED_LIBRARIES}")
-        set(CMAKE_REQUIRED_INCLUDES  "${_SAVED_CMAKE_REQUIRED_INCLUDES}")
-        set(CMAKE_REQUIRED_LINK_OPTIONS "${_SAVED_CMAKE_REQUIRED_LINK_OPTIONS}")
-        unset(_SAVED_CMAKE_REQUIRED_LIBRARIES)
-        unset(_SAVED_CMAKE_REQUIRED_INCLUDES)
-        unset(_SAVED_CMAKE_REQUIRED_LINK_OPTIONS)
-        if(HAVE_SRUNNER_SET_TAP)
-            set(HAVE_COMPATIBLE_CHECK 1)
-        endif()
-    endif()
-endif()
-
 # Check for libclang (for reflection support)
 set(HAVE_LIBCLANG 0)
 set(LIBCLANG_CFLAGS "")
@@ -1568,7 +1438,7 @@ if(ENABLE_STATIC_TOOLS AND NOT MSVC)
     target_link_options(fy-tool PRIVATE -static)
 endif()
 
-if(BUILD_TESTING AND HAVE_BASH AND HAVE_CHECK AND (NOT CROSS_COMPILING OR HAVE_WINE))
+if(BUILD_TESTING AND HAVE_BASH AND (NOT CROSS_COMPILING OR HAVE_WINE))
     set(CAN_TEST 1)
 else()
     set(CAN_TEST 0)
@@ -1625,94 +1495,86 @@ if(CAN_TEST)
         endif()
     endif()
 
-    # Build libfyaml-test if check is available
-    if(HAVE_COMPATIBLE_CHECK)
+    # The test framework is the header src/check/fy-check.h
+    add_executable(libfyaml-test
+        test/libfyaml-test.c
+        test/libfyaml-test-core.c
+        test/libfyaml-test-meta.c
+        test/libfyaml-test-emit.c
+        test/libfyaml-test-atom-analysis.c
+        test/libfyaml-test-emit-bugs.c
+        test/libfyaml-test-parse-bugs.c
+        test/libfyaml-test-allocator.c
+        test/libfyaml-test-durable-arena.c
+        test/libfyaml-test-fuzzing.c
+        $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:test/libfyaml-test-alloc-fail.c>
+        test/libfyaml-test-private.c
+        test/libfyaml-test-private-id.c
+        test/libfyaml-test-private-range.c
+        test/libfyaml-test-parser.c
+        test/libfyaml-test-thread.c
+        $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
+        $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
+        $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-binary.c>
+        $<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
+        ${GETOPT_SOURCES}
+    )
 
-        add_executable(libfyaml-test
-            test/libfyaml-test.c
-            test/libfyaml-test-core.c
-            test/libfyaml-test-meta.c
-            test/libfyaml-test-emit.c
-            test/libfyaml-test-atom-analysis.c
-            test/libfyaml-test-emit-bugs.c
-            test/libfyaml-test-parse-bugs.c
-            test/libfyaml-test-allocator.c
-            test/libfyaml-test-durable-arena.c
-            test/libfyaml-test-fuzzing.c
-            $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:test/libfyaml-test-alloc-fail.c>
-            test/libfyaml-test-private.c
-            test/libfyaml-test-private-id.c
-            test/libfyaml-test-private-range.c
-            test/libfyaml-test-parser.c
-            test/libfyaml-test-thread.c
-            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic.c>
-            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-scalars.c>
-            $<$<BOOL:${HAVE_GENERIC}>:test/libfyaml-test-generic-binary.c>
-            $<$<BOOL:${HAVE_REFLECTION}>:test/libfyaml-test-reflection.c>
-            ${GETOPT_SOURCES}
-        )
-
-        target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
-        target_compile_definitions(libfyaml-test PRIVATE
-            HAVE_CONFIG_H
-            ${COMMON_C_DEFINITIONS}
-            $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:HAVE_LINKER_WRAP_MALLOC>
-        )
-        if(HAVE_LINKER_WRAP_MALLOC)
-            target_link_options(libfyaml-test PRIVATE "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign,--wrap=strdup")
-        endif()
-
-        target_include_directories(libfyaml-test PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/check
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CHECK_INCLUDE_DIRS}
-            ${GETOPT_INCLUDES}
-        )
-
-        # Link against static library to access private symbols
-        # Use same pattern as internal tools
-        link_whole_archive_static(libfyaml-test fyaml_static)
-        target_link_libraries(libfyaml-test PRIVATE
-            ${CHECK_LIBRARIES}
-            $<$<AND:$<BOOL:${HAVE_LIBCLANG}>,$<NOT:$<BOOL:${LIBCLANG_DLOPEN}>>>:${LIBCLANG_LIBS}>
-            $<$<BOOL:${LIBCLANG_DLOPEN}>:${CMAKE_DL_LIBS}>
-        )
-        if(NOT MSVC)
-            if(HAVE_ASAN)
-                target_link_options(libfyaml-test PRIVATE ${ASAN_C_FLAGS})
-            endif()
-        endif()
-        if(CHECK_LIBRARY_DIRS)
-            target_link_directories(libfyaml-test PRIVATE ${CHECK_LIBRARY_DIRS})
-        endif()
-        if(HAVE_LIBCLANG)
-            target_link_directories(libfyaml-test PRIVATE ${LIBCLANG_LINK_DIRS})
-        endif()
-
-        if (HAVE_CLANG_BLOCKS)
-            target_compile_options(libfyaml-test PRIVATE -fblocks)
-            if (CLANG_BLOCKS_LIB)
-                target_link_libraries(libfyaml-test PRIVATE ${CLANG_BLOCKS_LIB})
-            endif()
-        endif()
-
-        add_dependencies(libfyaml-test fyaml_static)
-
-        # Set output directory to match autoconf behavior
-        set_target_properties(libfyaml-test PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
-        )
-
-        add_libfyaml_tests()
+    target_compile_options(libfyaml-test PRIVATE ${COMMON_C_FLAGS})
+    target_compile_definitions(libfyaml-test PRIVATE
+        HAVE_CONFIG_H
+        ${COMMON_C_DEFINITIONS}
+        $<$<BOOL:${HAVE_LINKER_WRAP_MALLOC}>:HAVE_LINKER_WRAP_MALLOC>
+    )
+    if(HAVE_LINKER_WRAP_MALLOC)
+        target_link_options(libfyaml-test PRIVATE "-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=posix_memalign,--wrap=strdup")
     endif()
+
+    target_include_directories(libfyaml-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/check
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/valgrind
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lib
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/allocator
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/generic
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xxhash
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/reflection
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${GETOPT_INCLUDES}
+    )
+
+    # Link against static library to access private symbols
+    # Use same pattern as internal tools
+    link_whole_archive_static(libfyaml-test fyaml_static)
+    target_link_libraries(libfyaml-test PRIVATE
+        $<$<AND:$<BOOL:${HAVE_LIBCLANG}>,$<NOT:$<BOOL:${LIBCLANG_DLOPEN}>>>:${LIBCLANG_LIBS}>
+        $<$<BOOL:${LIBCLANG_DLOPEN}>:${CMAKE_DL_LIBS}>
+    )
+    if(NOT MSVC)
+        if(HAVE_ASAN)
+            target_link_options(libfyaml-test PRIVATE ${ASAN_C_FLAGS})
+        endif()
+    endif()
+    if(HAVE_LIBCLANG)
+        target_link_directories(libfyaml-test PRIVATE ${LIBCLANG_LINK_DIRS})
+    endif()
+
+    if (HAVE_CLANG_BLOCKS)
+        target_compile_options(libfyaml-test PRIVATE -fblocks)
+        if (CLANG_BLOCKS_LIB)
+            target_link_libraries(libfyaml-test PRIVATE ${CLANG_BLOCKS_LIB})
+        endif()
+    endif()
+
+    add_dependencies(libfyaml-test fyaml_static)
+
+    # Set output directory to match autoconf behavior
+    set_target_properties(libfyaml-test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test
+    )
+
+    add_libfyaml_tests()
 
     # Error tests - register individual subtests
     add_testerrors_tests()
@@ -1891,9 +1753,7 @@ if(CAN_TEST)
     # Note: CMake's 'make test' target doesn't trigger builds by design.
     # Use 'make all test' or 'make check-am' or 'make build_and_test' for complete workflow.
     set(TEST_DEPENDENCIES fy-tool fy-thread fy-b3sum fy-allocators)
-    if(HAVE_COMPATIBLE_CHECK)
-        list(APPEND TEST_DEPENDENCIES libfyaml-test)
-    endif()
+    list(APPEND TEST_DEPENDENCIES libfyaml-test)
     if(HAVE_GENERIC AND NOT WIN32)
         list(APPEND TEST_DEPENDENCIES durable-probe)
     endif()
@@ -2320,8 +2180,6 @@ message(STATUS "Cross compiling:       ${CROSS_COMPILING}")
 message(STATUS "C compiler:            ${CMAKE_C_COMPILER}")
 message(STATUS "Build type:            ${CMAKE_BUILD_TYPE}")
 message(STATUS "HAVE_BASH:             ${HAVE_BASH}")
-message(STATUS "HAVE_CHECK:            ${HAVE_CHECK}")
-message(STATUS "HAVE_COMPATIBLE_CHECK: ${HAVE_COMPATIBLE_CHECK}")
 message(STATUS "HAVE_LIBYAML:          ${HAVE_LIBYAML}")
 message(STATUS "HAVE_CMAKE_GEXPR:      ${HAVE_CMAKE_GEXPR}")
 message(STATUS "HAVE_LIBCLANG:         ${HAVE_LIBCLANG}")

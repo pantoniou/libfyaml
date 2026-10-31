@@ -20,7 +20,6 @@
 #endif
 #include <assert.h>
 
-#include <check.h>
 
 #include <libfyaml.h>
 #include <libfyaml/libfyaml-generic.h>

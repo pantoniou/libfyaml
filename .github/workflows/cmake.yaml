@@ -224,13 +224,13 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update -qq
-        sudo apt-get install --no-install-recommends -y pkg-config check libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev libubsan1 ${{ matrix.cc }} ${{ matrix.compiler == 'gcc' && matrix.cxx || '' }}
+        sudo apt-get install --no-install-recommends -y pkg-config libyaml-dev libltdl-dev libblocksruntime-dev libclang-dev llvm-dev libubsan1 ${{ matrix.cc }} ${{ matrix.compiler == 'gcc' && matrix.cxx || '' }}
 
     - name: "Install dependencies (macOS)"
       if: runner.os == 'macOS'
       run: |
         brew update
-        brew install pkg-config check libyaml gcc@13 llvm
+        brew install pkg-config libyaml gcc@13 llvm
         echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm)" >> "$GITHUB_ENV"
 
     - name: "Install dependencies (Windows)"

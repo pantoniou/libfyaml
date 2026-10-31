@@ -21,7 +21,6 @@
 #include <time.h>
 #endif
 
-#include <check.h>
 
 #include <libfyaml.h>
 

@@ -11,7 +11,6 @@
   cmake,
   pkg-config,
   libyaml,
-  check,
   jq,
   bash,
 }:
@@ -50,7 +49,6 @@ stdenv.mkDerivation {
   buildInputs = [ libyaml ];
 
   nativeCheckInputs = [
-    check
     jq
     bash
   ];

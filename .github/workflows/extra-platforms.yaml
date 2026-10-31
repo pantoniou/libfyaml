@@ -81,41 +81,38 @@ jobs:
             install: >-
               apt-get update -qq &&
               apt-get install -y --no-install-recommends ca-certificates git build-essential
-              cmake pkg-config libyaml-dev check bash jq
+              cmake pkg-config libyaml-dev bash jq
 
           - name: Debian testing
             image: debian:testing
             install: >-
               apt-get update -qq &&
               apt-get install -y --no-install-recommends ca-certificates git build-essential
-              cmake pkg-config libyaml-dev check bash jq
+              cmake pkg-config libyaml-dev bash jq
 
           - name: Fedora
             image: fedora:latest
             install: >-
               dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
-              libyaml-devel check-devel bash jq diffutils findutils
+              libyaml-devel bash jq diffutils findutils
 
           - name: Arch Linux
             image: archlinux:latest
             install: >-
-              pacman -Syu --noconfirm git base-devel cmake pkgconf libyaml check jq
+              pacman -Syu --noconfirm git base-devel cmake pkgconf libyaml jq
 
-          # check's CMake config points at a libcheck.a that EL9 does not
-          # ship, so drop it and let pkg-config find check
           - name: Rocky Linux 9
             image: rockylinux/rockylinux:9
             install: >-
               dnf install -y epel-release dnf-plugins-core &&
               dnf config-manager --set-enabled crb &&
               dnf install -y git gcc gcc-c++ make cmake pkgconf-pkg-config
-              libyaml-devel check-devel bash jq diffutils findutils &&
-              rm -rf /usr/lib64/cmake/check
+              libyaml-devel bash jq diffutils findutils
 
           - name: Alpine (musl)
             image: alpine:latest
             install: >-
-              apk add --no-cache git build-base cmake pkgconf yaml-dev check-dev
+              apk add --no-cache git build-base cmake pkgconf yaml-dev
               bash jq linux-headers
 
     steps:
@@ -155,7 +152,7 @@ jobs:
     - name: "Build and test"
       run: |
         nix-channel --update
-        nix-shell -p gcc cmake pkg-config libyaml check jq gnumake diffutils \
+        nix-shell -p gcc cmake pkg-config libyaml jq gnumake diffutils \
           --run "sh .github/scripts/extra-build.sh"
 
     # the packaging path: build the in-tree CMake derivation (nix/libfyaml.nix)
@@ -181,19 +178,18 @@ jobs:
           - name: FreeBSD 15.1
             os: freebsd
             version: '15.1'
-            install: sudo pkg install -y git cmake pkgconf libyaml check bash jq
+            install: sudo pkg install -y git cmake pkgconf libyaml bash jq
 
           - name: NetBSD 11.0
             os: netbsd
             version: '11.0'
-            install: sudo pkgin -y install git cmake pkgconf libyaml check bash jq
+            install: sudo pkgin -y install git cmake pkgconf libyaml bash jq
 
           - name: OpenBSD 7.9
             os: openbsd
             version: '7.9'
-            install: sudo pkg_add git cmake libyaml check bash jq
+            install: sudo pkg_add git cmake libyaml bash jq
 
-          # check is not packaged; CMake fetches and builds it
           - name: OmniOS r151058
             os: omnios
             version: 'r151058'
@@ -260,7 +256,7 @@ jobs:
         install: >-
           git bash jq diffutils
           mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
-          mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-libyaml mingw-w64-ucrt-x86_64-check
+          mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-libyaml
 
     - name: "Build and test"
       env:
@@ -305,7 +301,7 @@ jobs:
         install: |
           apt-get update -qq
           apt-get install -y --no-install-recommends git build-essential cmake pkg-config \
-            libyaml-dev check bash jq ca-certificates
+            libyaml-dev bash jq ca-certificates
         run: |
           git config --global --add safe.directory '*'
           sh .github/scripts/extra-build.sh
@@ -329,7 +325,7 @@ jobs:
         sudo dpkg --add-architecture i386
         sudo apt-get update -qq
         sudo apt-get install --no-install-recommends -y gcc-multilib g++-multilib cmake pkg-config jq \
-          libyaml-dev:i386 check:i386 libsubunit-dev:i386
+          libyaml-dev:i386
 
     - name: "Build and test"
       env:
@@ -395,7 +391,7 @@ jobs:
       run: |
         sudo debootstrap --arch=ppc64 --variant=minbase \
           --keyring=/usr/share/keyrings/debian-ports-archive-keyring.gpg \
-          --include=build-essential,cmake,pkg-config,libyaml-dev,check,bash,jq,git,ca-certificates \
+          --include=build-essential,cmake,pkg-config,libyaml-dev,bash,jq,git,ca-certificates \
           unstable /srv/ppc64 http://deb.debian.org/debian-ports
         sudo mount -t proc proc /srv/ppc64/proc
         sudo cp -a "$GITHUB_WORKSPACE" /srv/ppc64/src

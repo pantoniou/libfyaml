@@ -33,7 +33,6 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <sys/syscall.h>
 #endif
 
-#include <check.h>
 
 #include <libfyaml.h>
 
