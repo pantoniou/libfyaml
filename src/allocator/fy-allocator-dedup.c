@@ -576,13 +576,66 @@ static void fy_dedup_tag_trim(struct fy_dedup_allocator *da, struct fy_dedup_tag
 	}
 }
 
+/*
+ * Make sure that the tag has a head block of tag data, creating an empty one
+ * as fy_dedup_tag_setup() does if there is none.
+ *
+ * The head is missing only when fy_dedup_tag_reset() failed to allocate a new
+ * one. Stores call this, so that the tag recovers when memory is available
+ * again. Returns 0 if the tag has a head, -1 if one could not be allocated.
+ */
+static int fy_dedup_tag_ensure_head(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
+{
+	struct fy_dedup_tag_data_cfg dcfg;
+	struct fy_dedup_tag_data *dtd, *expected;
+
+	if (fy_dt_head(dt))
+		return 0;
+
+	/* fully zero (padding included) so nothing uninitialised reaches the dtd */
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.bloom_filter_bits = da->bloom_filter_bits;
+	dcfg.bucket_count_bits = da->bucket_count_bits;
+	dcfg.dedup_threshold = da->dedup_threshold;
+	dcfg.chain_length_grow_trigger = da->chain_length_grow_trigger;
+
+	dtd = fy_dedup_tag_data_create(da, &dcfg, dt->entries_tag);
+	if (!dtd)
+		return -1;
+
+	/* another store may have created a head first; use that one */
+	expected = NULL;
+	if (!FY_SLOT_CAS(&dt->tag_datas, &expected, dtd))
+		fy_dedup_tag_data_destroy(da, dtd, dt->entries_tag);
+
+	return 0;
+}
+
 static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_tag *dt)
 {
-	struct fy_dedup_tag_data *dtd, *dtd_head;
-	size_t i;
+	struct fy_dedup_tag_data *dtd;
 
 	if (!da || !dt)
 		return;
+
+	/*
+	 * Unlink and destroy all blocks of tag data before the parent tags
+	 * are reset. Each block, with its bloom filter and buckets, is
+	 * allocated from the entries tag, so it must not be accessed after
+	 * that tag is reset.
+	 *
+	 * A read-only block is a base layer restored from a snapshot. Its
+	 * memory belongs to the caller, so it is only unlinked.
+	 */
+	while ((dtd = fy_dt_head(dt)) != NULL) {
+		if (!FY_SLOT_CAS(&dt->tag_datas, &dtd, fy_dtd_next(dtd)))
+			continue;
+
+		FY_SLOT_STORE(&dtd->next, NULL);
+
+		if (!dtd->read_only)
+			fy_dedup_tag_data_destroy(da, dtd, dt->entries_tag);
+	}
 
 	/* just pass them reset down to the parent */
 	if (da->parent_caps & FYACF_CAN_FREE_TAG) {
@@ -590,31 +643,8 @@ static void fy_dedup_tag_reset(struct fy_dedup_allocator *da, struct fy_dedup_ta
 		fy_allocator_reset_tag(da->parent_allocator, dt->entries_tag);
 	}
 
-	/* pop the head which we will keep */
-
-	dtd_head = NULL;
-	while ((dtd = fy_dt_head(dt)) != NULL) {
-		if (!FY_SLOT_CAS(&dt->tag_datas, &dtd, fy_dtd_next(dtd)))
-			continue;
-
-		FY_SLOT_STORE(&dtd->next, NULL);
-
-		/* keep the head as is */
-		if (!dtd_head)
-			dtd_head = dtd;
-		else
-			fy_dedup_tag_data_destroy(da, dtd, dt->entries_tag);
-	}
-
-	if (dtd_head) {
-		dtd = dtd_head;
-
-		FY_SLOT_STORE(&dtd->next, NULL);
-		fy_id_reset(fy_dtd_bloom(dtd), dtd->bloom_id_count);
-		for (i = 0; i < dtd->bucket_count; i++)
-			FY_SLOT_ASTORE(&fy_dtd_buckets(dtd)[i], NULL);
-		FY_SLOT_ASTORE(&dt->tag_datas, dtd);
-	}
+	/* create a new, empty head; if this fails, the next store retries */
+	(void)fy_dedup_tag_ensure_head(da, dt);
 }
 
 static void fy_dedup_cleanup(struct fy_allocator *a);
@@ -1423,6 +1453,10 @@ static const void *fy_dedup_storev(struct fy_allocator *a, int tag,
 		fy_iovec_copy_from(iov, iovcnt, p);
 		return p;
 	}
+
+	/* the head is missing if a reset failed to allocate a new one */
+	if (fy_dedup_tag_ensure_head(da, dt))
+		return NULL;
 
 	/* calculate hash if not given */
 	if (!hash)
