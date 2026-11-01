@@ -470,6 +470,14 @@ static void fy_mremap_tag_reset(struct fy_mremap_allocator *mra, struct fy_mrema
 		if (fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, mran->next_arena))
 			fy_mremap_arena_destroy(mra, mrt, mran);
 	}
+
+	/*
+	 * Reset the size hint to its initial value, as fy_mremap_tag_setup()
+	 * does. Each new arena increases it; if a reset kept it, a tag that is
+	 * filled and reset in a loop would get a larger arena on every round,
+	 * until the size overflowed.
+	 */
+	fy_atomic_store(&mrt->next_arena_sz, mra->pagesz);
 }
 
 static void fy_mremap_tag_setup(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
