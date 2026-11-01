@@ -370,7 +370,8 @@ out:
 err_restore:
 	/* nothing may be allocated from an unregistered tail */
 	if (fy_range_track_resize(mran, &mra->a, cur))
-		fy_atomic_fetch_or(&mran->flags, FYMRAF_FULL | FYMRAF_CANT_GROW);
+		fy_atomic_fetch_or(&mran->flags,
+				   FYMRAF_FULL | FYMRAF_CANT_GROW | FYMRAF_UNTRACKED_TAIL);
 	goto out;
 }
 
@@ -458,17 +459,54 @@ static void fy_mremap_tag_trim(struct fy_mremap_allocator *mra, struct fy_mremap
 #endif
 }
 
+/*
+ * On reset, the newest arena of the tag is reused instead of unmapped when its
+ * size is at most this many times the minimum arena size. A tag that is filled
+ * and reset in a loop then does not mmap() and munmap() on every round.
+ *
+ * Larger arenas are always unmapped, so that a single large round does not keep
+ * its memory mapped for the life of the tag. The reused arena is emptied but its
+ * memory is not cleared.
+ */
+#define FY_MREMAP_RESET_KEEP_FACTOR	4
+
 static void fy_mremap_tag_reset(struct fy_mremap_allocator *mra, struct fy_mremap_tag *mrt)
 {
-	struct fy_mremap_arena *mran;
+	struct fy_mremap_arena *mran, *keep = NULL, *expected;
+	uint64_t flags;
 
 	if (!mra || !mrt)
 		return;
 
-	/* pop and destroy */
+	/* unlink all arenas, newest first; keep the first one that qualifies */
 	while ((mran = fy_atomic_load(&mrt->arenas)) != NULL) {
-		if (fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, mran->next_arena))
+		if (!fy_atomic_compare_exchange_strong(&mrt->arenas, &mran, mran->next_arena))
+			continue;
+		/*
+		 * Never reuse an arena with FYMRAF_UNTRACKED_TAIL: only the
+		 * FULL flag keeps allocations out of its unregistered tail,
+		 * and reusing the arena clears its flags.
+		 */
+		if (!keep &&
+		    !(fy_atomic_load(&mran->flags) & FYMRAF_UNTRACKED_TAIL) &&
+		    fy_atomic_load(&mran->size) <=
+		    FY_MREMAP_RESET_KEEP_FACTOR * mra->minimum_arena_size)
+			keep = mran;
+		else
 			fy_mremap_arena_destroy(mra, mrt, mran);
+	}
+
+	if (keep) {
+		/* rewind it to the state of a newly created arena */
+		flags = 0;
+		if (!fy_mremap_arena_type_is_growable(mra->arena_type))
+			flags |= FYMRAF_CANT_GROW;
+		keep->next_arena = NULL;
+		fy_atomic_store(&keep->flags, flags);
+		fy_atomic_store(&keep->next, FY_MREMAP_ARENA_OVERHEAD);
+		expected = NULL;
+		if (!fy_atomic_compare_exchange_strong(&mrt->arenas, &expected, keep))
+			fy_mremap_arena_destroy(mra, mrt, keep);
 	}
 
 	/*
