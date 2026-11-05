@@ -2195,6 +2195,12 @@ do_generic(int argc, char **argv, int optind, struct generic_config *gcfg)
 	gb_cfg.estimated_max_size = max_size;
 	gb_cfg.flags = FYGBCF_SCOPE_LEADER | (dedup ? FYGBCF_DEDUP_ENABLED : 0);
 	gb_cfg.flags |= FYGBCF_SCHEMA(gcfg->schema);
+	/*
+	 * The builder is reset for every input, which only releases memory of a
+	 * tag of its own. The durable allocator does not release anything.
+	 */
+	if (!durable)
+		gb_cfg.flags |= FYGBCF_CREATE_TAG;
 	gb_cfg.diag = gcfg->diag;
 	gb = fy_generic_builder_create(&gb_cfg);
 	if (!gb)
