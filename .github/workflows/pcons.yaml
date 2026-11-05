@@ -58,7 +58,7 @@ jobs:
 
     - name: "Build with pcons"
       run: |
-        uvx --upgrade pcons --variant=${{ matrix.build_type }} ${{ matrix.asan && 'ENABLE_ASAN=1' || '' }}
+        uvx pcons==0.32.0 --variant=${{ matrix.build_type }} ${{ matrix.asan && 'ENABLE_ASAN=1' || '' }}
       env:
         BD: build/${{ matrix.build_type }}
 
