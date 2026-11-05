@@ -96,6 +96,24 @@ static void fy_linear_cleanup(struct fy_allocator *a)
 	la->alloc = NULL;
 }
 
+int fy_linear_allocator_get_in_place_extent(struct fy_allocator *a, void **bufp, size_t *sizep)
+{
+	struct fy_linear_allocator *la;
+
+	if (!a || a->ops != &fy_linear_allocator_ops ||
+	    a->parent != FY_PARENT_ALLOCATOR_INPLACE)
+		return -1;
+
+	la = container_of(a, struct fy_linear_allocator, a);
+
+	/* the header is at the start of the buffer, the data follows it */
+	if (bufp)
+		*bufp = la;
+	if (sizep)
+		*sizep = (size_t)(((char *)la->start + la->cfg.size) - (char *)la);
+	return 0;
+}
+
 struct fy_allocator *fy_linear_create(struct fy_allocator *parent, int parent_tag, const void *cfg_data)
 {
 	struct fy_linear_allocator *la;
