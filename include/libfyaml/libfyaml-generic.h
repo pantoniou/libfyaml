@@ -7264,7 +7264,8 @@ fy_generic_schema_from_text(const char *text)
  * @FYGBCF_DUPLICATE_KEYS_DISABLED: Reject duplicate mapping keys
  * @FYGBCF_DEDUP_ENABLED:          Enable string/value deduplication
  * @FYGBCF_SCOPE_LEADER:           Builder is the scope leader (owns the scope)
- * @FYGBCF_CREATE_TAG:             Create an allocator tag on setup
+ * @FYGBCF_CREATE_TAG:             Create an allocator tag on setup; fy_generic_builder_reset()
+ *                                 releases the memory of that tag
  * @FYGBCF_TRACE:                  Enable diagnostic tracing
  */
 enum fy_gb_cfg_flags {
@@ -7375,7 +7376,24 @@ fy_generic_builder_destroy(struct fy_generic_builder *gb)
 /**
  * fy_generic_builder_reset() - Reset a builder to its initial empty state without freeing it.
  *
- * All previously built values become invalid after reset.
+ * All previously built values become invalid after reset, including the ones
+ * of a builder that has this one as its parent.
+ *
+ * The memory of the builder is released only if the builder owns it:
+ *
+ * - A builder that makes its own allocator (fy_generic_builder_create() with
+ *   FYGBCF_CREATE_ALLOCATOR, or no allocator in the config) is emptied.
+ * - A builder made in place (fy_generic_builder_create_in_place()) is emptied,
+ *   dedup tables included; its buffer is as it was after the create.
+ * - A builder that borrows an allocator is emptied only if it has a tag of its
+ *   own (FYGBCF_CREATE_TAG). Without one it uses the default tag of the
+ *   allocator, which is shared with the other users of the allocator, so the
+ *   reset does not release it and the memory keeps growing with each use.
+ *
+ * So to reuse a builder on a shared allocator, as in a loop over many files,
+ * create it with FYGBCF_CREATE_TAG.
+ *
+ * A reset is not thread safe: nothing may use the builder while it runs.
  *
  * @gb: Builder to reset
  */
