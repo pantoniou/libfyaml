@@ -42,7 +42,9 @@ else:
 config = Configure(build_dir=build_dir)
 toolchain = find_c_toolchain()
 
-if not config.get("configured") or os.environ.get("PCONS_RECONFIGURE"):
+# newer pcons returns a toolchain that is already configured
+if hasattr(toolchain, "configure") and (
+        not config.get("configured") or os.environ.get("PCONS_RECONFIGURE")):
     toolchain.configure(config)
     config.set("configured", True)
     config.save()
