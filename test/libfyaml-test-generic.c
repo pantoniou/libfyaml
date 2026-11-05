@@ -1385,6 +1385,215 @@ START_TEST(generic_compare_sequence_order)
 }
 END_TEST
 
+/* bytes in use in the allocator of a builder */
+static size_t gb_used(struct fy_generic_builder *gb)
+{
+	struct fy_allocator_info *info;
+	size_t used;
+
+	info = fy_gb_get_allocator_info(gb);
+	ck_assert_ptr_ne(info, NULL);
+	used = info->used;
+	free(info);
+	return used;
+}
+
+/* store a number of different strings; round makes them different */
+static void gb_fill(struct fy_generic_builder *gb, int round, int count)
+{
+	char str[64];
+	int i;
+
+	for (i = 0; i < count; i++) {
+		snprintf(str, sizeof(str), "round-%d-string-number-%d", round, i);
+		ck_assert(fy_generic_is_valid(fy_gb_string_create(gb, str)));
+	}
+}
+
+#define GB_RESET_BUF_SIZE	(256 << 10)
+
+/*
+ * A reset of an in place builder empties its buffer, with or without dedup and
+ * with or without a tag of its own: the memory in use after it is the one of a
+ * new builder, and each round uses as much as the first.
+ */
+START_TEST(gb_reset_in_place)
+{
+	static const unsigned int flags[] = {
+		0,
+		FYGBCF_DEDUP_ENABLED,
+		FYGBCF_CREATE_TAG,
+		FYGBCF_DEDUP_ENABLED | FYGBCF_CREATE_TAG,
+	};
+	struct fy_generic_builder *gb;
+	size_t base, filled, after;
+	unsigned int f;
+	void *buf;
+	int round;
+
+	buf = malloc(GB_RESET_BUF_SIZE);
+	ck_assert_ptr_ne(buf, NULL);
+
+	for (f = 0; f < ARRAY_SIZE(flags); f++) {
+		gb = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | flags[f],
+							NULL, buf, GB_RESET_BUF_SIZE);
+		ck_assert_ptr_ne(gb, NULL);
+		base = gb_used(gb);
+		filled = 0;
+
+		for (round = 0; round < 4; round++) {
+			gb_fill(gb, round, 200);
+			if (!round)
+				filled = gb_used(gb);
+			ck_assert_msg(gb_used(gb) == filled, "flags %x round %d: used %zu, expected %zu",
+				      flags[f], round, gb_used(gb), filled);
+
+			fy_generic_builder_reset(gb);
+			after = gb_used(gb);
+			ck_assert_msg(after == base, "flags %x round %d: used %zu after reset, expected %zu",
+				      flags[f], round, after, base);
+		}
+		ck_assert_msg(filled > base, "flags %x: nothing was stored", flags[f]);
+	}
+	free(buf);
+}
+END_TEST
+
+/*
+ * A stack of dedup builders: resetting the child empties the child, it still
+ * deduplicates against the parent, and the parent is not touched.
+ */
+START_TEST(gb_reset_in_place_stack)
+{
+	struct fy_generic_builder *parent, *child;
+	size_t parent_used, base, filled;
+	fy_generic pv, cv;
+	void *pbuf, *cbuf;
+	int round;
+
+	pbuf = malloc(GB_RESET_BUF_SIZE);
+	cbuf = malloc(GB_RESET_BUF_SIZE);
+	ck_assert(pbuf && cbuf);
+
+	parent = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER |
+						    FYGBCF_DEDUP_ENABLED, NULL, pbuf, GB_RESET_BUF_SIZE);
+	ck_assert_ptr_ne(parent, NULL);
+	pv = fy_gb_string_create(parent, "string of the parent");
+	ck_assert(fy_generic_is_valid(pv));
+	parent_used = gb_used(parent);
+
+	child = fy_generic_builder_create_in_place(FYGBCF_SCHEMA_AUTO | FYGBCF_DEDUP_ENABLED,
+						   parent, cbuf, GB_RESET_BUF_SIZE);
+	ck_assert_ptr_ne(child, NULL);
+	base = gb_used(child);
+	filled = 0;
+
+	for (round = 0; round < 4; round++) {
+		gb_fill(child, round, 200);
+		if (!round)
+			filled = gb_used(child);
+		ck_assert_uint_eq(gb_used(child), filled);
+
+		/* the same string is the parent's, not a copy */
+		cv = fy_gb_string_create(child, "string of the parent");
+		ck_assert(cv.v == pv.v);
+		ck_assert_uint_eq(gb_used(child), filled);
+
+		fy_generic_builder_reset(child);
+		ck_assert_uint_eq(gb_used(child), base);
+
+		/* the parent is as it was */
+		ck_assert_uint_eq(gb_used(parent), parent_used);
+		ck_assert_str_eq(fy_cast(pv, ""), "string of the parent");
+	}
+
+	free(cbuf);
+	free(pbuf);
+}
+END_TEST
+
+/*
+ * A builder that makes its own allocator owns the default tag: a reset empties
+ * it. The memory in use must not grow from round to round.
+ */
+START_TEST(gb_reset_owned_allocator)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	size_t filled, base;
+	unsigned int dedup;
+	int round;
+
+	for (dedup = 0; dedup < 2; dedup++) {
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_CREATE_ALLOCATOR |
+			    (dedup ? FYGBCF_DEDUP_ENABLED : 0);
+		gb = fy_generic_builder_create(&cfg);
+		ck_assert_ptr_ne(gb, NULL);
+		base = gb_used(gb);
+		filled = 0;
+
+		for (round = 0; round < 4; round++) {
+			gb_fill(gb, round, 2000);
+			if (!round)
+				filled = gb_used(gb);
+			ck_assert_msg(gb_used(gb) == filled, "dedup %u round %d: used %zu, expected %zu",
+				      dedup, round, gb_used(gb), filled);
+			fy_generic_builder_reset(gb);
+			ck_assert_msg(gb_used(gb) <= filled / 2 + base, "dedup %u round %d: used %zu after reset",
+				      dedup, round, gb_used(gb));
+		}
+		fy_generic_builder_destroy(gb);
+	}
+}
+END_TEST
+
+/*
+ * A builder on an allocator it borrows shares the default tag with the other
+ * users of the allocator: a reset leaves it alone. With a tag of its own the
+ * builder is reset, and the default tag is still not touched.
+ */
+START_TEST(gb_reset_borrowed_allocator)
+{
+	struct fy_generic_builder_cfg cfg;
+	struct fy_generic_builder *gb;
+	struct fy_allocator *a;
+	unsigned char *other;
+	size_t filled;
+	unsigned int own_tag;
+
+	for (own_tag = 0; own_tag < 2; own_tag++) {
+		a = fy_allocator_create("mremap", NULL);
+		ck_assert_ptr_ne(a, NULL);
+
+		/* somebody else's data, on the default tag */
+		other = fy_allocator_alloc(a, FY_ALLOC_TAG_DEFAULT, 100, 8);
+		ck_assert_ptr_ne(other, NULL);
+		memset(other, 0x5a, 100);
+
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | (own_tag ? FYGBCF_CREATE_TAG : 0);
+		cfg.allocator = a;
+		gb = fy_generic_builder_create(&cfg);
+		ck_assert_ptr_ne(gb, NULL);
+
+		gb_fill(gb, 0, 200);
+		filled = gb_used(gb);
+		fy_generic_builder_reset(gb);
+
+		if (own_tag)
+			ck_assert_uint_lt(gb_used(gb), filled);
+		else
+			ck_assert_uint_eq(gb_used(gb), filled);
+
+		ck_assert(other[0] == 0x5a && other[99] == 0x5a);
+
+		fy_generic_builder_destroy(gb);
+		fy_allocator_destroy(a);
+	}
+}
+END_TEST
+
 /* Test: Basic builder operation */
 START_TEST(gb_basics)
 {
@@ -8613,6 +8822,10 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 
 	/* builders */
 	fy_check_testcase_add_test(ctc, gb_basics);
+	fy_check_testcase_add_test(ctc, gb_reset_in_place);
+	fy_check_testcase_add_test(ctc, gb_reset_in_place_stack);
+	fy_check_testcase_add_test(ctc, gb_reset_owned_allocator);
+	fy_check_testcase_add_test(ctc, gb_reset_borrowed_allocator);
 	fy_check_testcase_add_test(ctc, generic_indirect_setters);
 
 	/* special for is_unsigned */
