@@ -48,6 +48,13 @@
 #define USE_MREMAP 0
 #endif
 
+/*
+ * Can the tail of a mapping be given back? mremap() can shrink it; otherwise
+ * munmap() of the tail is used, which needs FY_CAN_TRIM_MMAP. Without it, a
+ * balloon would stay at its full size and a trim could only fail.
+ */
+#define FY_MREMAP_CAN_TRIM_MMAP	(USE_MREMAP || FY_CAN_TRIM_MMAP)
+
 #ifndef MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD
 #define MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD	SIZE_MAX
 #endif
@@ -139,6 +146,9 @@ fy_mremap_arena_create(struct fy_mremap_allocator *mra,
 		balloon_size = fy_size_t_align((size_t)(size_page_align * mra->balloon_ratio), mra->pagesz);
 		if (balloon_size == size_page_align)
 			balloon_size = size_page_align + mra->pagesz;
+		/* a balloon is only useful when it can be trimmed back */
+		if (!FY_MREMAP_CAN_TRIM_MMAP)
+			balloon_size = size_page_align;
 		mem = mmap(NULL, balloon_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 		if (mem == MAP_FAILED) {
 			/* first allocation failed, that's ok, try again */
@@ -323,7 +333,7 @@ static int fy_mremap_arena_trim(struct fy_mremap_allocator *mra,
 	if (!mran)
 		return -1;
 
-	if (mra->arena_type != FYMRAT_MMAP)
+	if (mra->arena_type != FYMRAT_MMAP || !FY_MREMAP_CAN_TRIM_MMAP)
 		return -1;	/* trim not possible (or is it? should be possible to probe) */
 
 	/* exclude a concurrent grow (or another trim) */
