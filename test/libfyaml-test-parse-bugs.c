@@ -459,13 +459,49 @@ START_TEST(parse_bug_tag_without_suffix)
 	};
 	unsigned int i;
 
-	for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(invalid); i++)
 		ck_assert_msg(try_parse(invalid[i], strlen(invalid[i]), 0) != 0,
 			      "accepted invalid input #%u", i);
 
-	for (i = 0; i < sizeof(valid) / sizeof(valid[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(valid); i++)
 		ck_assert_msg(try_parse(valid[i], strlen(valid[i]), 0) == 0,
 			      "rejected valid input #%u", i);
+}
+END_TEST
+
+START_TEST(parse_bug_tag_uri_hash)
+{
+	/* '#' is an ns-uri-char, so it is part of a tag; after a space it starts a comment */
+	static const struct {
+		const char *input;
+		const char *tag;
+	} valid[] = {
+		{ "!<tag:example.com,2000:app/foo#bar> x\n", "tag:example.com,2000:app/foo#bar" },
+		{ "!<foo#> x\n", "foo#" },
+		{ "!foo#bar x\n", "!foo#bar" },
+		{ "%TAG !e! tag:example.com,2000:\n--- !e!x#y a\n", "tag:example.com,2000:x#y" },
+	};
+	static const char * const invalid[] = {
+		"!<foo #bar> x\n",
+	};
+	struct fy_document *fyd;
+	const char *text;
+	size_t len;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(valid); i++) {
+		fyd = fy_document_build_from_string(NULL, valid[i].input, FY_NT);
+		ck_assert_msg(fyd != NULL, "rejected valid input #%u", i);
+		text = fy_node_get_tag(fy_document_root(fyd), &len);
+		ck_assert_ptr_ne(text, NULL);
+		ck_assert_int_eq(len, strlen(valid[i].tag));
+		ck_assert(!memcmp(text, valid[i].tag, len));
+		fy_document_destroy(fyd);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(invalid); i++)
+		ck_assert_msg(try_parse(invalid[i], strlen(invalid[i]), 0) != 0,
+			      "accepted invalid input #%u", i);
 }
 END_TEST
 
@@ -641,11 +677,11 @@ START_TEST(parse_bug_unindented_value_at_end)
 	};
 	unsigned int i;
 
-	for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(invalid); i++)
 		ck_assert_msg(try_parse(invalid[i], strlen(invalid[i]), 0) != 0,
 			      "accepted invalid input #%u", i);
 
-	for (i = 0; i < sizeof(valid) / sizeof(valid[0]); i++)
+	for (i = 0; i < ARRAY_SIZE(valid); i++)
 		ck_assert_msg(try_parse(valid[i], strlen(valid[i]), 0) == 0,
 			      "rejected valid input #%u", i);
 }
@@ -826,6 +862,7 @@ void libfyaml_case_parse_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, parse_bug_single_quoted_single_quotes);
 	fy_check_testcase_add_test(ctc, parse_bug_nested_explicit_key);
 	fy_check_testcase_add_test(ctc, parse_bug_tag_without_suffix);
+	fy_check_testcase_add_test(ctc, parse_bug_tag_uri_hash);
 	fy_check_testcase_add_test(ctc, parse_bug_folded_empty_lines_before_more_indented);
 
 	/* Bug 16: escaped space followed by newline in double-quoted scalar */
