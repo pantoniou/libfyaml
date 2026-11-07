@@ -313,6 +313,20 @@ void *fy_mmap(void *addr, size_t len, int prot, unsigned int flags,
 	      int fd, off_t offset);
 int fy_munmap(void *addr, size_t len);
 
+/*
+ * Can fy_munmap() unmap part of a mapping (the tail, or a hole in the middle)?
+ * It can not on WebAssembly (Emscripten maps from malloc() and only unmaps
+ * whole mappings) or on Windows (VirtualFree() with MEM_RELEASE only frees a
+ * whole allocation, from its base): a partial fy_munmap() fails and the mapping
+ * keeps its size. Code that shrinks a mapping must check this and map the size
+ * it needs to begin with. Unmapping a whole mapping is always fine.
+ */
+#if defined(__wasm__) || defined(_WIN32)
+#define FY_CAN_TRIM_MMAP	0
+#else
+#define FY_CAN_TRIM_MMAP	1
+#endif
+
 /* portable way to find size of the current thread's stack */
 size_t fy_stack_size(void);
 

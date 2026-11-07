@@ -35,6 +35,12 @@ static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type t
 #define FYMRAF_FULL		FY_BIT(0)
 #define FYMRAF_GROWING		FY_BIT(1)
 #define FYMRAF_CANT_GROW	FY_BIT(2)
+/*
+ * The range registered for the arena is smaller than its mapping. This happens
+ * when a trim fails and the original registration cannot be restored. The
+ * arena is also marked FULL, so nothing is allocated from the unregistered tail.
+ */
+#define FYMRAF_UNTRACKED_TAIL	FY_BIT(3)
 
 struct fy_mremap_arena {
 	struct fy_mremap_arena *next_arena;

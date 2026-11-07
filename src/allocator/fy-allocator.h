@@ -239,6 +239,14 @@ fy_allocator_get_parent(struct fy_allocator *a)
 	return a->parent;
 }
 
+/*
+ * Reset an in place allocator (linear, or dedup over linear) to empty by
+ * creating it again in its buffer. The allocator pointer stays valid. Returns
+ * -1 if it is not an in place allocator of these kinds, which leaves it as it
+ * was; if it fails after that point the allocator is gone.
+ */
+int fy_allocator_reset_in_place(struct fy_allocator *a);
+
 struct fy_allocator *
 fy_allocator_create_internal(const char *name, struct fy_allocator *parent, int parent_tag, const void *cfg);
 

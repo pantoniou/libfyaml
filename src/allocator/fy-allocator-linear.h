@@ -33,4 +33,11 @@ struct fy_linear_allocator {
 
 extern const struct fy_allocator_ops fy_linear_allocator_ops;
 
+/*
+ * Get the extent of an in place linear allocator: the buffer it was created in
+ * (its header is at the start) and the size of that buffer. Returns -1 if the
+ * allocator is not an in place linear allocator.
+ */
+int fy_linear_allocator_get_in_place_extent(struct fy_allocator *a, void **bufp, size_t *sizep);
+
 #endif

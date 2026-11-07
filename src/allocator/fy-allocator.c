@@ -350,6 +350,36 @@ fy_dedup_allocator_create_in_place(void *buffer, size_t size)
 	return fy_allocator_create_internal("dedup", pa, 0, &dcfg);
 }
 
+int fy_allocator_reset_in_place(struct fy_allocator *a)
+{
+	struct fy_allocator *root, *na;
+	bool dedup;
+	void *buf;
+	size_t size;
+	int rc;
+
+	if (!a)
+		return -1;
+
+	dedup = a->ops == &fy_dedup_allocator_ops;
+	if (!dedup && a->ops != &fy_linear_allocator_ops)
+		return -1;
+
+	/* the buffer belongs to the linear allocator, which is the root */
+	root = dedup ? fy_allocator_get_parent(a) : a;
+	rc = fy_linear_allocator_get_in_place_extent(root, &buf, &size);
+	if (rc)
+		return -1;
+
+	fy_allocator_destroy(a);
+
+	na = dedup ? fy_dedup_allocator_create_in_place(buf, size) :
+		     fy_linear_allocator_create_in_place(buf, size);
+
+	/* same buffer and same order of allocations; it must be where it was */
+	return na == a ? 0 : -1;
+}
+
 void fy_allocator_registry_cleanup_internal(bool show_leftovers)
 {
 	struct fy_registered_allocator_entry *ae;

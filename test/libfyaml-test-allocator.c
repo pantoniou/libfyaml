@@ -367,6 +367,145 @@ START_TEST(allocator_dedup_inplace)
 }
 END_TEST
 
+/*
+ * Resetting a dedup tag also resets the parent tags, which hold the tag's
+ * index (its blocks of tag data). Store, reset and store again in a loop, and
+ * check that the tag still works and still deduplicates after each reset.
+ */
+START_TEST(allocator_dedup_reset_tag)
+{
+	struct fy_dedup_allocator_cfg dcfg;
+	struct fy_allocator *base, *d;
+	const void *p1, *p2, *q2;
+	char text[64];
+	int tag, i;
+
+	base = fy_allocator_create("mremap", NULL);
+	ck_assert_ptr_ne(base, NULL);
+
+	memset(&dcfg, 0, sizeof(dcfg));
+	dcfg.parent_allocator = base;
+	d = fy_allocator_create("dedup", &dcfg);
+	ck_assert_ptr_ne(d, NULL);
+
+	tag = fy_allocator_get_tag(d);
+	ck_assert_int_ne(tag, FY_ALLOC_TAG_ERROR);
+
+	for (i = 0; i < 200; i++) {
+		snprintf(text, sizeof(text), "reset round %d", i);
+
+		p1 = fy_allocator_store(d, tag, text, strlen(text) + 1, 1);
+		ck_assert_ptr_ne(p1, NULL);
+		p2 = fy_allocator_store(d, tag, text, strlen(text) + 1, 1);
+		ck_assert(p1 == p2);
+		ck_assert_ptr_ne(fy_allocator_store(d, tag, "another", 8, 1), NULL);
+
+		fy_allocator_reset_tag(d, tag);
+
+		/* after the reset, stores work and equal strings are deduplicated */
+		q2 = fy_allocator_store(d, tag, "another", 8, 1);
+		ck_assert_ptr_ne(q2, NULL);
+		ck_assert(!strcmp(q2, "another"));
+		p1 = fy_allocator_store(d, tag, text, strlen(text) + 1, 1);
+		p2 = fy_allocator_store(d, tag, text, strlen(text) + 1, 1);
+		ck_assert_ptr_ne(p1, NULL);
+		ck_assert(p1 == p2);
+		ck_assert(!strcmp(p1, text));
+
+		fy_allocator_reset_tag(d, tag);
+	}
+
+	fy_allocator_release_tag(d, tag);
+	fy_allocator_destroy(d);
+	fy_allocator_destroy(base);
+}
+END_TEST
+
+/*
+ * After a reset, a tag must create arenas of the initial size again. Each new
+ * arena increases the size hint of the tag, so a reset that did not restore it
+ * made a larger arena on every round.
+ */
+START_TEST(allocator_mremap_reset_tag)
+{
+	struct fy_allocator *a;
+	struct fy_allocator_info *info;
+	int tag, i;
+	void *p;
+
+	a = fy_allocator_create("mremap", NULL);
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, FY_ALLOC_TAG_ERROR);
+
+	for (i = 0; i < 100; i++) {
+		p = fy_allocator_alloc(a, tag, 100, 8);
+		ck_assert_ptr_ne(p, NULL);
+		fy_allocator_reset_tag(a, tag);
+	}
+
+	p = fy_allocator_alloc(a, tag, 100, 8);
+	ck_assert_ptr_ne(p, NULL);
+	info = fy_allocator_get_info(a, tag);
+	ck_assert_ptr_ne(info, NULL);
+	/* a single small arena; 100 rounds of doubling would be far larger */
+	ck_assert_uint_lt(info->total, 4u << 20);
+	free(info);
+
+	fy_allocator_release_tag(a, tag);
+	fy_allocator_destroy(a);
+}
+END_TEST
+
+/*
+ * A reset reuses a small arena instead of unmapping it. The first allocation
+ * after the reset gets the same address, and the old contents are still there
+ * (a new mapping would be zeroed). A large arena is unmapped by the reset.
+ */
+START_TEST(allocator_mremap_reset_keeps_arena)
+{
+	struct fy_allocator *a;
+	struct fy_allocator_info *info;
+	void *p1, *p2, *big;
+	int tag, i;
+
+	a = fy_allocator_create("mremap", NULL);
+	ck_assert_ptr_ne(a, NULL);
+
+	tag = fy_allocator_get_tag(a);
+	ck_assert_int_ne(tag, FY_ALLOC_TAG_ERROR);
+
+	p1 = fy_allocator_alloc(a, tag, 100, 8);
+	ck_assert_ptr_ne(p1, NULL);
+	memset(p1, 0x5a, 100);
+	fy_allocator_reset_tag(a, tag);
+	p2 = fy_allocator_alloc(a, tag, 100, 8);
+	ck_assert_ptr_eq(p1, p2);
+	ck_assert(((unsigned char *)p2)[0] == 0x5a && ((unsigned char *)p2)[99] == 0x5a);
+
+	/* the reused arena fills and grows like a new one */
+	for (i = 0; i < 100; i++) {
+		fy_allocator_reset_tag(a, tag);
+		ck_assert_ptr_ne(fy_allocator_alloc(a, tag, 600 << 10, 8), NULL);
+		ck_assert_ptr_ne(fy_allocator_alloc(a, tag, 600 << 10, 8), NULL);
+	}
+
+	/* a 64MB arena is not reused, so it does not stay mapped */
+	fy_allocator_reset_tag(a, tag);
+	big = fy_allocator_alloc(a, tag, 64u << 20, 8);
+	ck_assert_ptr_ne(big, NULL);
+	fy_allocator_reset_tag(a, tag);
+	info = fy_allocator_get_info(a, tag);
+	ck_assert_ptr_ne(info, NULL);
+	ck_assert_uint_lt(info->total, 16u << 20);
+	free(info);
+
+	fy_allocator_release_tag(a, tag);
+	fy_allocator_destroy(a);
+}
+END_TEST
+
 static int snap_reloc_cmp(const void *va, const void *vb)
 {
 	const struct fy_arena_reloc *a = va, *b = vb;
@@ -1215,6 +1354,9 @@ void libfyaml_case_allocator(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, allocator_auto);
 	fy_check_testcase_add_test(ctc, allocator_linear_inplace);
 	fy_check_testcase_add_test(ctc, allocator_dedup_inplace);
+	fy_check_testcase_add_test(ctc, allocator_dedup_reset_tag);
+	fy_check_testcase_add_test(ctc, allocator_mremap_reset_tag);
+	fy_check_testcase_add_test(ctc, allocator_mremap_reset_keeps_arena);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_restore);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_multi_dtd);
 	fy_check_testcase_add_test(ctc, allocator_dedup_snapshot_deep_dtd);

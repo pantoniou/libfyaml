@@ -1582,6 +1582,30 @@ fy_generic_builder_get_free(struct fy_generic_builder *gb)
 	return freesz;
 }
 
+/*
+ * Make the in place allocator again in its buffer, as fy_generic_builder_create_in_place()
+ * did. The buffer is the same, so it can't fail for a lack of space.
+ */
+static void fy_generic_builder_reset_in_place_allocator(struct fy_generic_builder *gb)
+{
+	int tag;
+
+	/* the allocator stays at the same address */
+	if (fy_allocator_reset_in_place(gb->allocator))
+		FY_IMPOSSIBLE_ABORT();
+
+	if (gb->cfg.flags & FYGBCF_TRACE)
+		fy_allocator_set_trace(gb->allocator, true);
+
+	/* a tag asked for at creation is the first one of the new allocator */
+	if (gb->flags & FYGBF_CREATED_TAG) {
+		tag = fy_allocator_get_tag(gb->allocator);
+		if (tag == FY_ALLOC_TAG_ERROR)
+			FY_IMPOSSIBLE_ABORT();
+		gb->alloc_tag = tag;
+	}
+}
+
 void fy_generic_builder_reset(struct fy_generic_builder *gb)
 {
 	if (!gb)
@@ -1601,7 +1625,22 @@ void fy_generic_builder_reset(struct fy_generic_builder *gb)
 		gb->linear = NULL;
 	}
 
-	if (gb->flags & FYGBF_CREATED_TAG)
+	/*
+	 * An in place allocator keeps its own structures (and the dedup tables)
+	 * in the buffer, together with the data, so a tag reset can not rewind
+	 * it. It is ours alone, make it again in the same buffer.
+	 */
+	if ((gb->flags & FYGBF_IN_PLACE) && (gb->flags & FYGBF_OWNS_ALLOCATOR)) {
+		fy_generic_builder_reset_in_place_allocator(gb);
+		return;
+	}
+
+	/*
+	 * Reset the tag if it is ours: a tag we created, or the default tag of
+	 * an allocator we own. The default tag of a borrowed allocator is shared
+	 * with its other users, leave it alone.
+	 */
+	if (gb->flags & (FYGBF_CREATED_TAG | FYGBF_OWNS_ALLOCATOR))
 		fy_allocator_reset_tag(gb->allocator, gb->alloc_tag);
 }
 
