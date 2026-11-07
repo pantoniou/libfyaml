@@ -108,7 +108,7 @@ static inline bool fy_is_blank_lb_r_n(const int c)
 
 static inline bool fy_is_uri(const int c)
 {
-	return fy_is_alnum(c) || fy_utf8_strchr(";/?:@&=+$,.!~*\'()[]%", c);
+	return fy_is_alnum(c) || fy_utf8_strchr("#;/?:@&=+$,.!~*\'()[]%", c);
 }
 
 static inline bool fy_is_lb_NEL(const int c)
