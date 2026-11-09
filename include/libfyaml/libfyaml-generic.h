@@ -9057,7 +9057,7 @@ struct fy_op_convert_args {
  * @FYGBOPF_NO_CLOBBER:       With CREATE_PATH, error instead of overwriting a non-collection intermediate
  * @FYGBOPF_PRUNE:            With DELETE_AT_PATH, drop parent mappings that become empty
  * @FYGBOPF_SORT_CREATE:      On create, sort items (sequences) / pairs by key (mappings)
- * @FYGBOPF_DIGIT_KEYS:       With *_AT_PATH, if key 1 is missing try key "1"
+ * @FYGBOPF_DIGIT_KEYS:       With ``*_AT_PATH``, if key 1 is missing try key "1"
  */
 enum fy_gb_op_flags {
 	FYGBOPF_CREATE_SEQ	= FYGBOPF_OP(FYGBOP_CREATE_SEQ),
