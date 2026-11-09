@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "FY-TOOL" "1" "Sep 25, 2026" "1.0.0" "libfyaml"
+.TH "FY-TOOL" "1" "Nov 09, 2026" "1.0.0" "libfyaml"
 .SH NAME
 fy-tool \- fy-tool documentation 
 .SH SYNOPSIS
@@ -257,6 +257,25 @@ Print parse cache directory statistics.
 .B \-\-emit\-events
 Use parser events to drive the emitter even when another cached or generic
 path could otherwise be used directly.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-auto\-anchor
+With \fB\-\-generic\fP, write a value that appears more than once, e.g. a
+deduplicated mapping, with an anchor the first time and an alias after.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-binary\-base64
+With \fB\-\-generic\fP, write a string that is mostly bytes that aren’t UTF\-8,
+e.g. an image, as a \fB!!binary\fP base64 scalar whose lines fit the width.
+Other strings keep their \fB\euDCxx\fP escapes, and JSON output always does.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-no\-yaml\-1.2\-binary
+With \fB\-\-generic\fP, keep a YAML 1.2 \fB!!binary\fP scalar as tagged base64
+text. By default it is decoded to its bytes, as it always is in YAML 1.1.
 .UNINDENT
 .sp
 Emitter options
@@ -604,6 +623,23 @@ Select the generic decoder schema. Supported values include \fBauto\fP,
 .TP
 .B \-\-keep\-style
 Preserve style information in generic data.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-write\-image FILE
+With \fB\-\-generic\fP, write the parsed input as a relocatable generic image to
+\fBFILE\fP, or to standard output for \fB\-\fP, instead of emitting it. The image
+keeps the documents with their tags, anchors, comments and styles, and
+loads without parsing. It takes one input.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-read\-image
+With \fB\-\-generic\fP, \fB\-\-generic\-testsuite\fP or \fB\-\-generic\-parse\-dump\fP,
+read each input as an image that \fB\-\-write\-image\fP made, instead of parsing
+it as YAML, e.g. \fBfy\-tool \-\-generic \-\-read\-image doc.img\fP\&. An image needs
+the byte order and word size of the machine that made it. It can’t be used
+with \fB\-\-durable\fP\&.
 .UNINDENT
 .sp
 Modes

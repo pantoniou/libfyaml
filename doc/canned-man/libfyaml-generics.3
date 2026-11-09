@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-GENERICS" "3" "Sep 25, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-GENERICS" "3" "Nov 09, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-generics \- libfyaml generic API
 .SH INTRODUCTION
@@ -570,6 +570,28 @@ from \fBptr\fP to recover the 16\-byte\-aligned pointer for sequences and mappin
 .SS Return
 .sp
 The 16\-byte\-aligned pointer stored in \fBptr\fP\&.
+.SS fy_generic_encode_ptr
+.INDENT 0.0
+.TP
+.B fy_generic_value fy_generic_encode_ptr(const void *p, fy_generic_value tag) 
+Build an out\-of\-place generic value from a pointer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBp\fP (const void*) – The suitably aligned pointer to the out\-of\-place storage.
+.IP \(bu 2
+\fBtag\fP (fy_generic_value) – The type tag to combine with the pointer (e.g. \fBFY_STRING_OUTPLACE_V\fP).
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The inverse of \fBfy_generic_resolve_ptr()\fP and \fBfy_generic_resolve_collection_ptr()\fP\&.
+.SS Return
+.sp
+The tagged generic value.
 .SS fy_generic_relocate_ptr
 .INDENT 0.0
 .TP
@@ -5565,7 +5587,8 @@ Enable string/value deduplication
 Builder is the scope leader (owns the scope)
 .TP
 .B FYGBCF_CREATE_TAG
-Create an allocator tag on setup
+Create an allocator tag on setup; \fBfy_generic_builder_reset()\fP
+releases the memory of that tag
 .TP
 .B FYGBCF_TRACE
 Enable diagnostic tracing
@@ -5747,7 +5770,27 @@ Reset a builder to its initial empty state without freeing it.
 .UNINDENT
 .SS Description
 .sp
-All previously built values become invalid after reset.
+All previously built values become invalid after reset, including the ones
+of a builder that has this one as its parent.
+.SS The memory of the builder is released only if the builder owns it
+.INDENT 0.0
+.IP \(bu 2
+A builder that makes its own allocator (fy_generic_builder_create() with
+FYGBCF_CREATE_ALLOCATOR, or no allocator in the config) is emptied.
+.IP \(bu 2
+A builder made in place (fy_generic_builder_create_in_place()) is emptied,
+dedup tables included; its buffer is as it was after the create.
+.IP \(bu 2
+A builder that borrows an allocator is emptied only if it has a tag of its
+own (FYGBCF_CREATE_TAG). Without one it uses the default tag of the
+allocator, which is shared with the other users of the allocator, so the
+reset does not release it and the memory keeps growing with each use.
+.UNINDENT
+.sp
+So to reuse a builder on a shared allocator, as in a loop over many files,
+create it with FYGBCF_CREATE_TAG.
+.sp
+A reset is not thread safe: nothing may use the builder while it runs.
 .SS fy_gb_alloc
 .INDENT 0.0
 .TP
@@ -6089,6 +6132,54 @@ Return the allocator used by a builder.
 .SS Return
 .sp
 Pointer to the underlying fy_allocator, or NULL.
+.SS fy_generic_refs_get
+.INDENT 0.0
+.TP
+.B fy_generic fy_generic_refs_get(struct fy_allocator *a) 
+Read the root generic published in a durable arena
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator (durable, or a layer over one)
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The generic counterpart of \fBfy_allocator_refs_get()\fP \%<#\:c\:.fy_allocator_refs_get>\&.
+.SS Return
+.sp
+The published root, or fy_invalid if none has been published.
+.SS fy_generic_refs_publish
+.INDENT 0.0
+.TP
+.B int fy_generic_refs_publish(struct fy_allocator *a, fy_generic expected, fy_generic desired, unsigned int flags) 
+Atomically publish a root generic in a durable arena
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator (durable, or a layer over one)
+.IP \(bu 2
+\fBexpected\fP (fy_generic) – The root expected to be current (fy_invalid for none)
+.IP \(bu 2
+\fBdesired\fP (fy_generic) – The new root
+.IP \(bu 2
+\fBflags\fP (unsigned int) – FY_ALLOC_REFS_* bits
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The generic counterpart of \fBfy_allocator_refs_publish()\fP \%<#\:c\:.fy_allocator_refs_publish>\&. \fBdesired\fP must be
+in place or stored in \fBa\fP\&.
+.SS Return
+.sp
+0 if published, 1 if \fBexpected\fP did not match (no change), or \-1 on error,
+including a \fBdesired\fP whose storage is not in \fBa\fP\&.
 .SS fy_generic_builder_get_cfg
 .INDENT 0.0
 .TP
@@ -7108,7 +7199,8 @@ enum fy_generic_document_builder_flags {
     FYGDBF_CREATE_MARKERS,
     FYGDBF_PYYAML_COMPAT,
     FYGDBF_KEEP_STYLE,
-    FYGDBF_KEEP_FAILSAFE_STR
+    FYGDBF_KEEP_FAILSAFE_STR,
+    FYGDBF_NO_YAML_1_2_BINARY
 };
 .EE
 .UNINDENT
@@ -7136,6 +7228,9 @@ Preserve original scalar/collection style information
 .TP
 .B FYGDBF_KEEP_FAILSAFE_STR
 Keep failsafe\-schema plain string tags
+.TP
+.B FYGDBF_NO_YAML_1_2_BINARY
+Keep YAML 1.2 !!binary scalars as tagged base64 text
 .UNINDENT
 .SS struct fy_generic_document_builder_cfg
 .INDENT 0.0
@@ -7457,7 +7552,8 @@ enum fy_op_parse_flags {
     FYOPPF_SLOPPY_FLOW_INDENTATION,
     FYOPPF_RELAXED_FLOW_DOC,
     FYOPPF_KEEP_ANCHORS,
-    FYOPPF_ENABLE_CACHE
+    FYOPPF_ENABLE_CACHE,
+    FYOPPF_NO_YAML_1_2_BINARY
 };
 .EE
 .UNINDENT
@@ -7533,11 +7629,21 @@ Preserve anchor metadata even when resolving documents
 .TP
 .B FYOPPF_ENABLE_CACHE
 Enable transparent regular\-file parse caching
+.TP
+.B FYOPPF_NO_YAML_1_2_BINARY
+Keep YAML 1.2 !!binary scalars as tagged base64 text;
+by default they decode to their bytes, as in YAML 1.1
 .UNINDENT
 .SS Description
 .sp
 Control how input is located and how the YAML parser behaves during a
 \fBfy_parse()\fP / \fBfy_local_parse()\fP / \fBfy_gb_parse()\fP call.
+.sp
+With \fBFYOPPF_ENABLE_CACHE\fP a parse served from the cache returns values that
+live in the cache entry. The builder keeps every such entry until it is
+destroyed or reset, so the values of all cached parses into it stay valid.
+The builder’s userdata and cleanup callback are not touched. A stack
+builder, e.g. of \fBfy_local_parse()\fP, gets a copy of the values instead.
 .SS struct fy_op_parse_args
 .INDENT 0.0
 .TP
@@ -7621,7 +7727,8 @@ enum fy_op_emit_flags {
     FYOPEF_STYLE_COMPACT,
     FYOPEF_STYLE_ONELINE,
     FYOPEF_EMIT_EVENTS,
-    FYOPEF_AUTO_ANCHOR
+    FYOPEF_AUTO_ANCHOR,
+    FYOPEF_BINARY_BASE64
 };
 .EE
 .UNINDENT
@@ -7745,6 +7852,10 @@ Use emit events, not the optimized generic emit path
 .TP
 .B FYOPEF_AUTO_ANCHOR
 Auto\-emit anchors/aliases for repeated values
+.TP
+.B FYOPEF_BINARY_BASE64
+In YAML, write a string that is mostly bytes that aren’t
+UTF\-8 as !!binary base64; others keep uDCxx escapes
 .UNINDENT
 .SS Description
 .sp
@@ -7990,7 +8101,8 @@ enum fy_gb_op_flags {
     FYGBOPF_UNSIGNED,
     FYGBOPF_NO_CLOBBER,
     FYGBOPF_PRUNE,
-    FYGBOPF_SORT_CREATE
+    FYGBOPF_SORT_CREATE,
+    FYGBOPF_DIGIT_KEYS
 };
 .EE
 .UNINDENT
@@ -8144,6 +8256,9 @@ With DELETE_AT_PATH, drop parent mappings that become empty
 .TP
 .B FYGBOPF_SORT_CREATE
 On create, sort items (sequences) / pairs by key (mappings)
+.TP
+.B FYGBOPF_DIGIT_KEYS
+With \fB*_AT_PATH\fP, if key 1 is missing try key “1”
 .UNINDENT
 .SS Description
 .sp
@@ -8226,9 +8341,33 @@ Splits \fBpath\fP on ‘/’ (empty segments are skipped, so leading, trailing
 and repeated slashes are harmless). All\-digit segments become integer
 generics (usable as sequence indices); everything else becomes a
 string generic. “” and “/” yield an empty sequence.
+.sp
+Segments use JSON Pointer escapes: “~1” is ‘/’ and “~0” is ‘~’.
 .SS Return
 .sp
 A sequence of path segments, or fy_invalid on error.
+.SS fy_gb_path_segment_escape
+.INDENT 0.0
+.TP
+.B fy_generic fy_gb_path_segment_escape(struct fy_generic_builder *gb, const char *segment) 
+Escape one path segment.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBgb\fP (struct fy_generic_builder*) – Builder that owns the result
+.IP \(bu 2
+\fBsegment\fP (const char*) – The segment to escape
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Writes ‘~’ as “~0” and ‘/’ as “~1” (JSON Pointer).
+.SS Return
+.sp
+The escaped segment as a string generic, or fy_invalid on error.
 .SS fy_gb_sequence_create
 .INDENT 0.0
 .TP
@@ -8641,15 +8780,15 @@ Validate a generic using a builder, skipping trivial cases.
 .INDENT 0.0
 .TP
 .B fy_generic fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d) 
-Adjust all pointers in a generic after a buffer realloc.
+Adjust all pointers in a generic after a buffer move.
 .INDENT 7.0
 .TP
 .B Parameters
 .INDENT 7.0
 .IP \(bu 2
-\fBstart\fP (void*) – Old buffer start
+\fBstart\fP (void*) – New buffer start
 .IP \(bu 2
-\fBend\fP (void*) – Old buffer end (exclusive)
+\fBend\fP (void*) – New buffer end (exclusive)
 .IP \(bu 2
 \fBv\fP (fy_generic) – Generic value to patch
 .IP \(bu 2
@@ -8659,12 +8798,154 @@ Adjust all pointers in a generic after a buffer realloc.
 .UNINDENT
 .SS Description
 .sp
-When a backing buffer is reallocated (e.g. by mremap), all embedded pointers
-shift by \fBd\fP bytes.  This function patches every pointer in \fBv\fP that falls
-within [@start, \fBend\fP) by adding \fBd\fP\&.
+When a backing buffer is reallocated (e.g. by mremap) or copied, all
+embedded pointers still refer to the source buffer. Add \fBd\fP bytes to each
+pointer outside [@start, \fBend\fP) to reference the destination buffer. Read
+the content from the destination buffer without accessing the source buffer.
+Pointers within the destination range are already relocated, so shared
+values are relocated only once.
 .SS Return
 .sp
 The relocated fy_generic with updated pointers.
+.SS fy_generic_image_create
+.INDENT 0.0
+.TP
+.B void *fy_generic_image_create(fy_generic v, size_t *sizep) 
+Create an image of a generic value.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) – The value; an inline value, e.g. 7, is the header alone
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Receives the size of the image in bytes
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Copy \fBv\fP and its referenced data. Preserve shared values and encode pointers
+relative to the image base.
+.SS Return
+.sp
+The image, aligned to FY_GENERIC_IMAGE_ALIGN, or NULL on error. Release it
+with \fBfy_generic_image_destroy()\fP\&. The image does not refer to the builder
+of \fBv\fP\&.
+.SS fy_generic_image_create_with_hint
+.INDENT 0.0
+.TP
+.B void *fy_generic_image_create_with_hint(fy_generic v, size_t hint, size_t *sizep) 
+Create an image with a capacity hint.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) – The value; an inline value, e.g. 7, is the header alone
+.IP \(bu 2
+\fBhint\fP (size_t) – Estimated image size in bytes, or zero for the default
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Receives the size of the image in bytes
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fBfy_generic_image_create()\fP, but start with \fBhint\fP bytes of capacity,
+rounded up to FY_GENERIC_IMAGE_ALIGN. Grow the buffer if the image does not
+fit. A zero hint uses the default initial capacity. The returned size is
+the image size, which can be smaller than the allocated capacity.
+.SS Return
+.sp
+The image, aligned to FY_GENERIC_IMAGE_ALIGN, or NULL on error. Release it
+with \fBfy_generic_image_destroy()\fP\&.
+.SS fy_generic_image_destroy
+.INDENT 0.0
+.TP
+.B void fy_generic_image_destroy(void *image) 
+Free an allocated image.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBimage\fP (void*) – Allocated image, or NULL
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Release an image returned by \fBfy_generic_image_create()\fP or
+\fBfy_generic_image_create_with_hint()\fP, before or after loading. Do not use
+this function for caller\-provided buffers. Values that refer to the image
+become invalid after this call. A NULL image is ignored.
+.SS fy_generic_image_create_in_place
+.INDENT 0.0
+.TP
+.B int fy_generic_image_create_in_place(fy_generic v, void *buf, size_t size, size_t *sizep) 
+Create an image in a supplied buffer.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBv\fP (fy_generic) – The value; an inline value, e.g. 7, is the header alone
+.IP \(bu 2
+\fBbuf\fP (void*) – The buffer, aligned to FY_GENERIC_IMAGE_ALIGN
+.IP \(bu 2
+\fBsize\fP (size_t) – Size of the buffer in bytes
+.IP \(bu 2
+\fBsizep\fP (size_t*) – Receives the size of the image in bytes; when the buffer is too
+small it receives the size that the image needs
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Like \fBfy_generic_image_create()\fP, but use a linear allocator in \fBbuf\fP to build
+the image directly in the supplied buffer. The buffer need not be zeroed.
+If it is too small, allocate a temporary image to determine the required
+size, then free the temporary image before returning. The caller retains
+ownership of \fBbuf\fP and must release it with its matching deallocator.
+.SS Return
+.sp
+0 on success. On error \-1, with errno ENOSPC when the buffer is too small,
+EINVAL for a value or a buffer that cannot be used, and ENOMEM when a
+memory allocation fails.
+.SS fy_generic_image_load
+.INDENT 0.0
+.TP
+.B int fy_generic_image_load(void *image, size_t size, fy_generic *rootp) 
+Load and relocate an image in place.
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBimage\fP (void*) – The image
+.IP \(bu 2
+\fBsize\fP (size_t) – Size of the image in bytes
+.IP \(bu 2
+\fBrootp\fP (fy_generic*) – Receives the value, which lives in the image and is read only
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+Validate the header and relocate pointers to the current arena address.
+The image must be in writable memory aligned to FY_GENERIC_IMAGE_ALIGN.
+The first load modifies the image. Subsequent loads of the same image do
+not modify the relocated pointers.
+.sp
+The load checks every pointer, so an image from an untrusted source is safe
+to load. It fails if a pointer or the object behind it is outside the arena
+or misaligned, a string has no NUL, a sequence or mapping contains itself,
+or an escape is unknown. If the header is bad the image is not changed. If
+the arena is bad the image can be half relocated: throw it away.
+.SS Return
+.sp
+0 on success, \-1 when the image is not usable.
 .SS fy_gb_get_schema
 .INDENT 0.0
 .TP

@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-CORE" "3" "Sep 25, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-CORE" "3" "Nov 09, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-core \- libfyaml core API
 .SH CORE
@@ -465,7 +465,8 @@ enum fy_parse_cfg_flags {
     FYPCF_KEEP_STYLE,
     FYPCF_RELAXED_FLOW_DOC,
     FYPCF_KEEP_ANCHORS,
-    FYPCF_ENABLE_CACHE
+    FYPCF_ENABLE_CACHE,
+    FYPCF_NO_YAML_1_2_BINARY
 };
 .EE
 .UNINDENT
@@ -547,6 +548,10 @@ Preserve anchor metadata even when resolving documents
 .TP
 .B FYPCF_ENABLE_CACHE
 Enable transparent regular\-file parse cache
+.TP
+.B FYPCF_NO_YAML_1_2_BINARY
+Keep YAML 1.2 !!binary scalars as tagged base64 text
+in generic parses (YAML 1.1 always decodes them)
 .UNINDENT
 .SS Description
 .sp

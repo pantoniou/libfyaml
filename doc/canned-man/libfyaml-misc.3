@@ -28,7 +28,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "LIBFYAML-MISC" "3" "Sep 25, 2026" "1.0.0" "libfyaml"
+.TH "LIBFYAML-MISC" "3" "Nov 09, 2026" "1.0.0" "libfyaml"
 .SH NAME
 libfyaml-misc \- libfyaml miscellaneous API
 .SH UTILITIES
@@ -1947,6 +1947,53 @@ published), so a crash never exposes a head that points at unflushed data.
 .sp
 0 if the swap succeeded, 1 if \fBexpected\fP did not match (no change), or \-1 on
 error / if the allocator does not support publishing.
+.SS fy_allocator_ptr_to_handle
+.INDENT 0.0
+.TP
+.B uint64_t fy_allocator_ptr_to_handle(struct fy_allocator *a, const void *ptr) 
+Get a stable handle for a location in an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator (durable, or a layer over one)
+.IP \(bu 2
+\fBptr\fP (const void*) – A pointer to memory handed out by \fBa\fP
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The handle identifies the same location in every process that opens the
+same durable arena. Publish handles, not raw pointers, as the refs head;
+under FIL\-C the arena is mapped at a different address in each process.
+.SS Return
+.sp
+The handle, or 0 if \fBptr\fP is not memory of \fBa\fP\&.
+.SS fy_allocator_handle_to_ptr
+.INDENT 0.0
+.TP
+.B void *fy_allocator_handle_to_ptr(struct fy_allocator *a, uint64_t handle) 
+Get the pointer for a handle in an allocator
+.INDENT 7.0
+.TP
+.B Parameters
+.INDENT 7.0
+.IP \(bu 2
+\fBa\fP (struct fy_allocator*) – The allocator (durable, or a layer over one)
+.IP \(bu 2
+\fBhandle\fP (uint64_t) – A handle from \fBfy_allocator_ptr_to_handle()\fP, possibly obtained by
+another process
+.UNINDENT
+.UNINDENT
+.UNINDENT
+.SS Description
+.sp
+The inverse of \fBfy_allocator_ptr_to_handle()\fP\&.
+.SS Return
+.sp
+The pointer, or NULL if \fBhandle\fP does not identify memory of \fBa\fP\&.
 .SS fy_allocator_generation
 .INDENT 0.0
 .TP
