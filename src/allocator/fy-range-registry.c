@@ -41,6 +41,7 @@ struct fy_range_entry {
 	long parent;			/* innermost enclosing entry, or -1 */
 	const void *base;		/* start, as a pointer */
 	uintptr_t logical;		/* logical address of start */
+	bool persisted;			/* its pointer slots are persisted integers */
 };
 
 struct fy_range_table {
@@ -50,9 +51,16 @@ struct fy_range_table {
 	struct fy_range_entry e[];
 };
 
+/*
+ * A translated range holds logical addresses in its pointer slots, as integers
+ * that are turned back into pointers through the table. That is every range
+ * that is at another address than its logical one, and every persisted range:
+ * what a file holds is an integer even where the address is the one it was
+ * written for, since a pointer does not survive in a file under FIL-C.
+ */
 static inline bool fy_range_entry_translated(const struct fy_range_entry *e)
 {
-	return e->logical != e->start;
+	return e->persisted || e->logical != e->start;
 }
 
 #define FY_RANGE_STRIPES	16	/* power of two */
@@ -155,7 +163,8 @@ static long fy_range_table_find_exact(const struct fy_range_table *t, uintptr_t 
 }
 
 static inline void fy_range_entry_set(struct fy_range_entry *e, const void *base, size_t size,
-				      struct fy_allocator *owner, int tag, uintptr_t logical)
+				      struct fy_allocator *owner, int tag, uintptr_t logical,
+				      bool persisted)
 {
 	e->start = (uintptr_t)base;
 	e->size = size;
@@ -163,6 +172,7 @@ static inline void fy_range_entry_set(struct fy_range_entry *e, const void *base
 	e->tag = tag;
 	e->base = base;
 	e->logical = logical;
+	e->persisted = persisted;
 }
 
 static inline bool fy_range_overlap(uintptr_t s1, size_t z1, uintptr_t s2, size_t z2)
@@ -179,7 +189,7 @@ static inline bool fy_range_overlap(uintptr_t s1, size_t z1, uintptr_t s2, size_
 static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 				  const void *base, size_t size,
 				  struct fy_allocator *owner, int tag, uintptr_t logical,
-				  struct fy_range_table **ntp)
+				  bool persisted, struct fy_range_table **ntp)
 {
 	struct fy_range_table *nt;
 	struct fy_range_entry *e, *p, *x;
@@ -207,13 +217,13 @@ static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 		if ((long)i == skip)
 			continue;
 		if (!inserted && fy_range_before(start, size, t->e[i].start, t->e[i].size)) {
-			fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical);
+			fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical, persisted);
 			inserted = true;
 		}
 		nt->e[j++] = t->e[i];
 	}
 	if (!inserted)
-		fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical);
+		fy_range_entry_set(&nt->e[j++], base, size, owner, tag, logical, persisted);
 	nt->count = count;
 	nt->xlat = (long *)&nt->e[count];
 	nt->nxlat = 0;
@@ -251,6 +261,11 @@ static int fy_range_table_rebuild(const struct fy_range_table *t, long skip,
 			e = &nt->e[j];
 			if (e == x)
 				continue;
+			/* a persisted range at its own logical address holds the ranges
+			 * inside it, and may be held by one, as they are */
+			if (x->logical == x->start &&
+			    (e->start - x->start < x->size || x->start - e->start < e->size))
+				continue;
 			if (fy_range_entry_translated(e) ?
 			    fy_range_overlap(x->logical, x->size, e->logical, e->size) :
 			    fy_range_overlap(x->logical, x->size, e->start, e->size)) {
@@ -277,7 +292,8 @@ enum fy_range_op {
 };
 
 static int fy_range_update(enum fy_range_op op, const void *base, size_t size,
-			   struct fy_allocator *owner, int tag, uintptr_t logical)
+			   struct fy_allocator *owner, int tag, uintptr_t logical,
+			   bool persisted)
 {
 	uintptr_t start = (uintptr_t)base;
 	struct fy_range_read rd;
@@ -301,10 +317,11 @@ static int fy_range_update(enum fy_range_op op, const void *base, size_t size,
 				tag = t->e[pos].tag;
 				base = t->e[pos].base;
 				logical = t->e[pos].logical;
+				persisted = t->e[pos].persisted;
 			}
 		}
 
-		if (fy_range_table_rebuild(t, pos, base, size, owner, tag, logical, &nt)) {
+		if (fy_range_table_rebuild(t, pos, base, size, owner, tag, logical, persisted, &nt)) {
 			/* unregistering must not fail; the memory is going away */
 			if (op != FYRO_UNREGISTER || errno != ENOMEM)
 				goto err_out;
@@ -334,9 +351,9 @@ err_out:
 	return -1;
 }
 
-int fy_range_register_logical(const void *start, size_t size,
-			      struct fy_allocator *owner, int tag,
-			      uintptr_t logical)
+static int fy_range_register_impl(const void *start, size_t size,
+				  struct fy_allocator *owner, int tag,
+				  uintptr_t logical, bool persisted)
 {
 	uintptr_t s = (uintptr_t)start;
 
@@ -344,13 +361,21 @@ int fy_range_register_logical(const void *start, size_t size,
 		errno = EINVAL;
 		return -1;
 	}
-	return fy_range_update(FYRO_REGISTER, start, size, owner, tag, logical);
+	return fy_range_update(FYRO_REGISTER, start, size, owner, tag, logical, persisted);
+}
+
+/* a range of persisted memory: its pointer slots hold logical addresses */
+int fy_range_register_logical(const void *start, size_t size,
+			      struct fy_allocator *owner, int tag,
+			      uintptr_t logical)
+{
+	return fy_range_register_impl(start, size, owner, tag, logical, true);
 }
 
 int fy_range_register(const void *start, size_t size,
 		      struct fy_allocator *owner, int tag)
 {
-	return fy_range_register_logical(start, size, owner, tag, (uintptr_t)start);
+	return fy_range_register_impl(start, size, owner, tag, (uintptr_t)start, false);
 }
 
 int fy_range_resize(const void *start, struct fy_allocator *owner, size_t size)
@@ -361,12 +386,12 @@ int fy_range_resize(const void *start, struct fy_allocator *owner, size_t size)
 		errno = EINVAL;
 		return -1;
 	}
-	return fy_range_update(FYRO_RESIZE, start, size, owner, 0, 0);
+	return fy_range_update(FYRO_RESIZE, start, size, owner, 0, 0, false);
 }
 
 int fy_range_unregister(const void *start, struct fy_allocator *owner)
 {
-	return fy_range_update(FYRO_UNREGISTER, start, 0, owner, 0, 0);
+	return fy_range_update(FYRO_UNREGISTER, start, 0, owner, 0, 0, false);
 }
 
 static bool fy_range_lookup_internal(const void *ptr, struct fy_allocator *owner,
@@ -499,14 +524,19 @@ void *fy_range_logical_to_ptr(uintptr_t addr)
 
 #ifdef __FILC__
 
-/* the value to store for ptr: its logical address in a translated range */
-static void *fy_range_ptr_store(const void *ptr)
+/*
+ * The value to store for ptr: its logical address in a translated range.
+ * *translatedp tells whether there is such a range, which the value cannot,
+ * since a persisted range may be at its own logical address.
+ */
+static void *fy_range_ptr_store_x(const void *ptr, bool *translatedp)
 {
 	struct fy_range_read rd;
 	const struct fy_range_table *t;
 	const struct fy_range_entry *e;
 	uintptr_t addr = (uintptr_t)ptr;
 	void *v = (void *)ptr;
+	bool translated = false;
 	long pos;
 
 	fy_range_read_begin(&rd);
@@ -523,13 +553,21 @@ static void *fy_range_ptr_store(const void *ptr)
 			e = &t->e[pos];
 			if (fy_range_entry_translated(e)) {
 				v = (void *)(e->logical + (addr - e->start));
+				translated = true;
 				break;
 			}
 		}
 	}
 
 	fy_range_read_end(&rd);
+	if (translatedp)
+		*translatedp = translated;
 	return v;
+}
+
+static void *fy_range_ptr_store(const void *ptr)
+{
+	return fy_range_ptr_store_x(ptr, NULL);
 }
 
 /* the pointer for a stored value */
@@ -555,7 +593,10 @@ static void *fy_range_ptr_load(const void *stored)
 /* a slot in a translated range holds a logical address, as an integer */
 static bool fy_range_slot_translated(const void *slot)
 {
-	return fy_range_ptr_store(slot) != slot;
+	bool translated;
+
+	(void)fy_range_ptr_store_x(slot, &translated);
+	return translated;
 }
 
 void *fy_range_slot_load(void *slot)

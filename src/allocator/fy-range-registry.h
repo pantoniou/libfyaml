@@ -105,7 +105,9 @@ static inline int fy_range_track_logical(const void *start, size_t size,
 static inline int fy_range_track(const void *start, size_t size,
 				 struct fy_allocator *owner, int tag)
 {
-	return fy_range_track_logical(start, size, owner, tag, (uintptr_t)start);
+	if (!FY_RANGE_TRACKING)
+		return 0;
+	return fy_range_register(start, size, owner, tag);
 }
 
 static inline int fy_range_track_resize(const void *start, struct fy_allocator *owner, size_t size)
