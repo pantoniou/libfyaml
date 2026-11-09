@@ -8335,6 +8335,109 @@ START_TEST(generic_image_damaged)
 }
 END_TEST
 
+/*
+ * Plain ASCII JSON strings take a fast path in the emitter. Compare its text
+ * with this simple oracle at sizes around the 4096 byte run, and parse the
+ * text back. Strings with other bytes go to the general writer and must
+ * still read back the same.
+ */
+static size_t generic_json_oracle(char *out, const char *s, size_t n)
+{
+	size_t i, o = 0;
+
+	out[o++] = '"';
+	for (i = 0; i < n; i++) {
+		switch (s[i]) {
+		case '"': out[o++] = '\\'; out[o++] = '"'; break;
+		case '\\': out[o++] = '\\'; out[o++] = '\\'; break;
+		case '\n': out[o++] = '\\'; out[o++] = 'n'; break;
+		case '\r': out[o++] = '\\'; out[o++] = 'r'; break;
+		case '\t': out[o++] = '\\'; out[o++] = 't'; break;
+		case '\b': out[o++] = '\\'; out[o++] = 'b'; break;
+		case '\f': out[o++] = '\\'; out[o++] = 'f'; break;
+		default: out[o++] = s[i]; break;
+		}
+	}
+	out[o++] = '"';
+	out[o] = 0;
+	return o;
+}
+
+START_TEST(generic_emit_json_string)
+{
+	static const size_t sizes[] = { 1, 2, 7, 63, 64, 4094, 4095, 4096, 4097, 8191, 8192, 20000 };
+	static const char specials[] = "\"\\\n\r\t\b\f \x01\x1f\x7f\x80\xc3\xa9\xe2\x80\xa8";
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	fy_generic v, seq, map, emitted, parsed, back;
+	size_t i, j, k, n, o;
+	unsigned int seed = 12345;
+	char *str, *want;
+	bool plain;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	str = malloc(20000 + 1);
+	want = malloc(2 * 20000 + 8);
+	ck_assert_ptr_ne(str, NULL);
+	ck_assert_ptr_ne(want, NULL);
+
+	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
+		/* j < 8: plain ASCII, else also other bytes; many specials for j < 4, few after */
+		for (j = 0; j < 12; j++) {
+			n = sizes[i];
+			plain = j < 8;
+			for (k = 0; k < n; k++) {
+				seed = seed * 1103515245u + 12345u;
+				if ((seed >> 16) % (j < 4 ? 3 : 61) == 0)
+					str[k] = specials[(seed >> 8) % (plain ? 8 : sizeof(specials) - 1)];
+				else
+					str[k] = (char)('a' + (seed >> 12) % 26);
+			}
+			str[n] = 0;
+			if (j == 0)	/* a string that is all escapes */
+				for (k = 0; k < n; k++)
+					str[k] = specials[k % 7];
+			if (j == 4)	/* a string with nothing to escape */
+				for (k = 0; k < n; k++)
+					str[k] = (char)('a' + k % 26);
+
+			v = fy_gb_string_size_create(gb, str, n);
+			ck_assert(fy_generic_is_string(v));
+			/* first as an array item, then as a map key and value */
+			seq = fy_sequence(gb, v);
+			map = fy_mapping(gb, v, v);
+			emitted = fy_emit(gb, seq, FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_JSON |
+					  FYOPEF_STYLE_ONELINE | FYOPEF_NO_ENDING_NEWLINE, NULL);
+			ck_assert(fy_generic_is_string(emitted));
+			if (plain) {
+				o = generic_json_oracle(want + 1, str, n);
+				want[0] = '[';
+				want[o + 1] = ']';
+				want[o + 2] = 0;
+				ck_assert_str_eq(fy_castp(&emitted, ""), want);
+			}
+			parsed = fy_parse(gb, emitted, FYOPPF_DISABLE_DIRECTORY |
+					  FYOPPF_INPUT_TYPE_STRING | FYOPPF_MODE_JSON, NULL);
+			ck_assert(fy_generic_is_valid(parsed));
+			back = fy_get_at(parsed, 0);
+			ck_assert(fy_equal(back, v));
+
+			emitted = fy_emit(gb, map, FYOPEF_DISABLE_DIRECTORY | FYOPEF_MODE_JSON |
+					  FYOPEF_STYLE_ONELINE | FYOPEF_NO_ENDING_NEWLINE, NULL);
+			ck_assert(fy_generic_is_string(emitted));
+			parsed = fy_parse(gb, emitted, FYOPPF_DISABLE_DIRECTORY |
+					  FYOPPF_INPUT_TYPE_STRING | FYOPPF_MODE_JSON, NULL);
+			ck_assert(fy_generic_is_valid(parsed));
+			ck_assert(fy_equal(fy_get(parsed, v, fy_invalid), v));
+		}
+	}
+	free(want);
+	free(str);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* JSON has no aliases: an alias is written as the value its anchor names. */
 START_TEST(generic_emit_json_alias)
 {
@@ -9198,6 +9301,7 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_image_dedup);
 	fy_check_testcase_add_test(ctc, generic_image_marks);
 	fy_check_testcase_add_test(ctc, generic_emit_json_alias);
+	fy_check_testcase_add_test(ctc, generic_emit_json_string);
 	fy_check_testcase_add_test(ctc, generic_image_inline_root);
 	fy_check_testcase_add_test(ctc, generic_image_indirect_root);
 	fy_check_testcase_add_test(ctc, generic_image_in_place);
