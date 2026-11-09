@@ -37,6 +37,21 @@
 #include "blake3.h"
 #include "fy-range-registry.h"
 
+#ifdef __FILC__
+#include <stdfil.h>
+
+/* How many times to collect garbage and try again when the base of a region is
+ * still held by an arena that was closed in this process */
+#define FY_DURABLE_FILC_RESERVE_RETRIES	5
+
+/* The FIL-C runtime keeps its data for a region in the 512 KiB chunk below its
+ * base, so a region cannot start right where another one ends. */
+#define FY_DURABLE_REGION_GAP(chunk_size) \
+	((uint64_t)((chunk_size) > (1ULL << 20) ? (chunk_size) : (1ULL << 20)))
+#else
+#define FY_DURABLE_REGION_GAP(chunk_size) 0ULL
+#endif
+
 static const uint8_t fy_durable_boot_magic[8] = {
 	'O', 'B', 'A', 'R', 'U', 'D', 'F', 'Y'
 };
@@ -620,13 +635,49 @@ static int fy_durable_reserve_region(struct fy_durable_region *rg,
 				     struct fy_allocator *owner, int tag)
 {
 	void *p;
+#if defined(__FILC__) && defined(FILC_HAS_ZGC_RESERVE_AT)
+	int try;
+#endif
 
 #ifdef __FILC__
-	/* mmap() refuses an address hint; region_base stays the logical base */
-	p = fy_mmap(NULL, rg->region_size, PROT_NONE,
-		    FY_MMAP_ANON | FY_MMAP_NORESERVE, -1, 0);
-	if (p == MAP_FAILED)
+	p = NULL;
+#ifdef FILC_HAS_ZGC_RESERVE_AT
+	/* Reserve the region at its base like a native process does. The runtime keeps
+	 * its own data in the chunk (512 KiB) below the base, and takes the chunk the
+	 * region ends in, so those must be free too. */
+	p = zgc_reserve_at((unsigned long)rg->region_base, rg->region_size);
+	/* An arena that was closed in this process keeps its address until the GC has
+	 * found that nothing refers to it any more */
+	for (try = 0; !p && errno == EEXIST && try < FY_DURABLE_FILC_RESERVE_RETRIES; try++) {
+		zgc_wait(zgc_request_fresh());
+		p = zgc_reserve_at((unsigned long)rg->region_base, rg->region_size);
+	}
+	if (p) {
+		/* nothing is accessible until a chunk is mapped, as natively */
+		if (fy_mmap(p, rg->region_size, PROT_NONE,
+			    FY_MMAP_ANON | FY_MMAP_FIXED | FY_MMAP_NORESERVE,
+			    -1, 0) == MAP_FAILED) {
+			fy_munmap(p, rg->region_size);
+			return -1;
+		}
+	} else if (errno != EINVAL) {
+		fprintf(stderr,
+			"libfyaml durable arena: region base 0x%llx (%s) is unavailable "
+			"(%s); reconfigure the base\n",
+			(unsigned long long)rg->region_base, rg->prefix, strerror(errno));
 		return -1;
+	}
+#endif
+	if (!p) {
+		/* The runtime cannot place the region at that address (the base is in the
+		 * first two pages of a 512 KiB chunk, or it is not usable address space),
+		 * or it cannot place regions at all: take any address, and region_base
+		 * stays the logical base */
+		p = fy_mmap(NULL, rg->region_size, PROT_NONE,
+			    FY_MMAP_ANON | FY_MMAP_NORESERVE, -1, 0);
+		if (p == MAP_FAILED)
+			return -1;
+	}
 #else
 	p = fy_mmap((void *)(uintptr_t)rg->region_base, rg->region_size, PROT_NONE,
 		    FY_MMAP_ANON | FY_MMAP_FIXED_NOREPLACE | FY_MMAP_NORESERVE,
@@ -1766,15 +1817,16 @@ int fy_durable_arena_gc(const char *dir_in)
 	root.v = (fy_generic_value)fy_allocator_refs_get(real);
 	est = fy_durable_content_used(da);
 
-	/* 4. copy 1: live -> scratch arena at an adjacent temp base */
+	/* 4. copy 1: live -> scratch arena at an adjacent temp base (FIL-C needs room
+	 * between regions) */
 	memset(&c, 0, sizeof(c));
 	c.dir = gcscratch;
-	c.region_base = region_base + region_size;
+	c.region_base = region_base + region_size + FY_DURABLE_REGION_GAP(chunk_size);
 	c.region_size = region_size;
 	c.chunk_size  = chunk_size;
 	c.flags = FY_DURABLE_ARENA_CREATE | carry_flags;
 	if (separate_index) {
-		c.index_region_base = idx_base + idx_size;
+		c.index_region_base = idx_base + idx_size + FY_DURABLE_REGION_GAP(idx_chunk);
 		c.index_region_size = idx_size;
 		c.index_chunk_size  = idx_chunk;
 	}
