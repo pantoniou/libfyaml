@@ -8092,6 +8092,249 @@ START_TEST(generic_image_refusals)
 }
 END_TEST
 
+/* Read every part of a loaded value. A bad image must not crash this. */
+static size_t generic_test_image_walk(fy_generic v, unsigned int depth)
+{
+	fy_generic k, x;
+	size_t n = 0;
+
+	if (depth > 600)
+		return 0;
+	if (fy_is_string(v)) {
+		/* a string is sized: an in place one has no NUL after it */
+		fy_generic_sized_string szstr = fy_cast(v, fy_szstr_empty);
+		size_t i;
+
+		for (i = 0; i < szstr.size; i++)
+			n += (uint8_t)szstr.data[i];
+	} else if (fy_is_mapping(v)) {
+		fy_foreach_key_value(k, x, v)
+			n += generic_test_image_walk(k, depth + 1) +
+			     generic_test_image_walk(x, depth + 1);
+	} else if (fy_is_sequence(v)) {
+		fy_foreach(x, v)
+			n += generic_test_image_walk(x, depth + 1);
+	} else if (fy_is_int(v)) {
+		n += (size_t)fy_cast(v, 0LL) & 1;
+	} else if (fy_is_float(v)) {
+		n += fy_cast(v, 0.0) > 0;
+	}
+	return n;
+}
+
+/*
+ * A dedup builder stores equal content once, so a sequence, a mapping and a
+ * string can be named by several words. The load must walk such an object
+ * once and still relocate every word that names it.
+ */
+static fy_generic generic_test_dedup_str(struct fy_generic_builder *gb)
+{
+	return fy_gb_string_create(gb, "a string that is too long to be held in place");
+}
+
+static fy_generic generic_test_dedup_seq(struct fy_generic_builder *gb)
+{
+	return fy_sequence(gb, "first long string of the sequence", 42,
+			   generic_test_dedup_str(gb));
+}
+
+static fy_generic generic_test_dedup_map(struct fy_generic_builder *gb)
+{
+	return fy_mapping(gb, "key", generic_test_dedup_seq(gb),
+			  "other", "a long value, longer than fits in place");
+}
+
+/* every use builds the object again: only dedup makes them one object */
+static fy_generic generic_test_dedup_value(struct fy_generic_builder *gb)
+{
+	return fy_mapping(gb,
+		"a", generic_test_dedup_seq(gb), "b", generic_test_dedup_seq(gb),
+		"c", generic_test_dedup_map(gb), "d", generic_test_dedup_map(gb),
+		"e", fy_sequence(gb, generic_test_dedup_seq(gb),
+				 generic_test_dedup_map(gb),
+				 generic_test_dedup_str(gb),
+				 fy_sequence(gb, generic_test_dedup_seq(gb),
+					     generic_test_dedup_seq(gb))),
+		"f", fy_mapping(gb, "m", generic_test_dedup_map(gb),
+				"str", generic_test_dedup_str(gb)),
+		"g", generic_test_dedup_str(gb));
+}
+
+START_TEST(generic_image_dedup)
+{
+	struct fy_generic_builder_cfg dcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER | FYGBCF_DEDUP_ENABLED };
+	struct fy_generic_builder_cfg ncfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb, *ngb, *ref;
+	fy_generic v, nv, root = fy_invalid, again = fy_invalid, expect;
+	uint8_t *image, *nimage;
+	size_t size, nsize;
+
+	gb = fy_generic_builder_create(&dcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	v = generic_test_dedup_value(gb);
+	ck_assert(fy_generic_is_valid(v));
+	/* equal objects built apart are one object with dedup */
+	ck_assert(fy_get(v, "a", fy_invalid).v == fy_get(v, "b", fy_invalid).v);
+	ck_assert(fy_get(v, "c", fy_invalid).v == fy_get(v, "d", fy_invalid).v);
+
+	/* the same value without dedup gives a bigger image */
+	ngb = fy_generic_builder_create(&ncfg);
+	ck_assert_ptr_ne(ngb, NULL);
+	nv = generic_test_dedup_value(ngb);
+	nimage = fy_generic_image_create(nv, &nsize);
+	ck_assert_ptr_ne(nimage, NULL);
+
+	image = fy_generic_image_create(v, &size);
+	ck_assert_ptr_ne(image, NULL);
+	ck_assert_uint_lt(size, nsize);
+	fy_generic_builder_destroy(gb);
+	fy_generic_builder_destroy(ngb);
+
+	ref = fy_generic_builder_create(&ncfg);
+	ck_assert_ptr_ne(ref, NULL);
+	expect = generic_test_dedup_value(ref);
+
+	ck_assert_int_eq(fy_generic_image_load(image, size, &root), 0);
+	ck_assert(fy_equal(expect, root));
+	/* the words that named one object still name one object */
+	ck_assert(fy_get(root, "a", fy_invalid).v == fy_get(root, "b", fy_invalid).v);
+	ck_assert(fy_get(root, "c", fy_invalid).v == fy_get(root, "d", fy_invalid).v);
+	ck_assert(fy_get(root, "c", fy_invalid).v ==
+		  fy_get(fy_get(root, "f", fy_invalid), "m", fy_invalid).v);
+	ck_assert(fy_get(root, "g", fy_invalid).v ==
+		  fy_get(fy_get(root, "f", fy_invalid), "str", fy_invalid).v);
+
+	/* a second load sees the relocated words and gives the same value */
+	ck_assert_int_eq(fy_generic_image_load(image, size, &again), 0);
+	ck_assert(root.v == again.v);
+	ck_assert(fy_equal(expect, again));
+
+	/* the image without dedup loads to the same value */
+	root = fy_invalid;
+	ck_assert_int_eq(fy_generic_image_load(nimage, nsize, &root), 0);
+	ck_assert(fy_equal(expect, root));
+
+	fy_generic_builder_destroy(ref);
+	fy_generic_image_destroy(nimage);
+	fy_generic_image_destroy(image);
+}
+END_TEST
+
+/*
+ * The load keeps its walk state in the top 4 bits of the first word of each
+ * container. An image that has any of them set is refused, and a good image
+ * has them clear again after the load.
+ */
+START_TEST(generic_image_marks)
+{
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	const unsigned int top = sizeof(uintptr_t) * 8 - 4;
+	struct fy_generic_builder *gb;
+	uint8_t *image, *copy;
+	size_t size, off[3], i;
+	unsigned int bit;
+	fy_generic root, v[3];
+	uintptr_t w;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	image = fy_generic_image_create(generic_test_relocate_value(gb), &size);
+	ck_assert_ptr_ne(image, NULL);
+	copy = generic_test_image_copy(image, size);
+
+	/* the root mapping, a sequence and a mapping inside it */
+	ck_assert_int_eq(fy_generic_image_load(copy, size, &root), 0);
+	v[0] = root;
+	v[1] = fy_get(root, "list", fy_invalid);
+	v[2] = fy_get(root, "nested", fy_invalid);
+	for (i = 0; i < ARRAY_SIZE(v); i++) {
+		ck_assert(fy_is_sequence(v[i]) || fy_is_mapping(v[i]));
+		/* the pointer word carries the sequence or mapping tag in its low bits */
+		off[i] = (size_t)(v[i].v & ~(fy_generic_value)FY_COLLECTION_MASK) - (size_t)(uintptr_t)copy;
+		memcpy(&w, copy + off[i], sizeof(w));
+		ck_assert_uint_eq(w >> top, 0);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(v); i++) {
+		for (bit = top; bit < top + 4; bit++) {
+			memcpy(copy, image, size);
+			memcpy(&w, copy + off[i], sizeof(w));
+			w |= (uintptr_t)1 << bit;
+			memcpy(copy + off[i], &w, sizeof(w));
+			root = fy_invalid;
+			ck_assert_int_ne(fy_generic_image_load(copy, size, &root), 0);
+		}
+	}
+
+	fy_align_free(copy);
+	fy_generic_image_destroy(image);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
+/*
+ * Damage a valid image in many ways. Each load must fail, or give a value
+ * that can be read without leaving the image.
+ */
+START_TEST(generic_image_damaged)
+{
+	static const uint8_t bytes[] = { 0x00, 0xff, 0x01, 0x08, 0x10, 0x80 };
+	static const uint64_t words[] = { 0, 1, 7, 8, 0x10, 0x2f, 0x1000, ~(uint64_t)0 };
+	struct fy_generic_builder_cfg gbcfg = { .flags = FYGBCF_SCHEMA_AUTO | FYGBCF_SCOPE_LEADER };
+	struct fy_generic_builder *gb;
+	uint8_t *image, *copy;
+	size_t size, i, j, loaded = 0, refused = 0;
+	fy_generic root, again;
+
+	gb = fy_generic_builder_create(&gbcfg);
+	ck_assert_ptr_ne(gb, NULL);
+	image = fy_generic_image_create(generic_test_relocate_value(gb), &size);
+	ck_assert_ptr_ne(image, NULL);
+	copy = generic_test_image_copy(image, size);
+
+	/* change each byte: set it to 0x00 or 0xff, or flip some bits */
+	for (i = 0; i < size; i++) {
+		for (j = 0; j < sizeof(bytes) / sizeof(bytes[0]); j++) {
+			memcpy(copy, image, size);
+			copy[i] = j < 2 ? bytes[j] : (uint8_t)(copy[i] ^ bytes[j]);
+			root = fy_invalid;
+			if (fy_generic_image_load(copy, size, &root)) {
+				refused++;
+				continue;
+			}
+			loaded++;
+			(void)generic_test_image_walk(root, 0);
+		}
+	}
+	/* overwrite each aligned word with 0, 1, 7, 8, 0x10, ... or all ones */
+	for (i = 0; i + sizeof(uint64_t) <= size; i += sizeof(uint64_t)) {
+		for (j = 0; j < sizeof(words) / sizeof(words[0]); j++) {
+			memcpy(copy, image, size);
+			memcpy(copy + i, &words[j], sizeof(words[j]));
+			root = fy_invalid;
+			if (fy_generic_image_load(copy, size, &root)) {
+				refused++;
+				continue;
+			}
+			loaded++;
+			(void)generic_test_image_walk(root, 0);
+		}
+	}
+	ck_assert_uint_gt(refused, 0);
+	ck_assert_uint_gt(loaded, 0);
+
+	/* loading the same image twice gives the same value */
+	memcpy(copy, image, size);
+	ck_assert_int_eq(fy_generic_image_load(copy, size, &root), 0);
+	ck_assert_int_eq(fy_generic_image_load(copy, size, &again), 0);
+	ck_assert(root.v == again.v);
+
+	fy_align_free(copy);
+	fy_generic_image_destroy(image);
+	fy_generic_builder_destroy(gb);
+}
+END_TEST
+
 /* JSON has no aliases: an alias is written as the value its anchor names. */
 START_TEST(generic_emit_json_alias)
 {
@@ -8951,6 +9194,9 @@ void libfyaml_case_generic(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, generic_image_hint);
 	fy_check_testcase_add_test(ctc, generic_image_large);
 	fy_check_testcase_add_test(ctc, generic_image_refusals);
+	fy_check_testcase_add_test(ctc, generic_image_damaged);
+	fy_check_testcase_add_test(ctc, generic_image_dedup);
+	fy_check_testcase_add_test(ctc, generic_image_marks);
 	fy_check_testcase_add_test(ctc, generic_emit_json_alias);
 	fy_check_testcase_add_test(ctc, generic_image_inline_root);
 	fy_check_testcase_add_test(ctc, generic_image_indirect_root);
