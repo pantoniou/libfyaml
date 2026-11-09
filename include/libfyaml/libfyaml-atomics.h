@@ -85,7 +85,7 @@ extern "C" {
  *
  * The check is required only for _really_ old compilers
  */
-#if !defined(__STDC__NO_ATOMICS__) && \
+#if !defined(__STDC_NO_ATOMICS__) && \
 	((!defined(__cplusplus) && \
 	  ((defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || \
 	   (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))) || \
