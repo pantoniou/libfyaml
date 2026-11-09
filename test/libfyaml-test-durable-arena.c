@@ -45,6 +45,22 @@ void libfyaml_case_durable_arena(struct fy_check_suite *cs)
 #include <libfyaml/libfyaml-generic.h>
 #endif
 
+#ifdef __FILC__
+#include <stdfil.h>
+#endif
+
+/*
+ * Under FIL-C an arena that is closed keeps its address until nothing refers to
+ * it any more, and a dead local still counts: its frame slot is scanned. A test
+ * that reopens an arena at the same base therefore does the first session in a
+ * function of its own, whose frame is gone when it returns.
+ */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define TEST_NOINLINE __declspec(noinline)
+#else
+#define TEST_NOINLINE __attribute__((noinline))
+#endif
+
 
 /*
  * Tests use a distinct high-half base and a deliberately small geometry
@@ -339,9 +355,9 @@ START_TEST(durable_roundtrip_fixed_base)
 END_TEST
 
 #ifdef HAVE_GENERIC
-START_TEST(durable_builder_roundtrip)
+/* the first session: intern a string, leave its logical address */
+static TEST_NOINLINE int builder_roundtrip_write(const char *dir, uintptr_t *addrp)
 {
-	char dir[256];
 	struct fy_allocator *da;
 	struct fy_allocator *a;
 	struct fy_generic_builder_cfg gb_cfg;
@@ -350,14 +366,9 @@ START_TEST(durable_builder_roundtrip)
 	const void *p;
 	uintptr_t addr;
 
-	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
-
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
-	if (!da) {
-		rm_rf(dir);
-		durable_unavailable();
-		return;
-	}
+	if (!da)
+		return -1;
 	a = da;
 
 	memset(&gb_cfg, 0, sizeof(gb_cfg));
@@ -382,6 +393,23 @@ START_TEST(durable_builder_roundtrip)
 	fy_generic_builder_destroy(gb);
 	fy_allocator_sync(da);
 	fy_allocator_destroy(da);
+	*addrp = addr;
+	return 0;
+}
+
+START_TEST(durable_builder_roundtrip)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	uintptr_t addr;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	if (builder_roundtrip_write(dir, &addr)) {
+		rm_rf(dir);
+		durable_unavailable();
+		return;
+	}
 
 	/* reopen and read the string straight from its fixed address */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
@@ -615,7 +643,7 @@ START_TEST(durable_base_conflict)
 	uint64_t base = 0x3c0000000000ULL;	/* separate from the others */
 	void *occupy;
 
-#ifdef __FILC__
+#if defined(__FILC__) && !defined(FILC_HAS_ZGC_RESERVE_AT)
 	/* the region is reserved wherever the runtime puts it; its base is
 	 * only logical, so there is nothing to conflict with */
 	fprintf(stderr, "SKIP: FIL-C does not reserve durable regions at their base\n");
@@ -625,9 +653,17 @@ START_TEST(durable_base_conflict)
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
 
 	/* occupy the chosen base so the reservation must fail */
+#ifdef FILC_HAS_ZGC_RESERVE_AT
+	/* FIL-C maps nothing at an address of its own choosing: the occupier is a
+	 * reservation, like the one the arena makes */
+	occupy = zgc_reserve_at((unsigned long)base, TEST_CHUNK_SIZE);
+	if (!occupy)
+		occupy = MAP_FAILED;
+#else
 	occupy = fy_mmap((void *)(uintptr_t)base, TEST_CHUNK_SIZE, PROT_NONE,
 			 FY_MMAP_ANON | FY_MMAP_FIXED_NOREPLACE | FY_MMAP_NORESERVE,
 			 -1, 0);
+#endif
 	if (occupy != (void *)(uintptr_t)base) {
 		/* couldn't even occupy it; environmental, soft-skip */
 		if (occupy != MAP_FAILED)
@@ -793,6 +829,29 @@ START_TEST(dedup_same_pointer)
 }
 END_TEST
 
+/* the first session: store the payloads, leave their logical addresses */
+static TEST_NOINLINE int dedup_session_write(const char *dir, uintptr_t *addr, int K)
+{
+	char pl[80];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	int i;
+
+	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
+	if (!da)
+		return -1;
+	a = da;
+	for (i = 0; i < K; i++) {
+		size_t len = dd_payload(pl, sizeof(pl), i);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		ck_assert_ptr_ne(p, NULL);
+		addr[i] = durable_logical(p);
+	}
+	fy_allocator_sync(da);
+	fy_allocator_destroy(da);
+	return 0;
+}
+
 START_TEST(dedup_cross_session)
 {
 	char dir[256], pl[80];
@@ -804,17 +863,7 @@ START_TEST(dedup_cross_session)
 	int i;
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
-	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
-	if (!da) { rm_rf(dir); return; }
-	a = da;
-	for (i = 0; i < K; i++) {
-		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		ck_assert_ptr_ne(p, NULL);
-		addr[i] = durable_logical(p);
-	}
-	fy_allocator_sync(da);
-	fy_allocator_destroy(da);
+	if (dedup_session_write(dir, addr, K)) { rm_rf(dir); return; }
 
 	/* reopen: the same content must dedup to the identical address */
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);
@@ -1170,22 +1219,17 @@ START_TEST(refs_readonly_rejected)
 }
 END_TEST
 
-START_TEST(refs_cross_session)
+/* the first session: store a payload and publish a handle to it */
+static TEST_NOINLINE int refs_session_write(const char *dir, uint64_t *wp)
 {
-	char dir[256];
 	struct fy_allocator *da;
 	struct fy_allocator *a;
 	const char *p;
 	uint64_t w;
 
-	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
-
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
-	if (!da) {
-		rm_rf(dir);
-		durable_unavailable();
-		return;
-	}
+	if (!da)
+		return -1;
 	a = da;
 
 	p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, "refs-payload", 13, 16);
@@ -1198,16 +1242,33 @@ START_TEST(refs_cross_session)
 
 	/* checkpoint: content + head durable, ordered */
 	ck_assert_int_eq(fy_allocator_refs_publish(da, 0, w, FY_ALLOC_REFS_CHECKPOINT), 0);
+#ifndef __FILC__
+	ck_assert_uint_eq(w, (uint64_t)(uintptr_t)p);	/* natively, the very same address */
+#endif
 	fy_allocator_destroy(da);
+	*wp = w;
+	return 0;
+}
+
+START_TEST(refs_cross_session)
+{
+	char dir[256];
+	struct fy_allocator *da;
+	uint64_t w;
+
+	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
+
+	if (refs_session_write(dir, &w)) {
+		rm_rf(dir);
+		durable_unavailable();
+		return;
+	}
 
 	/* reopen: head word identical, and the content it identifies intact */
 	da = open_test_arena(dir, TEST_REGION_BASE, 0);
 	ck_assert_ptr_ne(da, NULL);
 	ck_assert_uint_eq(fy_allocator_refs_get(da), w);
 	ck_assert_mem_eq(fy_allocator_handle_to_ptr(da, w), "refs-payload", 13);
-#ifndef __FILC__
-	ck_assert_uint_eq(w, (uint64_t)(uintptr_t)p);	/* natively, the very same address */
-#endif
 
 	fy_allocator_destroy(da);
 	rm_rf(dir);
@@ -1527,6 +1588,30 @@ END_TEST
  * and the deduped content all come back, and the same payloads dedup to the
  * identical (fixed) content addresses across sessions.
  */
+/* the first session: store the payloads in an arena with a separate index */
+static TEST_NOINLINE int separate_index_session_write(const char *dir, uintptr_t *addr, int K)
+{
+	char pl[80];
+	struct fy_allocator *da;
+	struct fy_allocator *a;
+	int i;
+
+	da = open_test_arena_sep(dir, TEST_REGION_BASE, TEST_INDEX_REGION_BASE,
+				 FY_DURABLE_ARENA_DEDUP | FY_DURABLE_ARENA_SEPARATE_INDEX);
+	if (!da)
+		return -1;
+	a = da;
+	for (i = 0; i < K; i++) {
+		size_t len = dd_payload(pl, sizeof(pl), i);
+		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
+		ck_assert_ptr_ne(p, NULL);
+		addr[i] = durable_logical(p);
+	}
+	ck_assert_int_eq(fy_allocator_sync(da), 0);
+	fy_allocator_destroy(da);
+	return 0;
+}
+
 START_TEST(durable_separate_index_cross_session)
 {
 	char dir[256], pl[80];
@@ -1537,22 +1622,11 @@ START_TEST(durable_separate_index_cross_session)
 	int i, bad = 0;
 
 	ck_assert_ptr_ne(make_tmpdir(dir, sizeof(dir)), NULL);
-	da = open_test_arena_sep(dir, TEST_REGION_BASE, TEST_INDEX_REGION_BASE,
-				 FY_DURABLE_ARENA_DEDUP | FY_DURABLE_ARENA_SEPARATE_INDEX);
-	if (!da) {
+	if (separate_index_session_write(dir, addr, K)) {
 		rm_rf(dir);
 		durable_unavailable();
 		return;
 	}
-	a = da;
-	for (i = 0; i < K; i++) {
-		size_t len = dd_payload(pl, sizeof(pl), i);
-		const void *p = fy_allocator_store(a, FY_ALLOC_TAG_DEFAULT, pl, len, 16);
-		ck_assert_ptr_ne(p, NULL);
-		addr[i] = durable_logical(p);
-	}
-	ck_assert_int_eq(fy_allocator_sync(da), 0);
-	fy_allocator_destroy(da);
 
 	/* reopen WITHOUT passing the index geometry: it must come from boot */
 	da = open_test_arena(dir, TEST_REGION_BASE, FY_DURABLE_ARENA_DEDUP);

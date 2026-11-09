@@ -56,10 +56,9 @@ struct record {
 
 static uint64_t last_sum;
 
-static struct fy_allocator *open_arena(const char *dir, unsigned int flags)
+static struct fy_allocator *try_open_arena(const char *dir, unsigned int flags)
 {
 	struct fy_durable_allocator_cfg cfg;
-	struct fy_allocator *a;
 
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.dir = dir;
@@ -67,7 +66,14 @@ static struct fy_allocator *open_arena(const char *dir, unsigned int flags)
 	cfg.region_size = REGION_SIZE;
 	cfg.chunk_size = CHUNK_SIZE;
 	cfg.flags = FY_DURABLE_ARENA_CREATE | FY_DURABLE_ARENA_SPARSE | flags;
-	a = fy_allocator_create("durable", &cfg);
+	return fy_allocator_create("durable", &cfg);
+}
+
+static struct fy_allocator *open_arena(const char *dir, unsigned int flags)
+{
+	struct fy_allocator *a;
+
+	a = try_open_arena(dir, flags);
 	if (!a) {
 		perror("open durable arena");
 		exit(2);
@@ -301,7 +307,9 @@ static int do_concurrent(const char *self, const char *dir, int nprobes, char *p
 	return 0;
 }
 
-/* a pointer kept across a reopen; under FIL-C reading it traps */
+#define STALE_REOPEN_REFUSED	42
+
+/* a pointer kept across a reopen; under FIL-C the reopen is refused, or reading it traps */
 static int do_stale(const char *dir)
 {
 	struct rlimit rl = { 0, 0 };
@@ -318,14 +326,24 @@ static int do_stale(const char *dir)
 		r = record_get(a, fy_allocator_refs_get(a));
 		CHECK(r);
 		fy_allocator_destroy(a);
+#ifdef __FILC__
+		/* the old arena keeps its address while r refers to it, so it cannot be
+		 * opened at its base again */
+		a = try_open_arena(dir, 0);
+		if (!a)
+			_exit(STALE_REOPEN_REFUSED);
+#else
 		a = open_arena(dir, 0);
+#endif
 		CHECK(check(a));
 		printf("STALE=%llu\n", (unsigned long long)((volatile const struct record *)r)->id);
 		_exit(0);
 	}
 	CHECK(waitpid(pid, &status, 0) == pid);
 #ifdef __FILC__
-	CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGTRAP);
+	/* either the reopen is refused or reading the stale pointer traps */
+	CHECK((WIFSIGNALED(status) && WTERMSIG(status) == SIGTRAP) ||
+	      (WIFEXITED(status) && WEXITSTATUS(status) == STALE_REOPEN_REFUSED));
 #else
 	CHECK(WIFEXITED(status) && !WEXITSTATUS(status));
 #endif
