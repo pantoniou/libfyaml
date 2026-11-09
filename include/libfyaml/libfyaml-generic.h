@@ -9636,6 +9636,9 @@ fy_generic_relocate(void *start, void *end, fy_generic v, ptrdiff_t d)
 /** Version of the format of an image. */
 #define FY_GENERIC_IMAGE_VERSION	1
 
+/** Defined when fy_generic_image_load() checks the image, so it is safe to load one from a peer. */
+#define FY_GENERIC_IMAGE_CHECKED	1
+
 /** Alignment of an image in memory. Loading requires this alignment. */
 #define FY_GENERIC_IMAGE_ALIGN		4096
 
