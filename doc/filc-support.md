@@ -15,7 +15,7 @@ This guide covers FIL-C 0.687 on Linux x86-64.
 | Parser, document tree, emitter | Works |
 | Generics (builders, ops, emit, images, parse cache) | Works |
 | Allocators (linear, malloc, mremap, dedup, auto) | Works |
-| Durable arenas, persistent dedup, durable GC | Work, including sharing arenas with native processes |
+| Durable arenas, persistent dedup, durable GC | Work, including sharing arenas with native processes. At the configured base with a runtime that has `zgc_reserve_at()`, at a runtime chosen address (logical base) with any other |
 | Reflection (built-in C parser, cparse) | Works; the cparse tests pass |
 | Reflection (libclang) | Not available: libclang is a host library |
 | Python bindings | Not built |
@@ -89,8 +89,10 @@ LD_LIBRARY_PATH=$FILC/pizfix/lib CK_FORK=no ./libfyaml-test generic_compare
 
 ### Expected test results
 
-All tests pass. Some print `SKIP:` under FIL-C: fixed-address reservations,
-user namespaces, and two mremap stress tests that trip a FIL-C runtime bug.
+All tests pass. Some print `SKIP:` under FIL-C: user namespaces, and two mremap
+stress tests that trip a FIL-C runtime bug (set `FY_TEST_FILC_STRESS=1` to run
+them anyway). With a runtime that does not have `zgc_reserve_at()` the
+fixed-address reservation tests print `SKIP:` too.
 
 ### Cross-runtime durable tests
 
@@ -138,24 +140,54 @@ values natively.
 - **Other memory** (single malloc objects, `alloca` storage, static
   literals, in-place builders on stack buffers) goes through a FIL-C
   `zexact_ptrtable` when a value is encoded.
-- **Durable arenas.** The region is reserved wherever the runtime places it.
-  Persisted data keeps using the configured `region_base` as a *logical*
-  address: chunk links, the persistent dedup index and generic values stored
-  in the arena hold logical addresses, which the registry translates.
-  Natively the logical address is the runtime address, so FIL-C and native
-  processes share the same files.
+- **Durable arenas.** Persisted data uses the configured `region_base` as a
+  *logical* address: chunk links, the persistent dedup index and generic
+  values stored in the arena hold logical addresses, as integers that the
+  registry turns back into pointers, because a pointer stored in a file does
+  not keep its capability. Natively the logical address is the runtime
+  address, so FIL-C and native processes share the same files. Where the
+  region goes depends on the runtime:
+  - With `zgc_reserve_at()` (`FILC_HAS_ZGC_RESERVE_AT` in `<stdfil.h>`) the
+    region is reserved at `region_base`, exactly as natively. A base that is
+    in use fails with `region base ... is unavailable`, as natively.
+  - Without it, or for a base that the runtime cannot place (`EINVAL`), the
+    region is reserved wherever the runtime puts it and `region_base` stays
+    only logical.
 - **Relocation** (generic images, builder linearization, parse cache) derives
   relocated pointers from the destination buffer instead of integer
   arithmetic, and the parse cache always loads through its copying path.
 
+## Fixed addresses and alignment
+
+`zgc_reserve_at(address, length)` returns an `mmap`-style object at exactly
+`address`, or `NULL` with `errno`. The runtime keeps its own data for the
+object next to it, and that decides where a region can go:
+
+- The runtime keeps a header just below `address`, with mark bits in the first
+  page of the 512 KiB chunk that header is in, and it takes whole chunks. So
+  the chunk below the base and the rest of the chunk that the region ends in
+  must be free too. A base that is a multiple of 512 KiB always works. A base
+  in the first two pages of a chunk is refused (`EINVAL`) and the region falls
+  back to a runtime chosen address.
+- Regions cannot touch: leave at least a chunk between one region and the
+  next. The durable GC does that for its scratch region.
+- A closed arena keeps its address until the GC has found that nothing
+  refers to it. Reopening at the same base in the same process therefore
+  waits for that, collecting garbage up to 5 times, and fails if something
+  still points into the old arena, **including a dead local in a frame that
+  is still running**, since the runtime scans every slot of a frame. Do the
+  first session in a function of its own, so that its frame is gone. A stale
+  pointer then can never see the new arena.
+
 ## Limitations
 
-- **Raw pointers do not survive a durable reopen.** Under FIL-C the arena
-  lands at a different address in every process. Publish a root generic
-  with `fy_generic_refs_publish()`, or a handle from
+- **Raw pointers do not survive a durable reopen.** A pointer stored in a
+  file loses its capability, even where the arena is at the same address.
+  Publish a root generic with `fy_generic_refs_publish()`, or a handle from
   `fy_allocator_ptr_to_handle()`, as the refs head, never a runtime pointer.
-- **No fixed-address mappings.** `mmap` with a non-NULL address hint is
-  refused, so nothing can be placed at a chosen address.
+- **No `mmap` at an address hint.** `mmap` with a non-NULL address that is not
+  inside an object it returned is refused. Use `zgc_reserve_at()` to place
+  memory at a chosen address; it is not in release builds of 0.687.
 - **Growing an mremap arena in place never succeeds**; the allocator makes
   new arenas instead, which costs some memory.
 - **Speed.** FIL-C is roughly 5 to 7 times slower than a native release
@@ -187,6 +219,9 @@ The panic stack shows where the access happened; for a runtime panic
 without one, run under `gdb` and take a backtrace at the `SIGTRAP`.
 
 ## Known FIL-C 0.687 issues
+
+Both of the first two were checked again against the tip of the FIL-C
+repository (`f641231a`, November 2026), and are still there.
 
 - **libpas assertion `!node->is_booted`** (`pas_large_sharing_pool.c:950`)
   under heavy multi-threaded use of the mremap allocator, while the runtime
