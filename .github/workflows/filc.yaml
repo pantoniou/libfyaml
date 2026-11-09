@@ -15,7 +15,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # run JS actions on Node 24
   FILC_VERSION: "0.687"
-  FILC_SHA256: aab538401f78a47ab261ee79afed8c6b99e1d4848e263ae159a75b03c1288da1
+  # a Fil-C 0.687 build with zgc_reserve_at() (fixed address reservations)
+  FILC_REPO: pantoniou/fil-c
+  FILC_TAG: reserve-at-0.687
+  FILC_SHA256: 80b50e142e7fa6f3cd31a850de5f4c79a32004b2dc1146be7e411729536eb016
 
 jobs:
   filc:
@@ -41,7 +44,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: filc-dist
-        key: filc-${{ env.FILC_VERSION }}
+        key: filc-${{ env.FILC_TAG }}
 
     - name: "Install FIL-C"
       run: |
@@ -49,7 +52,7 @@ jobs:
         if [ ! -f $tarball ]; then
           mkdir -p filc-dist
           curl -fsSL -o $tarball \
-            https://github.com/pizlonator/fil-c/releases/download/v$FILC_VERSION/filc-$FILC_VERSION-linux-x86_64.tar.xz
+            https://github.com/$FILC_REPO/releases/download/$FILC_TAG/filc-$FILC_VERSION-linux-x86_64.tar.xz
         fi
         echo "$FILC_SHA256  $tarball" | sha256sum -c
         tar xJf $tarball -C "$RUNNER_TEMP"
