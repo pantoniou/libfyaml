@@ -9724,7 +9724,13 @@ fy_generic_image_create_in_place(fy_generic v, void *buf, size_t size, size_t *s
  * Validate the header and relocate pointers to the current arena address.
  * The image must be in writable memory aligned to FY_GENERIC_IMAGE_ALIGN.
  * The first load modifies the image. Subsequent loads of the same image do
- * not modify the relocated pointers. A failed load does not change the image.
+ * not modify the relocated pointers.
+ *
+ * The load checks every pointer, so an image from an untrusted source is safe
+ * to load. It fails if a pointer or the object behind it is outside the arena
+ * or misaligned, a string has no NUL, a sequence or mapping contains itself,
+ * or an escape is unknown. If the header is bad the image is not changed. If
+ * the arena is bad the image can be half relocated: throw it away.
  *
  * @image: The image
  * @size:  Size of the image in bytes
