@@ -3753,10 +3753,295 @@ int fy_generic_image_create_in_place(fy_generic v, void *buf, size_t size,
 	return -1;
 }
 
+/*
+ * Check and relocate an image in one walk. A bad pointer, a bad size, a
+ * string without a NUL, a loop or an unknown escape fails the load.
+ * A value used by two parents is walked once.
+ */
+/*
+ * Walk state of a sequence, mapping or indirect. A bit per container unit in
+ * the arena says "visited". The rest is kept in the top bits of the first
+ * word of the object (the count, or the flags of an indirect), which are
+ * never used by a good image:
+ *
+ *   bit 0:    open, the walk is inside this object (a second visit is a loop)
+ *   bits 1-2: kind it was visited as (a second visit must use the same kind)
+ *
+ * The marks are cleared again when the walk ends.
+ */
+enum { FY_IMAGE_SEQ, FY_IMAGE_MAP, FY_IMAGE_IND };
+
+#define FY_IMAGE_MARK_SHIFT	(sizeof(fy_generic_value) * CHAR_BIT - 4)
+#define FY_IMAGE_OPEN		((fy_generic_value)1 << FY_IMAGE_MARK_SHIFT)
+#define FY_IMAGE_KIND_SHIFT	(FY_IMAGE_MARK_SHIFT + 1)
+#define FY_IMAGE_KIND_MASK	((fy_generic_value)3 << FY_IMAGE_KIND_SHIFT)
+#define FY_IMAGE_MARKS		(FY_IMAGE_OPEN | FY_IMAGE_KIND_MASK)
+
+/* A container being walked: the items left to check. */
+struct fy_image_frame {
+	fy_generic *vp;		/* the word that names the container */
+	fy_generic_value mask;	/* tag mask of that word */
+	fy_generic_value *hdr;	/* first word of the container, has the marks */
+	fy_generic *items;
+	size_t n, i;
+	bool absolute;		/* the word was relocated by an earlier load */
+};
+
+struct fy_image_reloc {
+	uint8_t *image;
+	size_t lo, hi;		/* arena start and end, as offsets in the image */
+	uintptr_t at;		/* address of the image */
+	uint64_t *seen;		/* one bit per container unit of the arena */
+	struct fy_image_frame *stack;	/* the containers being walked */
+	size_t sp, cap;
+};
+
+static void fy_image_fix(struct fy_image_reloc *r, fy_generic *vp,
+			 fy_generic_value mask)
+{
+	*vp = fy_generic_relocate_value(r->image + r->lo, r->image + r->hi, *vp,
+					(ptrdiff_t)r->at, mask, vp->v & mask);
+}
+
+/*
+ * Check one word. Returns 0 when it is done (relocated), 1 when it names a
+ * container that must be walked (@fr is filled), -1 when it is bad.
+ */
+static int fy_image_check_word(struct fy_image_reloc *r, fy_generic *vp,
+			       struct fy_image_frame *fr)
+{
+	fy_generic_value v = vp->v, mask = FY_INPLACE_TYPE_MASK, tag, *hdr;
+	fy_generic_sequence *gs;
+	fy_generic_mapping *gm;
+	fy_generic_indirect *gi;
+	fy_generic *items;
+	const uint8_t *o;
+	size_t off, avail, count, n, len, hl, unit, align;
+	unsigned int kind;
+	uintptr_t ptr;
+	bool absolute, collection = false, indirect = false;
+
+	tag = v & FY_INPLACE_TYPE_MASK;
+	switch (tag) {
+	case FY_INT_INPLACE_V:
+	case FY_STRING_INPLACE_V:
+		return 0;
+	case FY_FLOAT_INPLACE_V:
+#ifdef FYGT_GENERIC_64
+		return 0;
+#else
+		return -1;
+#endif
+	case FY_INDIRECT_V:
+		if (v & ((fy_generic_value)1 << FY_INPLACE_TYPE_SHIFT)) {
+			/* escape: must be a known constant or invalid */
+			return v == fy_invalid_value ||
+			       (v >> FY_ESCAPE_SHIFT) < FY_ESCAPE_COUNT ? 0 : -1;
+		}
+		indirect = true;
+		mask = FY_COLLECTION_MASK;
+		break;
+	case FY_SEQ_V:		/* sequence or mapping, bit 3 tells which */
+		collection = true;
+		mask = FY_COLLECTION_MASK;
+		break;
+	case FY_INT_OUTPLACE_V:
+	case FY_FLOAT_OUTPLACE_V:
+	case FY_STRING_OUTPLACE_V:
+		break;
+	default:
+		return -1;
+	}
+	ptr = (uintptr_t)(v & ~mask);
+	/* a NULL collection is the empty one */
+	if (collection && !ptr)
+		return 0;
+	/* an earlier load already relocated it: it is an address, not an offset */
+	absolute = ptr >= r->at;
+	off = absolute ? (size_t)(ptr - r->at) : (size_t)ptr;
+	align = (collection || indirect) ? FY_GENERIC_CONTAINER_ALIGN :
+					   FY_GENERIC_SCALAR_ALIGN;
+	if ((off & (align - 1)) || off < r->lo || off >= r->hi)
+		return -1;
+	avail = r->hi - off;
+	o = r->image + off;
+
+	switch (tag) {
+	case FY_INT_OUTPLACE_V:
+		if (avail < sizeof(fy_generic_decorated_int))
+			return -1;
+		break;
+	case FY_FLOAT_OUTPLACE_V:
+		if (avail < sizeof(double))
+			return -1;
+		break;
+	case FY_STRING_OUTPLACE_V:
+		o = fy_decode_size(o, avail, &len);
+		if (!o)
+			return -1;
+		hl = (size_t)(o - (r->image + off));
+		if (len >= avail - hl || o[len])
+			return -1;
+		break;
+	default:
+		break;
+	}
+	if (!collection && !indirect)
+		goto done;
+
+	if (avail < sizeof(fy_generic_value))
+		return -1;
+	kind = indirect ? FY_IMAGE_IND :
+	       (v & FY_MAP_V) ? FY_IMAGE_MAP : FY_IMAGE_SEQ;
+	unit = (off - r->lo) / FY_GENERIC_CONTAINER_ALIGN;
+	gs = (fy_generic_sequence *)(r->image + off);
+	gm = (fy_generic_mapping *)gs;
+	gi = (fy_generic_indirect *)gs;
+	hdr = indirect ? &gi->flags : (fy_generic_value *)&gs->count;
+
+	if (r->seen[unit / 64] & FY_BIT64(unit % 64)) {
+		/* visited: it must not be open, and must be the same kind */
+		if (*hdr & FY_IMAGE_OPEN)
+			return -1;
+		if (((*hdr & FY_IMAGE_KIND_MASK) >> FY_IMAGE_KIND_SHIFT) != kind)
+			return -1;
+		goto done;
+	}
+	/* a mark on a container nobody visited: bad image */
+	if (*hdr & FY_IMAGE_MARKS)
+		return -1;
+
+	if (indirect) {
+		n = fy_bit64_popcnt(gi->flags & FYGIF_CONTENT_MASK);
+		items = gi->vindirect;
+		if (n > (avail - sizeof(gi->flags)) / sizeof(fy_generic))
+			return -1;
+	} else {
+		count = gs->count;
+		if (kind == FY_IMAGE_MAP) {
+			items = (fy_generic *)gm->pairs;
+			n = 2;
+		} else {
+			items = gs->items;
+			n = 1;
+		}
+		if (count > (avail - sizeof(gs->count)) / sizeof(fy_generic) / n)
+			return -1;
+		n *= count;
+	}
+
+	r->seen[unit / 64] |= FY_BIT64(unit % 64);
+	*hdr |= FY_IMAGE_OPEN | ((fy_generic_value)kind << FY_IMAGE_KIND_SHIFT);
+	fr->vp = vp;
+	fr->mask = mask;
+	fr->hdr = hdr;
+	fr->items = items;
+	fr->n = n;
+	fr->i = 0;
+	fr->absolute = absolute;
+	return 1;
+done:
+	if (!absolute)
+		fy_image_fix(r, vp, mask);
+	return 0;
+}
+
+static int fy_image_push(struct fy_image_reloc *r, const struct fy_image_frame *fr,
+			 struct fy_image_frame *stack0)
+{
+	struct fy_image_frame *ns;
+	size_t cap;
+
+	if (r->sp == r->cap) {
+		cap = r->cap * 2;
+		if (r->stack == stack0) {
+			ns = malloc(cap * sizeof(*ns));
+			if (!ns)
+				return -1;
+			memcpy(ns, r->stack, r->sp * sizeof(*ns));
+		} else {
+			ns = realloc(r->stack, cap * sizeof(*ns));
+			if (!ns)
+				return -1;
+		}
+		r->stack = ns;
+		r->cap = cap;
+	}
+	r->stack[r->sp++] = *fr;
+	return 0;
+}
+
+/* clear the marks of every visited container */
+static void fy_image_unmark(struct fy_image_reloc *r, size_t words)
+{
+	fy_generic_value *hdr;
+	uint64_t bits;
+	size_t w, unit;
+	unsigned int i;
+
+	for (w = 0; w < words; w++) {
+		bits = r->seen[w];
+		while (bits) {
+			i = fy_bit64_lowest(bits);
+			bits &= ~FY_BIT64(i);
+			unit = w * 64 + i;
+			hdr = (fy_generic_value *)(r->image + r->lo +
+					unit * FY_GENERIC_CONTAINER_ALIGN);
+			*hdr &= ~FY_IMAGE_MARKS;
+		}
+	}
+}
+
+static int fy_image_relocate(uint8_t *image, size_t lo, size_t hi,
+			     uintptr_t at, fy_generic *rootp)
+{
+	uint64_t seen0[256];
+	struct fy_image_frame stack0[64], fr, *f;
+	struct fy_image_reloc r = { .image = image, .lo = lo, .hi = hi, .at = at };
+	size_t words = FY_BIT64_COUNT((hi - lo) / FY_GENERIC_CONTAINER_ALIGN + 1);
+	int rc;
+
+	r.seen = seen0;
+	if (words > ARRAY_SIZE(seen0)) {
+		r.seen = malloc(words * sizeof(*r.seen));
+		if (!r.seen)
+			return -1;
+	}
+	memset(r.seen, 0, words * sizeof(*r.seen));
+	r.stack = stack0;
+	r.cap = ARRAY_SIZE(stack0);
+
+	/* walk with an explicit stack, so a deep image can't overflow ours */
+	rc = fy_image_check_word(&r, rootp, &fr);
+	if (rc > 0)
+		rc = fy_image_push(&r, &fr, stack0);
+	while (rc >= 0 && r.sp) {
+		f = &r.stack[r.sp - 1];
+		if (f->i < f->n) {
+			rc = fy_image_check_word(&r, &f->items[f->i++], &fr);
+			if (rc > 0)
+				rc = fy_image_push(&r, &fr, stack0);
+			continue;
+		}
+		/* all items are checked: close it and relocate its word */
+		*f->hdr &= ~FY_IMAGE_OPEN;
+		if (!f->absolute)
+			fy_image_fix(&r, f->vp, f->mask);
+		r.sp--;
+	}
+	rc = rc < 0 ? -1 : 0;
+
+	fy_image_unmark(&r, words);
+	if (r.stack != stack0)
+		free(r.stack);
+	if (r.seen != seen0)
+		free(r.seen);
+	return rc;
+}
+
 int fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
 {
 	struct fy_generic_image_header hdr;
-	unsigned char *arena;
 	uintptr_t at;
 	fy_generic root;
 
@@ -3774,12 +4059,14 @@ int fy_generic_image_load(void *image, size_t size, fy_generic *rootp)
 	/* only an inline root has no arena */
 	if (!hdr.size && !fy_generic_is_in_place(root))
 		return -1;
-	arena = (unsigned char *)image + FY_GENERIC_IMAGE_ARENA_OFFSET;
 	at = (uintptr_t)image;
 	/* Image-relative offsets must not overlap the destination address range. */
 	if (at < size)
 		return -1;
-	*rootp = fy_generic_relocate(arena, arena + hdr.size, root, (ptrdiff_t)at);
+	if (fy_image_relocate(image, FY_GENERIC_IMAGE_ARENA_OFFSET,
+			      FY_GENERIC_IMAGE_ARENA_OFFSET + hdr.size, at, &root))
+		return -1;
+	*rootp = root;
 	return 0;
 }
 
