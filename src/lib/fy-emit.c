@@ -5646,6 +5646,93 @@ void fy_emit_generic_write_single_quoted(struct fy_emitter *emit, fy_generic v,
 	fy_emit_write_single_quoted_with_state(emit, flags, indent, &state);
 }
 
+/*
+ * How the fast JSON string writer treats a byte: 0 is not handled (the
+ * general writer does the string), 1 is copied as it is, anything else is
+ * the letter of a short escape: '"' gives \", 'n' gives \n.
+ */
+static const uint8_t fy_emit_json_ascii[256] = {
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'n', 0, 0, 'r', 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	1, 1, '"', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, '\\', 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+/*
+ * Write a JSON string of printable ASCII (0x20..0x7e) and line breaks, with
+ * the escapes in the table. Any other byte (other control, DEL, 0x80 and up):
+ * return false and let the general writer do it. Nothing is written before
+ * that check. A string with no escape is written as it is, any other one is
+ * copied in runs.
+ */
+#define FY_EMIT_JSON_RUN	4096
+
+static bool fy_emit_generic_write_json_ascii(struct fy_emitter *emit,
+					     fy_generic_sized_string szstr,
+					     int flags, int indent)
+{
+	const uint8_t *s = (const uint8_t *)szstr.data;
+	const uint8_t *e = s + szstr.size, *p;
+	enum fy_emitter_write_type wtype;
+	char buf[FY_EMIT_JSON_RUN + 8];
+	size_t n;
+	uint8_t c;
+	bool esc;
+
+	/* c is 1 for a byte copied as is: esc is set if any byte is not */
+	esc = false;
+	for (p = s; p < e; p++) {
+		c = fy_emit_json_ascii[*p];
+		if (!c)
+			return false;
+		esc |= c != 1;
+	}
+
+	wtype = (flags & DDNF_SIMPLE_SCALAR_KEY) ?
+		fyewt_double_quoted_scalar_key : fyewt_double_quoted_scalar;
+
+	fy_emit_write_indicator(emit, di_double_quote_start, flags, indent, wtype);
+
+	/* nothing to escape: write the string as it is */
+	if (!esc) {
+		fy_emit_write_simple(emit, wtype, szstr.data, szstr.size);
+		goto done;
+	}
+
+	n = 0;
+	for (p = s; p < e; p++) {
+		c = fy_emit_json_ascii[*p];
+		if (c == 1) {
+			buf[n++] = (char)*p;
+		} else {
+			buf[n++] = '\\';
+			buf[n++] = (char)c;
+		}
+		if (n >= FY_EMIT_JSON_RUN) {
+			fy_emit_write_simple(emit, wtype, buf, n);
+			n = 0;
+		}
+	}
+	if (n)
+		fy_emit_write_simple(emit, wtype, buf, n);
+done:
+	fy_emit_write_indicator(emit, di_double_quote_end, flags, indent, wtype);
+	emit->flags &= ~(FYEF_WHITESPACE | FYEF_INDENTATION);
+	return true;
+}
+
 void fy_emit_generic_write_double_quoted(struct fy_emitter *emit, fy_generic v,
 					 fy_generic_sized_string szstr,
 					 struct fy_text_analysis *ta,
@@ -5654,6 +5741,12 @@ void fy_emit_generic_write_double_quoted(struct fy_emitter *emit, fy_generic v,
 	struct generic_state gstate;
 	struct fy_emit_write_state state;
 	struct fy_text_analysis ta_local;
+
+	/* printable ASCII JSON string: take the fast path, no analysis */
+	if (fy_emit_is_json_mode(emit) && fy_generic_is_string(v) && szstr.size &&
+	    (!ta || !(ta->flags & FYTTAF_ANALYZED)) &&
+	    fy_emit_generic_write_json_ascii(emit, szstr, flags, indent))
+		return;
 
 	gstate.v = v;
 	gstate.szstr = szstr;
@@ -5744,7 +5837,12 @@ void fy_emit_generic_scalar(struct fy_emitter *emit, fy_generic v, int flags, in
 		szstr = *szstrp;	/* avoid double conversion */
 	}
 
-	if (style != FYNS_ALIAS)
+	/* a non empty JSON string is always double quoted: skip the style analysis */
+	if (style == FYNS_ALIAS)
+		;
+	else if (fy_emit_is_json_mode(emit) && fy_generic_is_string(v) && szstr.size)
+		style = FYNS_DOUBLE_QUOTED;
+	else
 		style = fy_emit_generic_scalar_style(emit, v, szstr, flags, indent, style, szstr_tag, ta);
 
 	indent = fy_emit_generic_scalar_prolog(emit, v, flags, indent);
