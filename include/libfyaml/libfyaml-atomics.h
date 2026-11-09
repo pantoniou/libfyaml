@@ -247,7 +247,7 @@ typedef bool atomic_flag;
 			*__ptr = (_des); \
 			__res = true; \
 		} else \
-			*__res = false; \
+			__res = false; \
 		__res; \
 	})
 
