@@ -200,7 +200,10 @@ object next to it, and that decides where a region can go:
   new arenas instead, which costs some memory. For the same reason arenas are
   mapped at their size and not as a larger "balloon" that is trimmed back: a
   mapping is an object that keeps its size under FIL-C, and so does the aux
-  area that holds the capabilities of the pointers stored in it.
+  area that holds the capabilities of the pointers stored in it, which every
+  collection scans. So the first arena of a builder is 1 MiB, an arena is
+  never grown in place, and an allocation of 1 MiB or more gets an arena of
+  its own size that does not make the arenas after it large.
 - **Speed.** FIL-C is roughly 5 to 7 times slower than a native release
   build for parsing and emitting (4.7x for parse + dump, 6.9x for event
   streaming, which allocates many small objects). Generic values in memory

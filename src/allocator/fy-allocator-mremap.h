@@ -22,14 +22,32 @@ struct fy_mremap_tag;
 
 #define FY_MREMAP_TAG_MAX	32
 
+/*
+ * Under FIL-C a mapping is an object that keeps its size: growing one in place
+ * never succeeds, and trimming gives back the memory but not the object. Each
+ * failed grow also raised the size of the next arena to that of the full one,
+ * so an arena that held one large allocation made all the arenas after it
+ * large, and every arena has an aux area of its size that each collection
+ * scans.
+ */
 static inline bool fy_mremap_arena_type_is_growable(enum fy_mremap_arena_type type)
 {
+#ifdef __FILC__
+	(void)type;
+	return false;
+#else
 	return type == FYMRAT_MMAP;
+#endif
 }
 
 static inline bool fy_mremap_arena_type_is_trimmable(enum fy_mremap_arena_type type)
 {
+#ifdef __FILC__
+	(void)type;
+	return false;
+#else
 	return type == FYMRAT_MMAP;
+#endif
 }
 
 #define FYMRAF_FULL		FY_BIT(0)

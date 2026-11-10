@@ -24,6 +24,16 @@
 #include "fy-allocator-linear.h"
 #include "fy-allocator-auto.h"
 
+/*
+ * FIL-C: a mapping has an aux area of its own size that every collection
+ * scans. Keep arenas small, add arenas instead of growing, and give a large
+ * allocation an arena of its own size.
+ */
+#ifdef __FILC__
+#define AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD	((size_t)1 << 20)	/* 1 MB */
+#define AUTO_ALLOCATOR_MINIMUM_ARENA_SIZE	((size_t)1 << 20)	/* 1 MB */
+#endif
+
 /* fixed parameters */
 #ifndef AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD
 #define AUTO_ALLOCATOR_BIG_ALLOC_THRESHOLD	SIZE_MAX
