@@ -175,9 +175,17 @@ object next to it, and that decides where a region can go:
   refers to it. Reopening at the same base in the same process therefore
   waits for that, collecting garbage up to 5 times, and fails if something
   still points into the old arena, **including a dead local in a frame that
-  is still running**, since the runtime scans every slot of a frame. Do the
-  first session in a function of its own, so that its frame is gone. A stale
-  pointer then can never see the new arena.
+  is still running**, since the runtime scans every slot of a frame, and the
+  pointers that a frame passed to a call stay in it until another call
+  overwrites them. Do the first session in a function of its own, so that its
+  frame is gone. A stale pointer then can never see the new arena.
+- A program that reopens an arena deep in its call stack can start the reopen
+  on a fresh stack: `zcall_on_fresh_stack(callback, arg)`
+  (`FILC_HAS_ZCALL_ON_FRESH_STACK` in `<stdfil.h>`) drops every frame of the
+  thread and runs the callback on a new stack. The reopen must be the start of
+  that callback, before functions that hold pointers into the arena have run.
+  To find what keeps an old arena alive, `zdump_heap(fd)` lists what reaches
+  each object; the source `thread` is a frame.
 
 ## Limitations
 
