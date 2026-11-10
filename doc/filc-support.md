@@ -197,7 +197,10 @@ object next to it, and that decides where a region can go:
   inside an object it returned is refused. Use `zgc_reserve_at()` to place
   memory at a chosen address; it is not in release builds of 0.687.
 - **Growing an mremap arena in place never succeeds**; the allocator makes
-  new arenas instead, which costs some memory.
+  new arenas instead, which costs some memory. For the same reason arenas are
+  mapped at their size and not as a larger "balloon" that is trimmed back: a
+  mapping is an object that keeps its size under FIL-C, and so does the aux
+  area that holds the capabilities of the pointers stored in it.
 - **Speed.** FIL-C is roughly 5 to 7 times slower than a native release
   build for parsing and emitting (4.7x for parse + dump, 6.9x for event
   streaming, which allocates many small objects). Generic values in memory

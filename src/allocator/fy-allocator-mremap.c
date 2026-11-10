@@ -52,8 +52,15 @@
  * Can the tail of a mapping be given back? mremap() can shrink it; otherwise
  * munmap() of the tail is used, which needs FY_CAN_TRIM_MMAP. Without it, a
  * balloon would stay at its full size and a trim could only fail.
+ *
+ * FIL-C: trimming a mapping frees the memory but not the object or its aux
+ * area, so map arenas at their size instead of ballooning.
  */
+#ifdef __FILC__
+#define FY_MREMAP_CAN_TRIM_MMAP	0
+#else
 #define FY_MREMAP_CAN_TRIM_MMAP	(USE_MREMAP || FY_CAN_TRIM_MMAP)
+#endif
 
 #ifndef MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD
 #define MREMAP_ALLOCATOR_DEFAULT_BIG_ALLOC_THRESHOLD	SIZE_MAX
