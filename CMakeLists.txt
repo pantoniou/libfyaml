@@ -1640,12 +1640,12 @@ if(SPHINX_EXECUTABLE)
         endif()
 
         file(INSTALL
-            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1\"
+            DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man1\"
             TYPE FILE
             FILES \"${SPHINX_BUILD_DIR}/man/fy-tool.1\"
         )
         file(INSTALL
-            DESTINATION \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man3\"
+            DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_MANDIR}/man3\"
             TYPE FILE
             FILES
                 \"${SPHINX_BUILD_DIR}/man/libfyaml.3\"
