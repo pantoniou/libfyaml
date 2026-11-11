@@ -1,4 +1,4 @@
-# libfyaml 1.0-rc1
+# libfyaml 1.0-rc2
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,10 +17,11 @@ The 1.0 series adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-rc1 matters
+## Why 1.0-rc2 matters
 
-`1.0.0-rc1` is the first release candidate for 1.0. The API is complete and
-only fixes are expected before 1.0.0.
+`1.0.0-rc2` is the second release candidate for 1.0. It has the content of
+`1.0.0-rc1` and fixes its Python wheel build. The API is complete and only
+fixes are expected before 1.0.0.
 
 * relocatable generic images that can be written, loaded and checked while loaded
 * stable handles for durable arena locations, valid in every process
@@ -330,6 +331,7 @@ the beta cycle with additional conversion, predicate, iteration, formatting,
 and correctness fixes on top of that alpha surface. `v1.0.0-beta2` fixes the
 fuzzing reports and extends the supported platforms. `v1.0.0-rc1` adds
 relocatable generic images, FIL-C and WebAssembly support, and `cparse`.
+`v1.0.0-rc2` fixes the Python wheel build.
 
 ## License
 

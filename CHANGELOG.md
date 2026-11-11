@@ -5,6 +5,14 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc2] - 2026-11-11
+
+Same as 1.0.0-rc1, with a fix for the Python wheel build.
+
+### Fixed
+
+- `ci`: build the macos-arm64 Python wheel on `macos-15`; the `macos-14` runner configuration is no longer supported, so the wheels of rc1 were not published
+
 ## [1.0.0-rc1] - 2026-11-11
 
 The first release candidate for 1.0. The API is now considered complete; only
