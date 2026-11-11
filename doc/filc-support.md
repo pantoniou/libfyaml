@@ -16,8 +16,8 @@ This guide covers FIL-C 0.687 on Linux x86-64.
 | Generics (builders, ops, emit, images, parse cache) | Works |
 | Allocators (linear, malloc, mremap, dedup, auto) | Works |
 | Durable arenas, persistent dedup, durable GC | Work, including sharing arenas with native processes. At the configured base with a runtime that has `zgc_reserve_at()`, at a runtime chosen address (logical base) with any other |
-| Reflection (built-in C parser, cparse) | Works; the cparse tests pass |
-| Reflection (libclang) | Not available: libclang is a host library |
+| Reflection | Works. It uses the built-in C parser, `cparse`, which needs no libclang |
+| libclang backend | Not available, and not needed: it is an opt-in backend and a host library |
 | Python bindings | Not built |
 
 The full test suite passes.
@@ -33,8 +33,15 @@ tar xJf filc-0.687-linux-x86_64.tar.xz
 export FILC=$PWD/filc-0.687-linux-x86_64
 ```
 
-Then run its `setup.sh`, which needs `patchelf`. Without `patchelf`, do the
-only part libfyaml needs by hand, the kernel header links, and use
+A modified FIL-C with `zgc_reserve_at()`, which places durable arenas at their
+configured base, is built from the `pantoniou/fil-c` fork. Its releases
+(`reserve-at-0.687*`) have the same layout and are used the same way; replace
+the URL and the checksum with those of the release. The CI uses one of them.
+Without it everything works, with durable regions at a runtime chosen address.
+
+Install `patchelf` (for example `apt install patchelf`), a dependency of the
+distribution's `setup.sh`, and run `setup.sh`. Without `patchelf`, do the only
+part libfyaml needs by hand, the kernel header links, and use
 `LD_LIBRARY_PATH` for the runtime libraries:
 
 ```sh
@@ -55,18 +62,15 @@ The compiler is `$FILC/build/bin/clang` (and `clang++`).
 cmake -S . -B build-filc \
     -DCMAKE_C_COMPILER=$FILC/build/bin/clang \
     -DCMAKE_CXX_COMPILER=$FILC/build/bin/clang++ \
-    -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS=-O1
+    -DCMAKE_BUILD_TYPE=Release
 cmake --build build-filc -j8
 ```
 
 CMake detects FIL-C. Since nothing built by the host compiler can be linked
-into a FIL-C program, it then looks for no host packages (the `check`
-unit-test library is fetched and built with FIL-C), and turns off the
-CPU-specific SIMD code, libclang (a host library) and the Python bindings.
-Reflection stays on and reads C with the built-in parser, which has the targets
+into a FIL-C program, it then looks for no host packages, and turns off the
+CPU-specific SIMD code, the libclang backend (a host library) and the Python
+bindings. Reflection stays on and reads C with `cparse`, which has the targets
 `x86_64-filc` and `aarch64-filc`.
-
-Use `-DCMAKE_BUILD_TYPE=Release` for timing runs.
 
 ## Running the tests
 
@@ -84,7 +88,7 @@ Single unit tests run by name:
 
 ```sh
 cd build-filc/test
-LD_LIBRARY_PATH=$FILC/pizfix/lib CK_FORK=no ./libfyaml-test generic_compare
+LD_LIBRARY_PATH=$FILC/pizfix/lib ./libfyaml-test generic_compare
 ```
 
 ### Expected test results
@@ -195,7 +199,8 @@ object next to it, and that decides where a region can go:
   `fy_allocator_ptr_to_handle()`, as the refs head, never a runtime pointer.
 - **No `mmap` at an address hint.** `mmap` with a non-NULL address that is not
   inside an object it returned is refused. Use `zgc_reserve_at()` to place
-  memory at a chosen address; it is not in release builds of 0.687.
+  memory at a chosen address. It is not in the release builds of 0.687, nor
+  is `zcall_on_fresh_stack()`.
 - **Growing an mremap arena in place never succeeds**; the allocator makes
   new arenas instead, which costs some memory. For the same reason arenas are
   mapped at their size and not as a larger "balloon" that is trimmed back: a
@@ -204,10 +209,12 @@ object next to it, and that decides where a region can go:
   collection scans. So the first arena of a builder is 1 MiB, an arena is
   never grown in place, and an allocation of 1 MiB or more gets an arena of
   its own size that does not make the arenas after it large.
-- **Speed.** FIL-C is roughly 5 to 7 times slower than a native release
-  build for parsing and emitting (4.7x for parse + dump, 6.9x for event
-  streaming, which allocates many small objects). Generic values in memory
-  that no allocator registered pay a pointer-table lookup.
+- **Speed.** FIL-C is roughly 5 to 7 times slower than a native build, both
+  Release. On an 8.9 MB YAML file (60000 records) the best of five runs of
+  `fy-dump` was 0.51 s native and 2.56 s under FIL-C (5.0x), `fy-dump -mjson`
+  was 0.73 s and 3.44 s (4.7x), and `fy-testsuite`, which streams events and
+  allocates many small objects, was 0.45 s and 3.28 s (7.3x). Generic values in
+  memory that no allocator registered pay a pointer-table lookup.
 
 ## Reading FIL-C diagnostics
 
