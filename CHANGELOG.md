@@ -5,6 +5,91 @@ All notable changes to libfyaml will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc1] - 2026-11-11
+
+The first release candidate for 1.0. The API is now considered complete; only
+fixes are expected before 1.0.0. This release adds relocatable generic images,
+stable handles for durable arenas, FIL-C and WebAssembly support, a C
+declaration parser (`cparse`) that replaces libclang as the default reflection
+backend, and a second round of fuzzing fixes (gh#411 to gh#503) with many more
+byte-level round trip and emitter corrections. The linker interface version
+moves to `9:0:7`: interfaces were added and none were removed or changed.
+
+### Added
+
+- `generic`: relocatable generic images: `fy_generic_image_create()`, `fy_generic_image_create_with_hint()`, `fy_generic_image_create_in_place()`, `fy_generic_image_destroy()` and `fy_generic_image_load()`, with an inline value allowed as the image root
+- `generic`: `FY_GENERIC_IMAGE_CHECKED` validates an image while it is loaded, so a damaged or hostile image is rejected instead of being relocated
+- `generic`: `fy_generic_refs_publish()` and `fy_generic_refs_get()` to publish and find a generic root in a durable arena
+- `allocator`: `fy_allocator_ptr_to_handle()` and `fy_allocator_handle_to_ptr()`: stable handles for durable arena locations that are valid in every process that opens the arena
+- `allocator`: lock-free address range registry used to resolve the allocator that owns a pointer, including layered tags
+- `generic`: `fy_gb_path_segment_escape()`, and `FYGBOPF_DIGIT_KEYS` for path based access
+- `generic`: order sequences by their items
+- `generic`: `!!binary` as base64 on emit (`FYOPEF_BINARY_BASE64`) and parse, and `FYPCF_NO_YAML_1_2_BINARY` / `FYOPPF_NO_YAML_1_2_BINARY` to keep YAML 1.2 `!!binary` scalars as tagged text
+- `emit`, `parse`: round trip bytes that are not valid UTF-8 as `\uDC80`-`\uDCFF`; text with more than 1 in 4 bad bytes is marked as likely binary
+- `emit`: aliases in generic, document and streaming JSON output
+- `cparse`: a C preprocessor, constant expression evaluator, declaration parser and type model, with the predefined macros of the supported compilers and comments attached to declarations
+- `reflection`: the `cparse` backend, and generation of C declarations that parse back to the same types
+- `fy-tool`: `--binary-base64`, `--no-yaml-1.2-binary`, `--write-image` and `--read-image`
+- `allocator`: reset the memory of an owned generic builder, and reuse a small mremap arena on tag reset
+- `util`: `fy_sched_yield()`
+- `platform`: FIL-C support (durable arenas, generic pointers and the dedup index work with its logical pointers) with a guide in `doc/filc-support.md`
+- `durable`: under FIL-C, reserve a region at its base with `zgc_reserve_at()` where the runtime has it, as a native process does; other runtimes keep a runtime chosen address with the base as the logical base
+- `platform`: WebAssembly (Emscripten) build, run under node, with a guide in `doc/wasm-support.md`
+- `cmake`: the `WASM` switch and FIL-C detection
+- `ci`: FIL-C and WebAssembly workflows
+- `doc`: guide to building and testing with FIL-C, the WebAssembly build, `cparse` and the reflection backends, `--write-image` / `--read-image`, `--binary-base64` and `--auto-anchor`
+- `test`: header-only test framework replacing libcheck, tests that compare `cparse` with libclang, C generation round trips, relocatable and damaged images, durable arena operations across processes, allocation failure sweeps over binary emit and parse, and tests for every fix below
+
+### Changed
+
+- `build`: the libclang reflection backend is now opt in; `cparse` is the default
+- `reflection`: libclang is loaded on first use of the backend
+- `generic`: strings that would read back as another type are quoted on emit
+- `generic`: a long word never changes type when plain
+- `emit`: a byte that is not UTF-8 is written as U+FFFD in JSON; a JSON string of plain ASCII is written without being analysed
+- `emit`: break single quoted lines only at a space that is followed by a non space, and use comment continuation indentation
+- `atom`: no plain or single quoted style for white space next to a line break
+- `diag`: show the whole line of an error, with a bad byte as U+FFFD
+- `docbuilder`: store the failsafe string in `failsafe_str`, not `style`
+- `generic`: a builder keeps its parse cache entries itself instead of in its userdata
+- `generic`: the generic builder tool tag is its own
+- `allocator`: do not use mremap on WebAssembly
+- `allocator`: under FIL-C, map mremap arenas at their size instead of ballooning them, start with 1 MiB arenas, give an allocation of 1 MiB or more an arena of its own, and never grow or trim an arena; a builder uses 2 MiB of counted memory instead of 32 MiB
+- `ci`: pin pcons to 0.32.0, print only the failures of test runs, and give the Unix VMs more memory for generic builds
+
+### Fixed
+
+- `parse`: reject a tag handle without a suffix, and a node at block indentation at the end of a document
+- `parse`: accept `#` in tag URIs
+- `parse`: indent a block scalar from its tag or anchor, not from the indicator
+- `parse`: keep the pending complex key across block indents (four-level nested explicit keys)
+- `parse`: end a flow shorthand tag at a flow indicator
+- `parse`: resolve an alias to the closest anchor before it, and detect a recursive alias while replaying a collection
+- `parse`: saturate the version number of a `%YAML` directive
+- `parser`: copy the implicit flags when an event is cloned, rebase the reader pointers on rollback, copy the collection state stack of a checkpoint in bytes, and return an error when a rollback allocation fails
+- `atom`: keep the break before empty lines in a folded scalar when more indented text follows, clear the folded break at a preserved YAML 1.1 line separator, record flow indicators and path key validity while scanning plain scalars, and keep the lines of an atom inside the input
+- `emit`: write the value of an alias in JSON output, clear the text analysis of generic keys and values, and fail instead of leaving out a value or tag that could not be made
+- `generic`: keep a path segment with a leading zero as a string, escape `/` and `~` in a path string, reject a float outside the integer range, and check the root word of an image before relocating it
+- `generic`: fix the fallback `atomic_compare_exchange_strong()` and the `__STDC_NO_ATOMICS__` check
+- `document`: set the parents of merged and replacing nodes, free the new pair when a copy fails in insert, reject insert on a mapping key node, and stop alias path resolution on a followed alias
+- `allocator`: make mremap trimming safe against concurrent allocation, fix growing the tag count of mremap and dedup allocators, do not write to freed dedup tag data on reset, give back a block that a trim left unmapped, and initialize the Windows registry lock statically
+- `reflection`: reject structs that contain themselves or whose fields overlap, enums with a non-integer, 128-bit or oversized underlying type, integers and counter fields wider than the largest integer, and unions with members of the same select value or without a scalar selector
+- `reflection`: limit the nesting depth of a parse and of a type chain, reject oversized or negative array sizes, and fix leaks, double frees and use after free on failed keyed array items, unions, pointers, checkpoints and auto-select candidates
+- `reflection`: validate packed blobs against their declarations, handle missing types in the type filter, and do not apply a default to a counter field
+- `utils`: honour `no_replace` in `fy_rename()` on musl and FIL-C, and do not trim a Windows mapping
+- `allocator`: treat persisted ranges that sit at their own logical address as translated in the range registry
+- `durable`: open the arena directory by the given path, and remove the warnings of 32-bit builds
+- `input`: keep the size of a mapped input after it is parsed
+- `lib`: do not offset a null pointer in the raw line iterator or the atom data
+- `build`: probe every 8-byte atomic operation when checking for `-latomic`, and make returning the address of a local a build error
+- Fuzzing and allocation failure reports gh#411 to gh#417, gh#418 to gh#420, gh#422 to gh#424, gh#427, gh#428, gh#430 to gh#453, gh#450, gh#490 to gh#493, gh#495, gh#496, gh#499 and gh#503: leaks, double frees, use after free, unbounded recursion and size errors in the parser, document builder, diagnostics, emitter, YPath, generic and reflection code
+
+### Statistics
+
+- 319 commits since `v1.0.0-beta2`
+- 386 files changed, about 48700 insertions and 2450 deletions
+- Focus areas: relocatable generic images and durable handles, `cparse` and reflection hardening, FIL-C and WebAssembly support, byte-exact round trips, fuzzing fixes
+
 ## [1.0.0-beta2] - 2026-09-25
 
 A correctness and portability release. It fixes the fuzzing reports gh#317 to

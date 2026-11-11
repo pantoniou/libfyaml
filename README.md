@@ -1,4 +1,4 @@
-# libfyaml 1.0-beta2
+# libfyaml 1.0-rc1
 
 [![Autotools CI](https://github.com/pantoniou/libfyaml/workflows/Standard%20Automake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22Standard+Automake+CI%22)
 [![CMake CI](https://github.com/pantoniou/libfyaml/workflows/CMake%20CI/badge.svg)](https://github.com/pantoniou/libfyaml/actions?query=workflow%3A%22CMake+CI%22)
@@ -17,23 +17,23 @@ The 1.0 series adds a clear progression:
 * use generics when your problem is "work with values"
 * use reflection when your problem is "populate native C data structures"
 
-## Why 1.0-beta2 matters
+## Why 1.0-rc1 matters
 
-`1.0.0-beta2` is a correctness and portability release. It adds no new API.
+`1.0.0-rc1` is the first release candidate for 1.0. The API is complete and
+only fixes are expected before 1.0.0.
 
-* fixes for the fuzzing reports gh#317 to gh#409: memory leaks, double frees,
-  use after free, unbounded recursion and size hint errors in the scanner,
-  parser, document builder, YPath and reflection code
-* allocation failure injection in the tests, and fixes for the error paths it
-  found
-* ASAN builds stop on undefined behaviour and check float casts
-* support for FreeBSD, NetBSD, OpenBSD, illumos, MinGW-w64, 32-bit x86 and arm,
-  riscv64 and big-endian ppc64, with fixes for the problems found there
-* a weekly CI run of all supported platforms, and pinned runner images in the
-  daily run
-* a CMake based Nix derivation
+* relocatable generic images that can be written, loaded and checked while loaded
+* stable handles for durable arena locations, valid in every process
+* FIL-C and WebAssembly support
+* `cparse`, a C declaration parser that replaces libclang as the default
+  reflection backend (libclang is opt in)
+* `!!binary` as base64, and a lossless round trip of bytes that are not UTF-8
+* a second round of fuzzing fixes, gh#411 to gh#503
+* new `fy-tool` options: `--write-image`, `--read-image`, `--binary-base64`
+  and `--no-yaml-1.2-binary`
 
-The linker interface version moves to `8:1:6`: the interfaces are unchanged.
+The linker interface version moves to `9:0:7`: interfaces were added and none
+were removed.
 
 ### Generic runtime
 
@@ -328,7 +328,8 @@ caching, optimized generic emission, and Stable ABI Python wheels.
 round-tripping, and more complete generic helper APIs. `v1.0.0-beta1` starts
 the beta cycle with additional conversion, predicate, iteration, formatting,
 and correctness fixes on top of that alpha surface. `v1.0.0-beta2` fixes the
-fuzzing reports and extends the supported platforms.
+fuzzing reports and extends the supported platforms. `v1.0.0-rc1` adds
+relocatable generic images, FIL-C and WebAssembly support, and `cparse`.
 
 ## License
 
