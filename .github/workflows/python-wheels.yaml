@@ -70,7 +70,7 @@ jobs:
             cibw_archs: x86_64
             cibw_environment: LIBFYAML_REPO_ROOT=$GITHUB_WORKSPACE
           - name: macos-arm64
-            runner: macos-14
+            runner: macos-15
             cibw_archs: arm64
             cibw_environment: LIBFYAML_REPO_ROOT=$GITHUB_WORKSPACE
           - name: windows-amd64
