@@ -236,7 +236,10 @@ jobs:
     - name: "Install dependencies (Windows)"
       if: runner.os == 'Windows'
       run: |
-        choco install llvm
+        # the image ships an older llvm (20.x) and the VS 18 STL wants clang 22+,
+        # so upgrade instead of install (install is a no-op when llvm is present)
+        choco upgrade llvm -y
+        clang --version
 
     - name: "Install python"
       run: |
