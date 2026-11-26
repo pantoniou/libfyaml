@@ -1710,6 +1710,53 @@ END_TEST
 
 /* ── registration ────────────────────────────────────────────────── */
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Bug 24: A comment block followed by a blank line and a second block
+ *         was left pending after the second block was attached to a
+ *         key, and surfaced on a later token (an empty flow collection
+ *         or the document end).  The merged text also kept the '#' of
+ *         every line after the blank line.
+ *
+ * Fix: fy_attach_comments_if_any() attaches both blocks as one, and
+ * fy_token_get_comment() keeps a line start across an empty line.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+START_TEST(emit_bug_comment_blocks_stay_before_key)
+{
+	const char input[] = "a:\n  x: 1\n# one\n# two\n\n# three\nb: 1\nc: 2\n";
+	char *buf = roundtrip_doc_comments(input);
+	const char *one, *three, *b;
+
+	ck_assert_ptr_ne(buf, NULL);
+	one = strstr(buf, "# one");
+	three = strstr(buf, "# three");
+	b = strstr(buf, "b: 1");
+	ck_assert_ptr_ne(one, NULL);
+	ck_assert_ptr_ne(three, NULL);
+	ck_assert_ptr_ne(b, NULL);
+	ck_assert(one < three && three < b);
+	ck_assert_ptr_eq(strstr(buf, "# #"), NULL);
+	free(buf);
+}
+END_TEST
+
+START_TEST(emit_bug_comment_blocks_not_moved_to_empty_flow)
+{
+	const char input[] = "a:\n  x: 1\n# one\n\n# two\nb: 1\nd: {}\ne: []\n";
+	char *buf = roundtrip_doc_comments(input);
+	const char *one, *d;
+
+	ck_assert_ptr_ne(buf, NULL);
+	one = strstr(buf, "# one");
+	d = strstr(buf, "d:");
+	ck_assert_ptr_ne(one, NULL);
+	ck_assert_ptr_ne(d, NULL);
+	ck_assert(one < strstr(buf, "b: 1"));
+	free(buf);
+}
+END_TEST
+
+
 void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 {
 	struct fy_check_testcase *ctc;
@@ -1853,4 +1900,8 @@ void libfyaml_case_emit_bugs(struct fy_check_suite *cs)
 	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_not_consumed);
 	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_folded);
 	fy_check_testcase_add_test(ctc, emit_bug_block_scalar_trailing_comment_in_sequence);
+
+	/* Bug 24: a comment block before a blank line stayed pending */
+	fy_check_testcase_add_test(ctc, emit_bug_comment_blocks_stay_before_key);
+	fy_check_testcase_add_test(ctc, emit_bug_comment_blocks_not_moved_to_empty_flow);
 }
