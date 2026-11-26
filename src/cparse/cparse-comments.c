@@ -17,6 +17,10 @@
  * also hands a comment trailing a struct's closing brace to the last field; that
  * is not reproduced.)
  */
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
