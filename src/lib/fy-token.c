@@ -1107,6 +1107,9 @@ fy_token_get_comment(struct fy_token *fyt, enum fy_comment_placement which)
 						output = false;
 						break;
 					}
+					/* an empty line keeps the next line at its start */
+					if (fy_is_lb_m(c, handle->lb_mode))
+						break;
 					state = cos_normal;
 					break;
 

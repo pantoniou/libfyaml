@@ -1243,6 +1243,18 @@ int fy_attach_comments_if_any(struct fy_parser *fyp, struct fy_token *fyt)
 		fy_atom_reset(&fyp->override_comment);
 	}
 
+	/* An older comment block that is only whitespace away from the newer
+	 * one is one logical block with it. Attach both: the older block must
+	 * not stay pending and surface on a later token.
+	 * The leading comment of an implicit document is kept apart, see below. */
+	if (fyt->type != FYTT_DOCUMENT_START &&
+			fyp->state != FYPS_IMPLICIT_DOCUMENT_START &&
+			fy_atom_is_set(&fyp->override_comment) &&
+			fy_atom_is_set(&fyp->last_comment) &&
+			fy_comment_atoms_seperated_by_ws(fyp, &fyp->override_comment,
+							 &fyp->last_comment))
+		fy_consolidate_pending_comments(fyp);
+
 	/* if a last comment exists and is valid */
 	if (fy_atom_is_set(&fyp->last_comment)) {
 
